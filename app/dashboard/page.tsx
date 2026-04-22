@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const router = useRouter()
 
   const [username, setUsername] = useState('')
@@ -282,28 +283,45 @@ export default function Dashboard() {
 
                 {/* DELETE BUTTON */}
                 {/* MENU DELETE (3 PUNTINI) */}
-<div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2 group">
+<div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2">
   
-  <button className="text-gray-400 hover:text-red-400 text-base sm:text-lg leading-none px-1">
+  <button 
+    onClick={() => setOpenMenuId(openMenuId === item.card_id ? null : item.card_id)}
+    className="text-gray-400 hover:text-red-400 text-base sm:text-lg leading-none px-1"
+  >
     ⋯
   </button>
 
-  <div className="hidden group-hover:block absolute bottom-6 right-0 bg-slate-800 border border-slate-700 rounded-md shadow-lg overflow-hidden z-10">
+  {openMenuId === item.card_id && (
+    <>
+      <div 
+        className="fixed inset-0 z-20"
+        onClick={() => setOpenMenuId(null)}
+      />
+      <div className="absolute bottom-6 right-0 bg-slate-800 border border-slate-700 rounded-md shadow-lg overflow-hidden z-30">
     
-    <button
-      onClick={() => removeCard(item.card_id, item.quantity)}
-      className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-red-400 hover:bg-slate-700 text-xs w-full whitespace-nowrap"
-    >
-      <Trash2 size={12} className="sm:w-3.5 sm:h-3.5" />
-      Elimina
-    </button>
-<button
-  onClick={() => setSelectedCard(item)}
-  className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-white hover:bg-slate-700 text-xs w-full whitespace-nowrap"
->
-  Info
-</button>
-  </div>
+        <button
+          onClick={() => {
+            removeCard(item.card_id, item.quantity)
+            setOpenMenuId(null)
+          }}
+          className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-red-400 hover:bg-slate-700 text-xs w-full whitespace-nowrap"
+        >
+          <Trash2 size={12} className="sm:w-3.5 sm:h-3.5" />
+          Elimina
+        </button>
+        <button
+          onClick={() => {
+            setSelectedCard(item)
+            setOpenMenuId(null)
+          }}
+          className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-white hover:bg-slate-700 text-xs w-full whitespace-nowrap"
+        >
+          Info
+        </button>
+      </div>
+    </>
+  )}
 </div>
 
                 <div className="w-full aspect-[3/4] overflow-hidden rounded-md bg-black">
@@ -381,13 +399,13 @@ export default function Dashboard() {
 )}
       {/* MODAL */}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-3 sm:p-4">
 
-          <div className="relative w-full max-w-2xl h-[85vh] sm:h-[90vh] bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+          <div className="relative w-full max-h-[80vh] sm:max-h-[85vh] max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
 
             <button
               onClick={refreshAfterAdd}
-              className="absolute top-3 right-3 z-50 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
+              className="absolute top-2 right-2 sm:top-3 sm:right-3 z-50 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
             >
               ✕
             </button>
