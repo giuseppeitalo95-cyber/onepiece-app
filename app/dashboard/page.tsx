@@ -336,7 +336,7 @@ export default function Dashboard() {
         className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center z-50 group"
       >
         <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110">
-          <Plus className="text-black" size={24} className="sm:w-7 sm:h-7" />
+          <Plus className="text-black sm:w-7 sm:h-7" size={24} />
         </div>
 
         <span className="text-[10px] sm:text-xs mt-1 sm:mt-2 text-amber-300 font-semibold">
