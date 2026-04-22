@@ -79,7 +79,9 @@ export default function Dashboard() {
 
     const { data, error } = await supabase
       .from('user_cards')
-      .select('card_id, quantity, name, image_url, rarity')
+      .select(
+        'card_id, quantity, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price'
+      )
       .eq('user_id', uid)
 
     if (error) {
@@ -374,24 +376,46 @@ export default function Dashboard() {
         ✕
       </button>
 
-      <h2 className="text-lg sm:text-xl font-bold text-amber-300 mb-3 sm:mb-4 pr-6">
-        {selectedCard.name}
-      </h2>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+        <div className="rounded-3xl overflow-hidden bg-slate-800 border border-slate-700 p-3">
+          <img
+            src={selectedCard.image_url || ''}
+            className="w-full aspect-[3/4] object-contain"
+          />
+        </div>
 
-      <img
-        src={selectedCard.image_url || ''}
-        className="w-full max-h-[300px] sm:max-h-[400px] object-contain mb-3 sm:mb-4"
-      />
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-amber-300 mb-2">
+              {selectedCard.name || 'Carta sconosciuta'}
+            </h2>
+            <p className="text-xs uppercase tracking-[0.25em] text-gray-400 mb-3">
+              {selectedCard.card_id}
+            </p>
+          </div>
 
-      <div className="text-xs sm:text-sm text-gray-300 space-y-0.5 sm:space-y-1">
-        <p><span className="text-amber-300">Nome:</span> {selectedCard.name}</p>
-        <p><span className="text-amber-300">Rarità:</span> {selectedCard.rarity}</p>
-        <p><span className="text-amber-300">Colore:</span> {selectedCard.card_color}</p>
-        <p><span className="text-amber-300">Costo:</span> {selectedCard.card_cost}</p>
-        <p><span className="text-amber-300">Power:</span> {selectedCard.card_power}</p>
-        <p><span className="text-amber-300">Prezzo:</span> {selectedCard.market_price}</p>
-        <p><span className="text-amber-300">PrezzoInv:</span> {selectedCard.inventory_price}</p>
-        <p><span className="text-amber-300">Quantità:</span> {selectedCard.quantity}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Generale</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Rarità:</span> {selectedCard.rarity || '—'}</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Colore:</span> {selectedCard.card_color || '—'}</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Tipo:</span> {selectedCard.card_type || '—'}</p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Statistiche</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Costo:</span> {selectedCard.card_cost ?? '—'}</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Power:</span> {selectedCard.card_power ?? '—'}</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Quantità:</span> {selectedCard.quantity}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Prezzi</p>
+            <p className="text-sm text-gray-200"><span className="text-amber-300">Market:</span> {selectedCard.market_price != null ? `€${selectedCard.market_price}` : '—'}</p>
+            <p className="text-sm text-gray-200"><span className="text-amber-300">Inventario:</span> {selectedCard.inventory_price != null ? `€${selectedCard.inventory_price}` : '—'}</p>
+          </div>
+        </div>
       </div>
 
     </div>
