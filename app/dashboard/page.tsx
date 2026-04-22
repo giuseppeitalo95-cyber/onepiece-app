@@ -222,14 +222,17 @@ export default function Dashboard() {
 
           <div className="hidden sm:flex flex-1" />
 
-          <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-            <img
-              src="/luffyhatlogo.webp"
-              className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0"
-            />
-            <span className="text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text truncate">
-              OPV
-            </span>
+          <div className="flex-1 flex items-center justify-center min-w-0">
+            <div className="relative flex flex-col items-center justify-center px-2">
+              <img
+                src="/luffyhatlogo.webp"
+                className="absolute -top-4 w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                alt="Logo Cap"
+              />
+              <span className="pt-6 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
+                OPV
+              </span>
+            </div>
           </div>
 
           <div className="hidden sm:flex flex-1" />
@@ -413,7 +416,6 @@ export default function Dashboard() {
           <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
             <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Prezzi</p>
             <p className="text-sm text-gray-200"><span className="text-amber-300">Market:</span> {selectedCard.market_price != null ? `€${selectedCard.market_price}` : '—'}</p>
-            <p className="text-sm text-gray-200"><span className="text-amber-300">Inventario:</span> {selectedCard.inventory_price != null ? `€${selectedCard.inventory_price}` : '—'}</p>
           </div>
         </div>
       </div>
