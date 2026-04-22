@@ -399,20 +399,21 @@ export default function Dashboard() {
 )}
       {/* MODAL */}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-3 sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
 
-          <div className="relative w-full max-h-[80vh] sm:max-h-[85vh] max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+          <div className="relative w-[calc(100vw-1rem)] sm:w-full h-[90vh] sm:h-auto max-h-[90vh] sm:max-h-[85vh] max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
 
             <button
               onClick={refreshAfterAdd}
-              className="absolute top-2 right-2 sm:top-3 sm:right-3 z-50 bg-black/50 p-2 rounded-full hover:bg-black/70 transition"
+              className="absolute top-2 right-2 sm:top-3 sm:right-3 z-50 bg-black/50 p-2 rounded-full hover:bg-black/70 transition flex-shrink-0"
             >
               ✕
             </button>
 
             <iframe
               src="/add-card"
-              className="w-full h-full"
+              className="w-full h-full overflow-x-hidden"
+              style={{ display: 'block' }}
             />
             
           </div>
