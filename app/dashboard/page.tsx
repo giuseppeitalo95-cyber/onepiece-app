@@ -34,6 +34,10 @@ export default function Dashboard() {
   const [userId, setUserId] = useState<string | null>(null)
   const [cards, setCards] = useState<UserCard[]>([])
   const [loadingCards, setLoadingCards] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterColor, setFilterColor] = useState('all')
+  const [filterRarity, setFilterRarity] = useState('all')
+  const [filterCost, setFilterCost] = useState('all')
 
   const activePage = 'collezione'
 
@@ -142,6 +146,33 @@ export default function Dashboard() {
 
     await loadCards(userId)
   }
+
+  const searchTermNormalized = searchTerm.trim().toLowerCase()
+  const availableColors = Array.from(new Set(cards.map(card => card.card_color || 'Unknown'))).filter(Boolean)
+  const availableRarities = Array.from(new Set(cards.map(card => card.rarity || 'Unknown'))).filter(Boolean)
+
+  const filteredCards = cards.filter((item) => {
+    const matchesSearch =
+      !searchTermNormalized ||
+      item.name?.toLowerCase().includes(searchTermNormalized) ||
+      item.card_id.toLowerCase().includes(searchTermNormalized)
+
+    const matchesColor =
+      filterColor === 'all' ||
+      (item.card_color || 'Unknown').toLowerCase() === filterColor.toLowerCase()
+
+    const matchesRarity =
+      filterRarity === 'all' ||
+      (item.rarity || 'Unknown').toLowerCase() === filterRarity.toLowerCase()
+
+    const cost = item.card_cost ?? -1
+    let matchesCost = true
+    if (filterCost === '0-2') matchesCost = cost >= 0 && cost <= 2
+    if (filterCost === '3-5') matchesCost = cost >= 3 && cost <= 5
+    if (filterCost === '6+') matchesCost = cost >= 6
+
+    return matchesSearch && matchesColor && matchesRarity && matchesCost
+  })
 
   const NavItem = ({
   label,
@@ -254,13 +285,70 @@ export default function Dashboard() {
         {/* CONTENT */}
         <div className="pt-20 px-3 sm:px-6">
 
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">Cerca nella collezione</p>
+                <p className="text-xs text-gray-400">Usa testo, colore, rarità o costo per trovare le carte che possiedi.</p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-4 min-w-0">
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Cerca nome o codice"
+                  className="min-w-0 w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                />
+
+                <select
+                  value={filterColor}
+                  onChange={(e) => setFilterColor(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                >
+                  <option value="all">Tutti i colori</option>
+                  {availableColors.map((color) => (
+                    <option key={color} value={color.toLowerCase()}>{color}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterRarity}
+                  onChange={(e) => setFilterRarity(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                >
+                  <option value="all">Tutte le rarità</option>
+                  {availableRarities.map((rarity) => (
+                    <option key={rarity} value={rarity.toLowerCase()}>{rarity}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterCost}
+                  onChange={(e) => setFilterCost(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                >
+                  <option value="all">Tutti i costi</option>
+                  <option value="0-2">Costo 0–2</option>
+                  <option value="3-5">Costo 3–5</option>
+                  <option value="6+">Costo 6+</option>
+                </select>
+              </div>
+            </div>
+
+            {!loadingCards && filteredCards.length === 0 && (
+              <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-gray-300">
+                Nessuna carta trovata con i filtri selezionati.
+              </div>
+            )}
+          </div>
+
           {loadingCards && (
             <p className="text-gray-400 text-sm">Caricamento collezione...</p>
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 mt-4">
 
-            {[...cards]
+            {[...filteredCards]
   .sort((a, b) => {
     const parse = (id: string) => {
       const match = id.match(/OP(\d+)-(\d+)/i)
