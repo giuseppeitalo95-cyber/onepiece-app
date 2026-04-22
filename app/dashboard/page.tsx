@@ -38,7 +38,15 @@ export default function Dashboard() {
   const activePage = 'collezione'
 
  useEffect(() => {
-  document.body.style.overflow = (addOpen || selectedCard || sidebarOpen) ? 'hidden' : 'auto'
+  if (addOpen || selectedCard || sidebarOpen) {
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflowX = 'hidden'
+    document.body.style.overflowX = 'hidden'
+  } else {
+    document.body.style.overflow = 'auto'
+    document.documentElement.style.overflowX = 'auto'
+    document.body.style.overflowX = 'auto'
+  }
 }, [addOpen, selectedCard, sidebarOpen])
 
   useEffect(() => {
@@ -399,21 +407,26 @@ export default function Dashboard() {
 )}
       {/* MODAL */}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-x-hidden">
 
-          <div className="relative w-[calc(100vw-1rem)] sm:w-full h-[90vh] sm:h-auto max-h-[90vh] sm:max-h-[85vh] max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+          <div className="relative w-[calc(100vw-1rem)] sm:w-full h-[70vh] sm:h-auto max-h-[70vh] sm:max-h-[90vh] max-w-sm sm:max-w-4xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
 
             <button
               onClick={refreshAfterAdd}
-              className="absolute top-2 right-2 sm:top-3 sm:right-3 z-50 bg-black/50 p-2 rounded-full hover:bg-black/70 transition flex-shrink-0"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 bg-black/70 hover:bg-black/90 p-2 rounded-full transition flex-shrink-0 text-white"
             >
               ✕
             </button>
 
             <iframe
+              title="add-card-form"
               src="/add-card"
-              className="w-full h-full overflow-x-hidden"
-              style={{ display: 'block' }}
+              className="w-full h-full"
+              style={{ 
+                display: 'block',
+                border: 'none',
+                overflow: 'hidden'
+              }}
             />
             
           </div>
