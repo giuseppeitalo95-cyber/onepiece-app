@@ -407,13 +407,13 @@ export default function Dashboard() {
 )}
       {/* MODAL */}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-x-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
 
-          <div className="relative w-[calc(100vw-1rem)] sm:w-full h-[70vh] sm:h-auto max-h-[70vh] sm:max-h-[90vh] max-w-sm sm:max-w-4xl bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+          <div className="relative w-[calc(100vw-1.5rem)] sm:w-[min(95vw,1024px)] h-[70vh] sm:h-[90vh] max-w-[1024px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
 
             <button
               onClick={refreshAfterAdd}
-              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 bg-black/70 hover:bg-black/90 p-2 rounded-full transition flex-shrink-0 text-white"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 bg-black/80 hover:bg-black/95 p-2 rounded-full transition flex-shrink-0 text-white"
             >
               ✕
             </button>
@@ -422,15 +422,13 @@ export default function Dashboard() {
               title="add-card-form"
               src="/add-card"
               className="w-full h-full"
-              style={{ 
+              style={{
                 display: 'block',
                 border: 'none',
                 overflow: 'hidden'
               }}
             />
-            
           </div>
-
         </div>
       )}
 

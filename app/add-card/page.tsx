@@ -146,10 +146,10 @@ export default function AddCard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white flex flex-col items-center pt-20">
+    <div className="min-h-screen bg-[#070A12] text-white flex flex-col items-center pt-20 px-4 sm:px-0">
 
-      <div className="w-[420px] flex justify-center mb-6">
-        <h1 className="text-xl font-bold text-amber-300">
+      <div className="w-full max-w-[420px] flex justify-center mb-6 px-2">
+        <h1 className="text-xl font-bold text-amber-300 text-center">
           Aggiungi Carta
         </h1>
       </div>
@@ -158,12 +158,12 @@ export default function AddCard() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="OP01-001"
-        className="w-[420px] px-4 py-3 rounded-xl bg-slate-900 border border-teal-700"
+        className="w-full max-w-[420px] px-4 py-3 rounded-xl bg-slate-900 border border-teal-700"
       />
 
       {loading && <p className="text-gray-400 mt-3">Ricerca...</p>}
 
-      <div className="w-[420px] mt-4 flex flex-col gap-3">
+      <div className="w-full max-w-[420px] mt-4 flex flex-col gap-3 px-2">
 
         {cards.map((card, index) => (
           <div
