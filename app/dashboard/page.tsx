@@ -226,10 +226,10 @@ export default function Dashboard() {
             <div className="relative flex flex-col items-center justify-center px-2">
               <img
                 src="/luffyhatlogo.webp"
-                className="absolute -top-4 w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                className="absolute -top-2 w-10 h-10 sm:w-12 sm:h-12 object-contain"
                 alt="Logo Cap"
               />
-              <span className="pt-6 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
+              <span className="pt-4 sm:pt-5 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
                 OPV
               </span>
             </div>
