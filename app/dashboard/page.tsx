@@ -220,21 +220,14 @@ export default function Dashboard() {
 
           <div className="hidden sm:flex flex-1" />
 
-          <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2 min-w-0">
-
-            <span className="hidden sm:inline text-base sm:text-lg font-extrabold tracking-[0.15em] sm:tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text truncate">
-              ONE PIECE
-            </span>
-
+          <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
             <img
               src="/luffyhatlogo.webp"
-              className="w-8 h-8 sm:w-10 sm:h-10 object-contain -mt-1 flex-shrink-0"
+              className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0"
             />
-
-            <span className="hidden sm:inline text-base sm:text-lg font-extrabold tracking-[0.15em] sm:tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text truncate">
-              VAULT
+            <span className="text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text truncate">
+              OPV
             </span>
-
           </div>
 
           <div className="hidden sm:flex flex-1" />
@@ -242,10 +235,10 @@ export default function Dashboard() {
           <div className="flex justify-end flex-shrink-0">
             <button
   onClick={() => router.push('/profile')}
-  className="flex items-center gap-1 sm:gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
+  className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
 >
-              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0" />
-              <span className="hidden sm:inline text-xs font-semibold text-amber-300 truncate max-w-[80px]">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0" />
+              <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
                 {loading ? '...' : username}
               </span>
             </button>
