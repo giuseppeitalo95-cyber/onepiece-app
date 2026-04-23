@@ -460,7 +460,7 @@ export default function FriendsPage() {
 
       {selectedProfile ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60">
+          <div className="w-full max-w-7xl h-[90vh] overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 p-5">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Profilo giocatore</p>
@@ -474,8 +474,8 @@ export default function FriendsPage() {
               </button>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[360px_1fr] p-6">
-              <div className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-5">
+            <div className="grid gap-6 lg:grid-cols-[360px_1fr] p-6 flex-1 overflow-hidden">
+              <div className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-5 h-fit">
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-4xl text-amber-300">
                     {selectedProfile.avatar_url ? (
@@ -526,7 +526,7 @@ export default function FriendsPage() {
                 ) : null}
               </div>
 
-              <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5">
+              <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5 flex-1 overflow-y-auto">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Carte</p>
