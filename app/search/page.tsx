@@ -331,10 +331,8 @@ export default function SearchPage() {
               </div>
             </div>
 
-                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4 text-sm leading-6 text-slate-300">
-                  Qui puoi consultare tutte le informazioni disponibili sull'API di One Piece e vedere se un tuo amico la possiede.
-                </div>
-              </div>
+            <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4 text-sm leading-6 text-slate-300">
+              Qui puoi consultare tutte le informazioni disponibili sull'API di One Piece e vedere se un tuo amico la possiede.
             </div>
           </div>
         </div>
