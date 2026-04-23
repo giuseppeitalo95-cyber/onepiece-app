@@ -143,6 +143,10 @@ export default function SearchPage() {
     setSelectedCard(card)
     setFriendOwners([])
 
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+
     const owners = await loadFriendOwners(card.id)
     setFriendOwners(owners)
   }
