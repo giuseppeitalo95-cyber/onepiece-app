@@ -227,9 +227,9 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white lg:pl-60">
+    <div className="min-h-screen bg-[#070A12] text-white">
       <Sidebar activePage="amici" />
-      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md lg:ml-60">
+      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area sociale</p>
           <h1 className="text-2xl font-extrabold text-white">Amici</h1>
@@ -455,8 +455,19 @@ export default function FriendsPage() {
       </main>
 
       {selectedProfile ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-7xl h-[90vh] overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeModal()
+            }
+          }}
+          onTouchMove={(event) => event.preventDefault()}
+        >
+          <div
+            className="w-full max-w-5xl h-[88vh] overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 p-5">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Profilo giocatore</p>
@@ -470,10 +481,10 @@ export default function FriendsPage() {
               </button>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[360px_1fr] p-6 flex-1 overflow-hidden">
-              <div className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-5 h-fit">
+            <div className="grid gap-4 lg:grid-cols-[280px_1fr] p-5 flex-1 overflow-hidden">
+              <div className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4 h-fit">
                 <div className="flex flex-col items-center gap-4 text-center">
-                  <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-4xl text-amber-300">
+                  <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-4xl text-amber-300">
                     {selectedProfile.avatar_url ? (
                       <img src={selectedProfile.avatar_url} alt={selectedProfile.username || 'Avatar'} className="h-full w-full object-contain" />
                     ) : (
@@ -537,23 +548,23 @@ export default function FriendsPage() {
 
                 {isFriend ? (
                   selectedCards.length === 0 ? (
-                    <div className="mt-5 rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/80 p-5 text-sm text-slate-400">
+                    <div className="mt-5 rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/80 p-4 text-sm text-slate-400">
                       Nessuna carta trovata per questo utente.
                     </div>
                   ) : (
-                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                       {selectedCards.map((card) => (
-                        <div key={card.card_id} className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-3">
-                          <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-800">
+                        <div key={card.card_id} className="rounded-2xl border border-slate-800/70 bg-slate-900/80 p-1.5">
+                          <div className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-800">
                             {card.image_url ? (
                               <img src={card.image_url} alt={card.name || card.card_id} className="h-full w-full object-contain" />
                             ) : (
-                              <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
+                              <div className="flex h-full items-center justify-center text-[8px] text-slate-500">NO IMAGE</div>
                             )}
                           </div>
-                          <p className="mt-2 text-sm font-semibold text-white line-clamp-2">{card.name || card.card_id}</p>
-                          <p className="mt-1 text-xs text-slate-500">{card.rarity || '—'}</p>
-                          <p className="mt-1 text-xs text-amber-300">x{card.quantity}</p>
+                          <p className="mt-1.5 text-xs font-semibold text-white line-clamp-1">{card.name || card.card_id}</p>
+                          <p className="text-[10px] text-slate-500">{card.rarity || '—'}</p>
+                          <p className="text-[10px] text-amber-300">x{card.quantity}</p>
                         </div>
                       ))}
                     </div>

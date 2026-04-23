@@ -82,7 +82,7 @@ export default function AddCard() {
             seen.add(c.id)
             return true
           })
-          .slice(0, 12)
+          .slice(0, 24)
 
         setCards(clean)
       } catch {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { LogOut, Menu, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -43,6 +43,21 @@ export default function Sidebar({ activePage }: { activePage: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
 
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+      document.documentElement.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'auto'
+      document.documentElement.style.overflow = 'auto'
+    }
+
+    return () => {
+      document.body.style.overflow = 'auto'
+      document.documentElement.style.overflow = 'auto'
+    }
+  }, [open])
+
   const logout = async () => {
     await supabase.auth.signOut()
     router.push('/')
@@ -52,19 +67,20 @@ export default function Sidebar({ activePage }: { activePage: string }) {
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="fixed left-3 top-3 z-50 rounded-2xl bg-slate-900/95 p-2 text-amber-300 shadow-lg shadow-black/40 lg:hidden"
+        className="fixed left-3 top-3 z-50 rounded-2xl bg-slate-900/95 p-2 text-amber-300 shadow-lg shadow-black/40"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
       </button>
 
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
           onClick={() => setOpen(false)}
+          onTouchMove={(event) => event.preventDefault()}
         />
       )}
 
-      <aside className={`fixed left-0 top-0 h-screen w-60 bg-slate-900 border-r border-teal-800/30 flex flex-col z-50 transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`fixed left-0 top-0 h-screen w-60 bg-slate-900 border-r border-teal-800/30 flex flex-col z-50 transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-teal-800/20 text-center">
           <div className="text-amber-300 font-bold tracking-[0.3em]">MENU</div>
         </div>

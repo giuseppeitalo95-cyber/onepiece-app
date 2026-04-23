@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, LogOut, Trash2, Menu, X } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import Sidebar from '@/app/components/Sidebar'
 import { useRouter } from 'next/navigation'
 
 type UserCard = {
@@ -24,7 +25,6 @@ type UserCard = {
 export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const router = useRouter()
 
@@ -39,19 +39,15 @@ export default function Dashboard() {
   const [filterRarity, setFilterRarity] = useState('all')
   const [filterCost, setFilterCost] = useState('all')
 
-  const activePage = 'collezione'
-
  useEffect(() => {
-  if (addOpen || selectedCard || sidebarOpen) {
+  if (addOpen || selectedCard) {
     document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflowX = 'hidden'
-    document.body.style.overflowX = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = 'auto'
-    document.documentElement.style.overflowX = 'auto'
-    document.body.style.overflowX = 'auto'
+    document.documentElement.style.overflow = 'auto'
   }
-}, [addOpen, selectedCard, sidebarOpen])
+}, [addOpen, selectedCard])
 
   useEffect(() => {
     const load = async () => {
@@ -107,11 +103,6 @@ export default function Dashboard() {
   const refreshAfterAdd = async () => {
     setAddOpen(false)
     if (userId) await loadCards(userId)
-  }
-
-  const logout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
   }
 
   // 🔥 DELETE FIX DEFINITIVO
@@ -174,82 +165,13 @@ export default function Dashboard() {
     return matchesSearch && matchesColor && matchesRarity && matchesCost
   })
 
-  const NavItem = ({
-  label,
-  active,
-  onClick
-}: {
-  label: string
-  active?: boolean
-  onClick?: () => void
-}) => (
-  <button
-    onClick={onClick}
-    className={`
-      text-left px-3 py-2 rounded-lg transition
-      ${active
-        ? 'bg-amber-400/10 text-amber-300 font-semibold'
-        : 'text-gray-300 hover:text-amber-300 hover:bg-slate-800/40'}
-    `}
-  >
-    {label}
-  </button>
-)
-
   return (
-    <div className="min-h-screen bg-[#070A12] text-white flex">
-
-      {/* OVERLAY SIDEBAR */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* SIDEBAR */}
-      <aside className={`fixed left-0 top-0 h-screen w-60 bg-slate-900 border-r border-teal-800/30 flex flex-col z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-
-        <div className="p-6 border-b border-teal-800/20 text-center">
-          <div className="text-amber-300 font-bold tracking-[0.3em]">
-            MENU
-          </div>
-        </div>
-
-        <nav className="flex flex-col gap-2 p-4 text-sm flex-1">
-
-          <NavItem label="Collezione" active={activePage === 'collezione'} onClick={() => { setSidebarOpen(false); router.push('/dashboard') }} />
-          <NavItem label="Amici" onClick={() => { setSidebarOpen(false); router.push('/friends') }} />
-          <NavItem label="Ricerca Carta" onClick={() => { setSidebarOpen(false); router.push('/search') }} />
-          <NavItem label="Statistiche" onClick={() => { setSidebarOpen(false); router.push('/dashboard#stats') }} />
-          <NavItem label="Deck Meta" onClick={() => { setSidebarOpen(false); router.push('/dashboard#meta') }} />
-
-        </nav>
-
-        <div className="p-4 border-t border-slate-800">
-          <button
-            onClick={logout}
-            className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2"
-          >
-            <LogOut size={16} />
-            Disconnettiti
-          </button>
-        </div>
-
-      </aside>
-
-      {/* MAIN */}
+    <div className="min-h-screen bg-[#070A12] text-white">
+      <Sidebar activePage="collezione" />
       <div className="flex-1 w-full">
 
         {/* TOPBAR */}
         <div className="fixed top-0 left-0 right-0 h-14 z-40 bg-slate-900/85 backdrop-blur-md border-b border-teal-800/30 flex items-center px-3 sm:px-4 gap-2 sm:gap-4">
-
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="text-amber-300 hover:text-amber-400 transition flex-shrink-0"
-          >
-            {sidebarOpen ? <X size={20} className="sm:w-6 sm:h-6" /> : <Menu size={20} className="sm:w-6 sm:h-6" />}
-          </button>
 
           <div className="hidden sm:flex flex-1" />
 
@@ -270,9 +192,9 @@ export default function Dashboard() {
 
           <div className="flex justify-end flex-shrink-0">
             <button
-  onClick={() => router.push('/profile')}
-  className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
->
+              onClick={() => router.push('/profile')}
+              className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
+            >
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0" />
               <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
                 {loading ? '...' : username}
@@ -456,9 +378,20 @@ export default function Dashboard() {
         </span>
       </button>
 {selectedCard && (
-  <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+  <div
+    className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+    onClick={(event) => {
+      if (event.target === event.currentTarget) {
+        setSelectedCard(null)
+      }
+    }}
+    onTouchMove={(event) => event.preventDefault()}
+  >
 
-    <div className="w-full max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl border border-slate-700 p-3 sm:p-5 relative max-h-[90vh] overflow-y-auto">
+    <div
+      className="w-full max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl border border-slate-700 p-3 sm:p-5 relative max-h-[90vh] overflow-y-auto"
+      onClick={(event) => event.stopPropagation()}
+    >
 
       <button
         onClick={() => setSelectedCard(null)}
@@ -510,7 +443,15 @@ export default function Dashboard() {
 )}
       {/* MODAL */}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              refreshAfterAdd()
+            }
+          }}
+          onTouchMove={(event) => event.preventDefault()}
+        >
 
           <div className="relative w-[calc(100vw-1.5rem)] sm:w-[min(95vw,1024px)] h-[70vh] sm:h-[90vh] max-w-[1024px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
 
