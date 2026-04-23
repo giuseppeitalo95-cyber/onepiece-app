@@ -156,10 +156,10 @@ export default function SearchPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Ricerca Carta</p>
-              <h1 className="text-3xl font-extrabold text-white">Cerca la tua carta</h1>
+              <h1 className="text-3xl font-extrabold text-white">Cerca carte</h1>
             </div>
             <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
-              Digita nome o codice della carta e tocca un risultato per i dettagli.
+              Cerca nomi o codici di carta da qualsiasi set e tocca un risultato per vedere i dettagli.
             </div>
           </div>
 
@@ -201,8 +201,8 @@ export default function SearchPage() {
                   onClick={() => openCard(card)}
                   className="group overflow-hidden rounded-[1.75rem] border border-slate-800/70 bg-slate-950/90 p-4 text-left transition hover:border-amber-400/50 hover:bg-slate-900/95"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="h-20 w-14 overflow-hidden rounded-3xl bg-slate-800">
+                  <div className="flex items-start gap-4">
+                    <div className="aspect-[3/4] w-20 overflow-hidden rounded-3xl bg-slate-800">
                       {card.image_url ? (
                         <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
                       ) : (
@@ -211,9 +211,9 @@ export default function SearchPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-white line-clamp-2">{card.name}</p>
+                      <p className="font-semibold text-white line-clamp-3 break-words whitespace-normal">{card.name}</p>
                       <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-500">{card.rarity || '—'}</p>
-                      <p className="mt-1 text-[11px] text-slate-400">{card.id}</p>
+                      <p className="mt-1 text-[11px] text-slate-400 break-words whitespace-normal">{card.id}</p>
                     </div>
                   </div>
                 </button>
@@ -225,7 +225,7 @@ export default function SearchPage() {
 
       {selectedCard ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedCard(null)
@@ -235,7 +235,7 @@ export default function SearchPage() {
           onTouchMove={(event) => event.preventDefault()}
         >
           <div
-            className="relative w-full max-w-4xl overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60"
+            className="relative w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-y-auto rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 p-5">
@@ -254,55 +254,18 @@ export default function SearchPage() {
               </button>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] p-5">
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr] p-5">
               <div className="space-y-5">
                 <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-                    <div className="h-60 w-full max-w-[260px] overflow-hidden rounded-[1.75rem] bg-slate-800">
-                      {selectedCard.image_url ? (
-                        <img src={selectedCard.image_url} alt={selectedCard.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-slate-500">Nessuna immagine</div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Informazioni</p>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {[
-                          ['Rarità', selectedCard.rarity],
-                          ['Colore', selectedCard.card_color],
-                          ['Tipo', selectedCard.card_type],
-                          ['Costo', selectedCard.card_cost?.toString() ?? '—'],
-                          ['Power', selectedCard.card_power?.toString() ?? '—'],
-                          ['Prezzo', selectedCard.market_price != null ? `€${selectedCard.market_price}` : '—'],
-                          ['Inventario', selectedCard.inventory_price != null ? `€${selectedCard.inventory_price}` : '—'],
-                        ].map(([label, value]) => (
-                          <div key={label} className="rounded-3xl bg-slate-950/90 p-3 border border-slate-800/70">
-                            <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{label}</p>
-                            <p className="mt-2 text-sm font-semibold text-white">{value}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  <div className="aspect-[3/4] w-full overflow-hidden rounded-[1.75rem] bg-slate-800">
+                    {selectedCard.image_url ? (
+                      <img src={selectedCard.image_url} alt={selectedCard.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-slate-500">Nessuna immagine</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Dettagli API</p>
-                  <div className="mt-3 space-y-2 text-sm text-slate-300">
-                    {Object.entries(selectedCard).map(([key, value]) => (
-                      key === 'image_url' || key === 'name' || key === 'id' ? null : (
-                        <div key={key} className="grid grid-cols-[110px_1fr] gap-2">
-                          <span className="text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
-                          <span>{value ?? '—'}</span>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-5">
                 <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -329,6 +292,44 @@ export default function SearchPage() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4">
+                  <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Informazioni</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {[
+                      ['Rarità', selectedCard.rarity],
+                      ['Colore', selectedCard.card_color],
+                      ['Tipo', selectedCard.card_type],
+                      ['Costo', selectedCard.card_cost?.toString() ?? '—'],
+                      ['Power', selectedCard.card_power?.toString() ?? '—'],
+                      ['Prezzo', selectedCard.market_price != null ? '€' + selectedCard.market_price : '—'],
+                      ['Inventario', selectedCard.inventory_price != null ? '€' + selectedCard.inventory_price : '—'],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-3xl bg-slate-950/90 p-3 border border-slate-800/70">
+                        <p className="text-[10px] uppercase tracking-[0.25em] text-slate-500">{label}</p>
+                        <p className="mt-2 text-sm font-semibold text-white">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4">
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Dettagli API</p>
+                  <div className="mt-3 space-y-2 text-sm text-slate-300">
+                    {Object.entries(selectedCard).map(([key, value]) => (
+                      key === 'image_url' || key === 'name' || key === 'id' ? null : (
+                        <div key={key} className="grid grid-cols-[110px_1fr] gap-2">
+                          <span className="text-slate-500 capitalize">{key.split('_').join(' ')}</span>
+                          <span>{value ?? '—'}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
                 <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4 text-sm leading-6 text-slate-300">
                   Qui puoi consultare tutte le informazioni disponibili sull'API di One Piece e vedere se un tuo amico la possiede.
