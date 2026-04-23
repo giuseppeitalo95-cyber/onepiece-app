@@ -52,8 +52,10 @@ export default function Profile() {
 
   const getAvatarPublicUrl = async (avatarPath: string | null) => {
     if (!avatarPath) return ''
+    // If it's already a full URL, return it
     if (avatarPath.startsWith('http')) return avatarPath
 
+    // If it's a relative path, get the public URL
     const { data: publicData } = supabase.storage
       .from('avatars')
       .getPublicUrl(avatarPath)
@@ -149,52 +151,72 @@ export default function Profile() {
     setSavingAvatar(true)
     setUploadStatus('Caricamento in corso...')
 
-    const uploadFile = await resizeImageIfNeeded(avatarFile)
-    if (uploadFile.size > 2 * 1024 * 1024) {
-      setUploadStatus('Immagine troppo grande anche dopo la compressione. Usa un file più piccolo.')
+    try {
+      const uploadFile = await resizeImageIfNeeded(avatarFile)
+      console.log('File size after resize:', uploadFile.size)
+
+      if (uploadFile.size > 2 * 1024 * 1024) {
+        setUploadStatus('Immagine troppo grande anche dopo la compressione. Usa un file più piccolo.')
+        setSavingAvatar(false)
+        return
+      }
+
+      const extension = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const filePath = `profile-${userId}-${Date.now()}.${extension}`
+
+      console.log('Uploading to path:', filePath)
+
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, uploadFile, {
+          upsert: true,
+          contentType: uploadFile.type || 'image/jpeg'
+        })
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        setUploadStatus(`Caricamento fallito: ${uploadError.message}`)
+        setSavingAvatar(false)
+        return
+      }
+
+      console.log('Upload successful:', uploadData)
+
+      const { data: publicData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      const publicUrl = publicData?.publicUrl
+      if (!publicUrl) {
+        console.error('No public URL generated')
+        setUploadStatus('Impossibile ottenere l\'URL pubblico.')
+        setSavingAvatar(false)
+        return
+      }
+
+      console.log('Public URL:', publicUrl)
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', userId)
+
+      if (updateError) {
+        console.error('Profile update error:', updateError)
+        setUploadStatus('Errore durante il salvataggio del profilo.')
+        setSavingAvatar(false)
+        return
+      }
+
+      setAvatarUrl(publicUrl)
+      setAvatarFile(null)
+      setUploadStatus('Foto profilo aggiornata con successo!')
       setSavingAvatar(false)
-      return
-    }
-
-    const extension = uploadFile.name.split('.').pop() ?? 'png'
-    const filePath = `profile-${userId}.${extension}`
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, uploadFile, { upsert: true })
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError)
-      setUploadStatus('Caricamento non riuscito. Riprova con un altro file.')
+    } catch (error) {
+      console.error('Unexpected error during upload:', error)
+      setUploadStatus('Errore imprevisto durante il caricamento.')
       setSavingAvatar(false)
-      return
     }
-
-    const { data: publicData } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(filePath)
-
-    const publicUrl = publicData?.publicUrl
-    if (!publicUrl) {
-      setUploadStatus('Impossibile ottenere l\'anteprima pubblica.')
-      setSavingAvatar(false)
-      return
-    }
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: filePath })
-      .eq('id', userId)
-
-    if (updateError) {
-      setUploadStatus('Errore durante il salvataggio del profilo.')
-      setSavingAvatar(false)
-      return
-    }
-
-    setAvatarUrl(publicUrl)
-    setAvatarFile(null)
-    setUploadStatus('Foto profilo aggiornata con successo!')
-    setSavingAvatar(false)
   }
 
   const logout = async () => {
@@ -209,7 +231,7 @@ export default function Profile() {
     .join('') || 'OP'
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
+    <div className="min-h-screen text-white onepiece-wave-bg">
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <button
           onClick={() => router.push('/dashboard')}

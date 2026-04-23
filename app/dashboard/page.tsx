@@ -166,7 +166,7 @@ export default function Dashboard() {
   })
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
+    <div className="min-h-screen text-white onepiece-wave-bg">
       <Sidebar activePage="collezione" />
       <div className="flex-1 w-full">
 
@@ -179,7 +179,7 @@ export default function Dashboard() {
             <div className="relative flex flex-col items-center justify-center px-2">
               <img
                 src="/luffyhatlogo.webp"
-                className="absolute -top-2 w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                className="absolute -top-2 w-10 h-10 sm:w-12 sm:h-12 object-contain onepiece-float"
                 alt="Logo Cap"
               />
               <span className="pt-4 sm:pt-5 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
@@ -294,7 +294,7 @@ export default function Dashboard() {
   .map((item) => (
               <div
                 key={item.card_id}
-                className="relative bg-slate-900 rounded-xl p-2 sm:p-3 border border-slate-700 hover:border-amber-400/40 transition"
+                className="relative bg-slate-900 rounded-xl p-2 sm:p-3 border border-slate-700 hover:border-amber-400/40 transition onepiece-card-hover"
               >
 
                 {/* DELETE BUTTON */}
@@ -369,7 +369,7 @@ export default function Dashboard() {
         onClick={() => setAddOpen(true)}
         className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center z-50 group"
       >
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110 onepiece-glow">
           <Plus className="text-black sm:w-7 sm:h-7" size={24} />
         </div>
 

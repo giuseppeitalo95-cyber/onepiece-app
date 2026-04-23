@@ -41,7 +41,7 @@ export default function Callback() {
   }, [])
 
   return (
-    <div className="text-white flex items-center justify-center min-h-screen">
+    <div className="text-white flex items-center justify-center min-h-screen onepiece-bg">
       Login in corso...
     </div>
   )

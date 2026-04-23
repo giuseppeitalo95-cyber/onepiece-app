@@ -14,7 +14,7 @@ redirectTo: 'https://onepiece-app-one.vercel.app/auth/callback'
 }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-black via-slate-950 to-black">
+    <div className="min-h-screen flex items-center justify-center onepiece-wave-bg">
 
       {/* CARD */}
       <div className="w-[420px] rounded-2xl bg-slate-900/70 border border-blue-800 shadow-2xl p-8 text-center backdrop-blur-md">
@@ -24,7 +24,7 @@ redirectTo: 'https://onepiece-app-one.vercel.app/auth/callback'
   <img
     src="/luffyhatlogo.webp"
     alt="Luffy Hat Logo"
-    className="w-55 h-55 object-contain drop-shadow-lg"
+    className="w-55 h-55 object-contain drop-shadow-lg onepiece-float"
   />
 </div>
 

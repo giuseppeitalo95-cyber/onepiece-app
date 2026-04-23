@@ -89,8 +89,10 @@ export default function FriendsPage() {
 
   const getAvatarPublicUrl = async (avatarPath: string | null) => {
     if (!avatarPath) return ''
+    // If it's already a full URL, return it
     if (avatarPath.startsWith('http')) return avatarPath
 
+    // If it's a relative path, get the public URL
     const { data: publicData } = supabase.storage
       .from('avatars')
       .getPublicUrl(avatarPath)
@@ -227,7 +229,7 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
+    <div className="min-h-screen text-white onepiece-wave-bg">
       <Sidebar activePage="amici" />
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div>

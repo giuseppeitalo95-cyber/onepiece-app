@@ -19,6 +19,143 @@
   }
 }
 
+/* One Piece Theme Backgrounds */
+.onepiece-bg {
+  background:
+    radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+    linear-gradient(135deg,
+      rgba(7, 10, 18, 1) 0%,
+      rgba(15, 23, 42, 1) 25%,
+      rgba(7, 10, 18, 1) 50%,
+      rgba(15, 23, 42, 1) 75%,
+      rgba(7, 10, 18, 1) 100%);
+}
+
+.onepiece-bg::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23fbbf24' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.onepiece-wave-bg {
+  background:
+    radial-gradient(ellipse at top, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(251, 191, 36, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg,
+      rgba(7, 10, 18, 1) 0%,
+      rgba(15, 23, 42, 0.95) 30%,
+      rgba(7, 10, 18, 1) 70%,
+      rgba(15, 23, 42, 0.95) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.onepiece-wave-bg::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q25 0 50 10 T100 10 V20 H0 Z' fill='%233b82f6' fill-opacity='0.04'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='100' height='15' viewBox='0 0 100 15' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 8 Q25 2 50 8 T100 8 V15 H0 Z' fill='%23fbbf24' fill-opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 100px 20px, 100px 15px;
+  background-position: 0 80%, 0 85%;
+  background-repeat: repeat-x;
+  animation: wave-float 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes wave-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Enhanced gradients for One Piece feel */
+.onepiece-gradient-primary {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+}
+
+.onepiece-gradient-secondary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
+}
+
+.onepiece-gradient-accent {
+  background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+}
+
+/* Subtle animations */
+@keyframes gentle-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.1); }
+  50% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.2); }
+}
+
+@keyframes card-hover {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-2px); }
+}
+
+@keyframes wave-flow {
+  0% { transform: translateX(-100px); }
+  100% { transform: translateX(100px); }
+}
+
+.onepiece-glow {
+  animation: gentle-glow 3s ease-in-out infinite;
+}
+
+.onepiece-card-hover {
+  transition: all 0.3s ease;
+}
+
+.onepiece-card-hover:hover {
+  animation: card-hover 0.3s ease forwards;
+  box-shadow: 0 8px 25px rgba(251, 191, 36, 0.15);
+}
+
+/* Floating elements for One Piece atmosphere */
+.onepiece-float {
+  animation: gentle-float 6s ease-in-out infinite;
+}
+
+@keyframes gentle-float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-3px) rotate(1deg); }
+  66% { transform: translateY(2px) rotate(-1deg); }
+}
+
+/* Enhanced button styles */
+.onepiece-btn-primary {
+  @apply bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-semibold;
+  transition: all 0.3s ease;
+}
+
+.onepiece-btn-primary:hover {
+  @apply from-amber-300 to-yellow-400;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+}
+
+.onepiece-btn-secondary {
+  @apply bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold;
+  transition: all 0.3s ease;
+}
+
+.onepiece-btn-secondary:hover {
+  @apply from-blue-400 to-blue-500;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
