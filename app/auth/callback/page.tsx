@@ -20,21 +20,28 @@ export default function Callback() {
       }
 
       // 🔥 CREA SOLO IL PROFILO BASE (NO GOOGLE NAME)
-      const { error: upsertError } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
-        .upsert(
-          {
-            id: user.id,
-            username: null
-          },
-          { onConflict: 'id' }
-        )
+        .select('username')
+        .eq('id', user.id)
+        .maybeSingle()
 
-      if (upsertError) {
-        console.log('PROFILE ERROR:', upsertError.message)
+      if (!profileData) {
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            username: null,
+            username_locked: false
+          })
+
+        if (insertError) {
+          console.log('PROFILE ERROR:', insertError.message)
+        }
       }
 
-      router.replace('/dashboard')
+      const firstAccess = !profileData?.username
+      router.replace(firstAccess ? '/profile' : '/dashboard')
     }
 
     handle()

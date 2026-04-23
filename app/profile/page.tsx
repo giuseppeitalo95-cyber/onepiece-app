@@ -11,6 +11,7 @@ export default function Profile() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [canEdit, setCanEdit] = useState(false)
+  const [firstAccess, setFirstAccess] = useState(false)
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -40,10 +41,12 @@ export default function Profile() {
 
       const rawAvatarUrl = data?.avatar_url ?? ''
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
+      const isFirstAccess = !data?.username
 
       setUsername(data?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)
-      setCanEdit(!data?.username_locked)
+      setCanEdit(isFirstAccess)
+      setFirstAccess(isFirstAccess)
       setLoading(false)
     }
 
@@ -109,33 +112,34 @@ export default function Profile() {
   }
 
   const saveUsername = async () => {
-  if (!userId) return
+    if (!userId) return
 
-  if (!username.trim()) {
-    alert('Inserisci un username')
-    return
-  }
+    if (!username.trim()) {
+      alert('Inserisci un username')
+      return
+    }
 
-  setSavingUsername(true)
+    setSavingUsername(true)
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      username: username.trim(),
-      username_locked: true
-    })
-    .eq('id', userId)
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        username: username.trim(),
+        username_locked: true
+      })
+      .eq('id', userId)
 
-  if (error) {
-    console.error(error)
-    alert('Errore salvataggio')
+    if (error) {
+      console.error(error)
+      alert('Errore salvataggio')
+      setSavingUsername(false)
+      return
+    }
+
+    setCanEdit(false)
+    setFirstAccess(false)
     setSavingUsername(false)
-    return
   }
-
-  setCanEdit(false)
-  setSavingUsername(false)
-}
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -233,15 +237,21 @@ export default function Profile() {
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
-        >
-          <ArrowLeft />
-        </button>
+        {!firstAccess && (
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
+          >
+            <ArrowLeft />
+          </button>
+        )}
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area personale</p>
-          <h1 className="text-2xl font-extrabold text-white">Profilo</h1>
+          <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
+            {firstAccess ? 'Configura il profilo' : 'Area personale'}
+          </p>
+          <h1 className="text-2xl font-extrabold text-white">
+            {firstAccess ? 'Scegli nickname e foto' : 'Profilo'}
+          </h1>
         </div>
       </div>
 
@@ -282,7 +292,9 @@ export default function Profile() {
             <p className="text-sm uppercase tracking-[0.3em] text-amber-300/70">Benvenuto</p>
             <h2 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">{username || 'Utente'}.</h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-              Qui puoi gestire il tuo account, modificare il nome e aggiornare la foto profilo. Tutto centralizzato in un design pulito.
+              {firstAccess
+                ? 'Completa il primo accesso inserendo il tuo nickname e scegliendo una foto profilo. Dopo la scelta, il nickname non potrà essere modificato.'
+                : 'Qui puoi gestire il tuo account e aggiornare la foto profilo.'}
             </p>
           </div>
 

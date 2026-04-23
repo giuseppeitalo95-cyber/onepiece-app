@@ -544,7 +544,7 @@ export default function FriendsPage() {
                   {isFriend ? (
                     <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-200">Visibile</span>
                   ) : (
-                    <span className="rounded-full bg-amber-400/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-200">Bloccato</span>
+                    <span className="rounded-full bg-amber-400/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-200">Solo amici</span>
                   )}
                 </div>
 
