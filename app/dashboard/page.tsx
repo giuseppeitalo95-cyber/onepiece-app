@@ -218,11 +218,11 @@ export default function Dashboard() {
 
         <nav className="flex flex-col gap-2 p-4 text-sm flex-1">
 
-          <NavItem label="Collezione" active={activePage === 'collezione'} onClick={() => setSidebarOpen(false)} />
-          <NavItem label="Amici" onClick={() => setSidebarOpen(false)} />
-          <NavItem label="Ricerca Carta" onClick={() => setSidebarOpen(false)} />
-          <NavItem label="Statistiche" onClick={() => setSidebarOpen(false)} />
-          <NavItem label="Deck Meta" onClick={() => setSidebarOpen(false)} />
+          <NavItem label="Collezione" active={activePage === 'collezione'} onClick={() => { setSidebarOpen(false); router.push('/dashboard') }} />
+          <NavItem label="Amici" onClick={() => { setSidebarOpen(false); router.push('/friends') }} />
+          <NavItem label="Ricerca Carta" onClick={() => { setSidebarOpen(false); router.push('/search') }} />
+          <NavItem label="Statistiche" onClick={() => { setSidebarOpen(false); router.push('/dashboard#stats') }} />
+          <NavItem label="Deck Meta" onClick={() => { setSidebarOpen(false); router.push('/dashboard#meta') }} />
 
         </nav>
 

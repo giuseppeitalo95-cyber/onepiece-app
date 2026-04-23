@@ -38,8 +38,11 @@ export default function Profile() {
         .eq('id', user.id)
         .single()
 
+      const rawAvatarUrl = data?.avatar_url ?? ''
+      const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
+
       setUsername(data?.username ?? '')
-      setAvatarUrl(data?.avatar_url ?? '')
+      setAvatarUrl(resolvedAvatarUrl)
       setCanEdit(!data?.username_locked)
       setLoading(false)
     }
@@ -47,21 +50,45 @@ export default function Profile() {
     load()
   }, [])
 
-  const saveUsername = async () => {
-    if (!userId || !username.trim()) return
+  const getAvatarPublicUrl = async (avatarPath: string | null) => {
+    if (!avatarPath) return ''
+    if (avatarPath.startsWith('http')) return avatarPath
 
-    setSavingUsername(true)
-    await supabase
-      .from('profiles')
-      .update({
-        username: username.trim(),
-        username_locked: true
-      })
-      .eq('id', userId)
+    const { data: publicData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(avatarPath)
 
-    setCanEdit(false)
-    setSavingUsername(false)
+    return publicData?.publicUrl ?? ''
   }
+
+const saveUsername = async () => {
+  if (!userId) return
+
+  if (!username.trim()) {
+    alert('Inserisci un username')
+    return
+  }
+
+  setSavingUsername(true)
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      username: username.trim(),
+      username_locked: true
+    })
+    .eq('id', userId)
+
+  if (error) {
+    console.error(error)
+    alert('Errore salvataggio')
+    setSavingUsername(false)
+    return
+  }
+
+  setCanEdit(false)
+  setSavingUsername(false)
+}
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -85,7 +112,7 @@ export default function Profile() {
       .upload(filePath, avatarFile, { upsert: true })
 
     if (uploadError) {
-      setUploadStatus('Upload fallito. Controlla la bucket avatars.')
+      setUploadStatus('Caricamento non riuscito. Riprova con un altro file.')
       setSavingAvatar(false)
       return
     }
@@ -94,16 +121,16 @@ export default function Profile() {
       .from('avatars')
       .getPublicUrl(filePath)
 
-    const publicUrl = publicData.publicUrl
+    const publicUrl = publicData?.publicUrl
     if (!publicUrl) {
-      setUploadStatus('Impossibile ottenere l URL pubblico.')
+      setUploadStatus('Impossibile ottenere l\'anteprima pubblica.')
       setSavingAvatar(false)
       return
     }
 
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ avatar_url: publicUrl })
+      .update({ avatar_url: filePath })
       .eq('id', userId)
 
     if (updateError) {
@@ -148,14 +175,14 @@ export default function Profile() {
         <div className="relative overflow-hidden rounded-[2rem] border border-teal-800/30 bg-slate-900/80 shadow-2xl shadow-slate-950/40 px-6 pb-8 pt-24 sm:px-10 sm:pt-28">
           <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-amber-400/15 to-transparent" />
           <div className="absolute inset-x-0 top-0 flex justify-center">
-            <div className="relative -mt-20">
+            <div className="relative -mt-01">
               <div className="h-40 w-40 rounded-full bg-gradient-to-br from-amber-400/30 via-fuchsia-500/20 to-sky-400/20 p-1 shadow-[0_25px_60px_-30px_rgba(250,204,21,0.8)]">
                 <div className="h-full w-full overflow-hidden rounded-full border border-slate-700 bg-slate-950">
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
                       alt="Foto profilo"
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover object-center"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-slate-900 text-3xl font-black text-amber-300">
@@ -205,7 +232,17 @@ export default function Profile() {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Username</p>
-                      <p className="mt-2 text-sm text-slate-100">{username || 'Non impostato'}</p>
+                     {canEdit ? (
+  <input
+    type="text"
+    value={username}
+    onChange={(e) => setUsername(e.target.value)}
+    placeholder="Inserisci username"
+    className="mt-2 w-full rounded-xl bg-slate-800 px-3 py-2 text-sm text-white outline-none"
+  />
+) : (
+  <p className="mt-2 text-sm text-slate-100">{username}</p>
+)}
                     </div>
                     {canEdit ? (
                       <button
@@ -227,7 +264,7 @@ export default function Profile() {
               <div className="mt-7 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Foto profilo</p>
                 <p className="mt-2 text-sm leading-6 text-slate-300">
-                  Seleziona una nuova immagine e premi Salva foto per aggiornare il profilo. La foto verrà caricata su Supabase Storage.
+                  Seleziona una nuova immagine e premi Salva foto per aggiornare il profilo
                 </p>
 
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -239,7 +276,7 @@ export default function Profile() {
                     <UploadCloud size={16} />
                     {savingAvatar ? 'Attendi...' : 'Salva foto'}
                   </button>
-                  <span className="text-sm text-slate-400">{uploadStatus || 'Nessuna immagine selezionata.'}</span>
+                  <span className="text-sm text-slate-400">{uploadStatus || 'Nessun aggiornamento in corso.'}</span>
                 </div>
               </div>
             </section>
@@ -252,8 +289,7 @@ export default function Profile() {
                     <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-300"><ShieldCheck size={14} /></span>
                     Usa una foto chiara e ben ritagliata: l'immagine sarà al centro del profilo.
                   </li>
-                  <li>Il file può essere qualsiasi immagine PNG/JPG.</li>
-                  <li>Se l'upload fallisce, controlla la bucket <span className="font-semibold text-amber-200">avatars</span> su Supabase.</li>
+                  <li>Il file può essere in formato PNG o JPG.</li>
                 </ul>
               </div>
 
