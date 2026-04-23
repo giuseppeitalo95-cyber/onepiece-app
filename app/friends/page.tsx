@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Users, UserPlus, Check, X, Eye, Search, Heart } from 'lucide-react'
+import { Users, UserPlus, Check, X, Search, Heart } from 'lucide-react'
+import Sidebar from '@/app/components/Sidebar'
 
 type ProfileItem = {
   id: string
@@ -226,14 +227,9 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
-      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
-        >
-          <ArrowLeft />
-        </button>
+    <div className="min-h-screen bg-[#070A12] text-white lg:pl-60">
+      <Sidebar activePage="amici" />
+      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md lg:ml-60">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area sociale</p>
           <h1 className="text-2xl font-extrabold text-white">Amici</h1>

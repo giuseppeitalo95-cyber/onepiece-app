@@ -501,10 +501,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Prezzi</p>
-            <p className="text-sm text-gray-200"><span className="text-amber-300">Market:</span> {selectedCard.market_price != null ? `€${selectedCard.market_price}` : '—'}</p>
-          </div>
         </div>
       </div>
 

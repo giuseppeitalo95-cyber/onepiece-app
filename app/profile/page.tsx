@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Camera, UploadCloud, ShieldCheck } from 'lucide-react'
+import { Camera, UploadCloud, ShieldCheck } from 'lucide-react'
+import Sidebar from '@/app/components/Sidebar'
 
 export default function Profile() {
   const router = useRouter()
@@ -61,7 +62,33 @@ export default function Profile() {
     return publicData?.publicUrl ?? ''
   }
 
-const saveUsername = async () => {
+  const resizeImageIfNeeded = async (file: File) => {
+    const maxFileSize = 2 * 1024 * 1024
+    const maxDimension = 1200
+
+    if (file.size <= maxFileSize) return file
+
+    const imageBitmap = await createImageBitmap(file)
+    let width = imageBitmap.width
+    let height = imageBitmap.height
+    const ratio = Math.min(maxDimension / width, maxDimension / height, 1)
+    width = Math.round(width * ratio)
+    height = Math.round(height * ratio)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(imageBitmap, 0, 0, width, height)
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, file.type, 0.8))
+    if (!blob) return file
+
+    return new File([blob], file.name, { type: file.type })
+  }
+
+  const saveUsername = async () => {
   if (!userId) return
 
   if (!username.trim()) {
@@ -104,12 +131,18 @@ const saveUsername = async () => {
     setSavingAvatar(true)
     setUploadStatus('Caricamento in corso...')
 
-    const extension = avatarFile.name.split('.').pop() ?? 'png'
-    const filePath = `avatars/profile-${userId}.${extension}`
+    const uploadFile = await resizeImageIfNeeded(avatarFile)
+    if (uploadFile.size > 4 * 1024 * 1024) {
+      setUploadStatus('Immagine troppo grande. Usa un file più leggero.')
+      setSavingAvatar(false)
+      return
+    }
 
+    const extension = avatarFile.name.split('.').pop() ?? 'png'
+    const filePath = `profile-${userId}.${extension}`
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(filePath, avatarFile, { upsert: true })
+      .upload(filePath, uploadFile, { upsert: true })
 
     if (uploadError) {
       setUploadStatus('Caricamento non riuscito. Riprova con un altro file.')
@@ -157,14 +190,9 @@ const saveUsername = async () => {
     .join('') || 'OP'
 
   return (
-    <div className="min-h-screen bg-[#070A12] text-white">
-      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
-        >
-          <ArrowLeft />
-        </button>
+    <div className="min-h-screen bg-[#070A12] text-white lg:pl-60">
+      <Sidebar activePage="profilo" />
+      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md lg:ml-60">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area personale</p>
           <h1 className="text-2xl font-extrabold text-white">Profilo</h1>
@@ -172,10 +200,10 @@ const saveUsername = async () => {
       </div>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-[2rem] border border-teal-800/30 bg-slate-900/80 shadow-2xl shadow-slate-950/40 px-6 pb-8 pt-24 sm:px-10 sm:pt-28">
+        <div className="relative overflow-hidden rounded-[2rem] border border-teal-800/30 bg-slate-900/80 shadow-2xl shadow-slate-950/40 px-6 pb-8 pt-28 sm:px-10 sm:pt-32">
           <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-amber-400/15 to-transparent" />
           <div className="absolute inset-x-0 top-0 flex justify-center">
-            <div className="relative -mt-01">
+            <div className="relative mt-6">
               <div className="h-40 w-40 rounded-full bg-gradient-to-br from-amber-400/30 via-fuchsia-500/20 to-sky-400/20 p-1 shadow-[0_25px_60px_-30px_rgba(250,204,21,0.8)]">
                 <div className="h-full w-full overflow-hidden rounded-full border border-slate-700 bg-slate-950">
                   {avatarUrl ? (
