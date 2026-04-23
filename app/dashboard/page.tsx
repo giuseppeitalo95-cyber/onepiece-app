@@ -75,6 +75,32 @@ export default function Dashboard() {
     load()
   }, [])
 
+  // Ricarica i dati del profilo quando la pagina diventa visibile
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Ricarica i dati del profilo quando la pagina diventa visibile
+        const reloadProfile = async () => {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.user) {
+            const { data } = await supabase
+              .from('profiles')
+              .select('username, avatar_url')
+              .eq('id', session.user.id)
+              .single()
+
+            setUsername(data?.username || 'Utente')
+            setAvatarUrl(data?.avatar_url || '')
+          }
+        }
+        reloadProfile()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
   const loadCards = async (uid: string) => {
     setLoadingCards(true)
 
@@ -167,7 +193,7 @@ export default function Dashboard() {
   })
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg">
+    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="collezione" />
       <div className="flex-1 w-full">
 
@@ -196,7 +222,19 @@ export default function Dashboard() {
               onClick={() => router.push('/profile')}
               className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0 overflow-hidden border border-amber-400/30">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-900 font-bold text-sm">
+                    {(username || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
               <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
                 {loading ? '...' : username}
               </span>
@@ -295,7 +333,7 @@ export default function Dashboard() {
   .map((item) => (
               <div
                 key={item.card_id}
-                className="relative bg-slate-900 rounded-xl p-2 sm:p-3 border border-slate-700 hover:border-amber-400/40 transition onepiece-card-hover"
+                className="relative bg-slate-900 rounded-xl p-2 sm:p-3 border border-slate-700 hover:border-amber-400/60 transition onepiece-card-hover onepiece-border-glow"
               >
 
                 {/* DELETE BUTTON */}
@@ -370,7 +408,7 @@ export default function Dashboard() {
         onClick={() => setAddOpen(true)}
         className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center z-50 group"
       >
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110 onepiece-glow">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110 onepiece-glow onepiece-decoration">
           <Plus className="text-black sm:w-7 sm:h-7" size={24} />
         </div>
 

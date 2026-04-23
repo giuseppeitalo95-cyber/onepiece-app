@@ -229,7 +229,7 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg">
+    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="amici" />
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div>

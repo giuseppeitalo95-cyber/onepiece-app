@@ -146,7 +146,7 @@ export default function AddCard() {
   }
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg flex flex-col items-center pt-20 px-4 sm:px-0">
+    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds flex flex-col items-center pt-20 px-4 sm:px-0">
 
       <div className="w-full max-w-[420px] flex justify-center mb-6 px-2">
         <h1 className="text-xl font-bold text-amber-300 text-center">

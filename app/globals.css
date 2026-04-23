@@ -22,15 +22,14 @@
 /* One Piece Theme Backgrounds */
 .onepiece-bg {
   background:
-    radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 40% 40%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 15% 85%, rgba(59, 130, 246, 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 85% 15%, rgba(251, 191, 36, 0.1) 0%, transparent 60%),
+    radial-gradient(circle at 45% 45%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
     linear-gradient(135deg,
-      rgba(7, 10, 18, 1) 0%,
-      rgba(15, 23, 42, 1) 25%,
-      rgba(7, 10, 18, 1) 50%,
-      rgba(15, 23, 42, 1) 75%,
-      rgba(7, 10, 18, 1) 100%);
+      rgba(7, 10, 18, 0.9) 0%,
+      rgba(15, 23, 42, 0.95) 30%,
+      rgba(7, 10, 18, 0.9) 60%,
+      rgba(15, 23, 42, 0.95) 100%);
 }
 
 .onepiece-bg::before {
@@ -41,21 +40,21 @@
   right: 0;
   bottom: 0;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23fbbf24' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-  background-size: 60px 60px;
+    url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23fbbf24' fill-opacity='0.04'%3E%3Cpath d='M40 20c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zm20 20c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zM20 60c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zm40 0c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size: 80px 80px;
   pointer-events: none;
   z-index: -1;
 }
 
 .onepiece-wave-bg {
   background:
-    radial-gradient(ellipse at top, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom, rgba(251, 191, 36, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at top, rgba(59, 130, 246, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(251, 191, 36, 0.12) 0%, transparent 60%),
     linear-gradient(180deg,
-      rgba(7, 10, 18, 1) 0%,
-      rgba(15, 23, 42, 0.95) 30%,
-      rgba(7, 10, 18, 1) 70%,
-      rgba(15, 23, 42, 0.95) 100%);
+      rgba(7, 10, 18, 0.85) 0%,
+      rgba(15, 23, 42, 0.9) 35%,
+      rgba(7, 10, 18, 0.85) 70%,
+      rgba(15, 23, 42, 0.9) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -68,18 +67,86 @@
   right: 0;
   bottom: 0;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q25 0 50 10 T100 10 V20 H0 Z' fill='%233b82f6' fill-opacity='0.04'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg width='100' height='15' viewBox='0 0 100 15' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 8 Q25 2 50 8 T100 8 V15 H0 Z' fill='%23fbbf24' fill-opacity='0.03'/%3E%3C/svg%3E");
-  background-size: 100px 20px, 100px 15px;
-  background-position: 0 80%, 0 85%;
+    url("data:image/svg+xml,%3Csvg width='120' height='25' viewBox='0 0 120 25' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 15 Q30 5 60 15 T120 15 Q90 20 60 15 Q30 10 0 15 Z' fill='%233b82f6' fill-opacity='0.08'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='120' height='20' viewBox='0 0 120 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 12 Q30 3 60 12 T120 12 Q90 16 60 12 Q30 8 0 12 Z' fill='%23fbbf24' fill-opacity='0.06'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='120' height='18' viewBox='0 0 120 18' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q30 2 60 10 T120 10 Q90 14 60 10 Q30 6 0 10 Z' fill='%2310b981' fill-opacity='0.05'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='200' height='10' viewBox='0 0 200 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 5 Q50 2 100 5 T200 5 Q150 7 100 5 Q50 3 0 5 Z' stroke='%23ffffff' stroke-width='0.5' fill='none' stroke-opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 120px 25px, 120px 20px, 120px 18px, 200px 10px;
+  background-position: 0 75%, 0 80%, 0 82%, 0 70%;
   background-repeat: repeat-x;
-  animation: wave-float 8s ease-in-out infinite;
+  animation: wave-flow 12s ease-in-out infinite;
   pointer-events: none;
 }
 
-@keyframes wave-float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-2px); }
+@keyframes wave-flow {
+  0% { transform: translateX(-120px) scaleY(1); }
+  25% { transform: translateX(-60px) scaleY(1.1); }
+  50% { transform: translateX(0px) scaleY(1); }
+  75% { transform: translateX(60px) scaleY(0.9); }
+  100% { transform: translateX(120px) scaleY(1); }
+}
+
+/* Elementi decorativi One Piece più dettagliati */
+.onepiece-clouds {
+  position: relative;
+  overflow: hidden;
+}
+
+.onepiece-clouds::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: -10%;
+  width: 20%;
+  height: 15%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: cloud-drift 20s linear infinite;
+  pointer-events: none;
+}
+
+.onepiece-clouds::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: -15%;
+  width: 25%;
+  height: 12%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: cloud-drift 25s linear infinite reverse;
+  pointer-events: none;
+}
+
+@keyframes cloud-drift {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100vw); }
+}
+
+/* Miglioramenti colori per aspetto più cartoonesco */
+.onepiece-vibrant {
+  filter: saturate(1.1) brightness(1.05);
+}
+
+/* Bordi più morbidi e colorati */
+.onepiece-border-glow {
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  box-shadow: inset 0 1px 0 rgba(251, 191, 36, 0.1);
+}
+
+/* Miglioramenti per rendere tutto più luminoso */
+.onepiece-card-hover:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 30px rgba(251, 191, 36, 0.2);
+}
+
+/* Pattern più dettagliato per sfondi */
+.onepiece-pattern-bg {
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(251, 191, 36, 0.05) 2px, transparent 2px),
+    radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px, 30px 30px;
+  background-position: 0 0, 20px 20px;
 }
 
 /* Enhanced gradients for One Piece feel */

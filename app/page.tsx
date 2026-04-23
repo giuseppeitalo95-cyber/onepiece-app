@@ -14,7 +14,7 @@ redirectTo: 'https://onepiece-app-one.vercel.app/auth/callback'
 }
 
   return (
-    <div className="min-h-screen flex items-center justify-center onepiece-wave-bg">
+    <div className="min-h-screen flex items-center justify-center onepiece-wave-bg onepiece-clouds">
 
       {/* CARD */}
       <div className="w-[420px] rounded-2xl bg-slate-900/70 border border-blue-800 shadow-2xl p-8 text-center backdrop-blur-md">
