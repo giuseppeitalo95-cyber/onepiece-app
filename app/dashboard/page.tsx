@@ -27,7 +27,7 @@ export default function Dashboard() {
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const router = useRouter()
-
+  const [avatarUrl, setAvatarUrl] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -63,11 +63,12 @@ export default function Dashboard() {
 
       const { data } = await supabase
         .from('profiles')
-        .select('username')
+        .select('username, avatar_url')
         .eq('id', id)
         .single()
 
       setUsername(data?.username || 'Utente')
+      setAvatarUrl(data?.avatar_url || '')
       setLoading(false)
     }
 
