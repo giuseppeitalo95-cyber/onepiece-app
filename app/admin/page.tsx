@@ -21,6 +21,7 @@ type MissingCardRequest = {
   card_number: string
   status?: string
   reported_by?: string
+  reporter_username?: string | null
   created_at?: string
 }
 
@@ -41,6 +42,8 @@ export default function AdminPage() {
       .from('profiles')
       .select('id, username, username_locked, is_blocked')
 
+    console.log('fetchProfiles result:', { data, error })
+
     if (error) {
       console.warn('fetchProfiles error', error)
       setProfiles([])
@@ -53,7 +56,18 @@ export default function AdminPage() {
   const fetchRequests = async () => {
     const { data, error } = await supabase
       .from('missing_card_reports')
-      .select('id, card_name, card_op, card_number, status, reported_by, created_at')
+      .select(`
+        id,
+        card_name,
+        card_op,
+        card_number,
+        status,
+        reported_by,
+        created_at,
+        profiles!missing_card_reports_reported_by_fkey (
+          username
+        )
+      `)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -62,7 +76,15 @@ export default function AdminPage() {
       return
     }
 
-    setRequests(data || [])
+    // Transform the data to include reporter_username
+    const transformedData = (data || []).map((request: any) => ({
+      ...request,
+      reporter_username: request.profiles?.username || null
+    }))
+
+    console.log('fetchRequests result:', { data, transformedData })
+
+    setRequests(transformedData)
   }
 
   useEffect(() => {
@@ -145,6 +167,27 @@ export default function AdminPage() {
       console.error(error)
     } else {
       setActionMessage('Richiesta aggiornata come risolta.')
+      await fetchRequests()
+    }
+    setBusy(false)
+  }
+
+  const deleteResolvedRequest = async (requestId: number) => {
+    if (!confirm('Sei sicuro di voler eliminare questa richiesta risolta?')) {
+      return
+    }
+
+    setBusy(true)
+    const { error } = await supabase
+      .from('missing_card_reports')
+      .delete()
+      .eq('id', requestId)
+
+    if (error) {
+      setActionMessage('Errore nell\'eliminazione della richiesta.')
+      console.error(error)
+    } else {
+      setActionMessage('Richiesta eliminata con successo.')
       await fetchRequests()
     }
     setBusy(false)
@@ -252,16 +295,27 @@ export default function AdminPage() {
                       </span>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-2">
-                      <p className="text-xs text-slate-500">Segnalata da {request.reported_by || 'sconosciuto'}</p>
-                      {request.status !== 'resolved' && (
-                        <button
-                          onClick={() => markRequestResolved(request.id)}
-                          disabled={busy}
-                          className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 border border-emerald-500/20 hover:bg-emerald-500/20"
-                        >
-                          Risolvi
-                        </button>
-                      )}
+                      <p className="text-xs text-slate-500">Segnalata da {request.reporter_username || 'sconosciuto'}</p>
+                      <div className="flex gap-2">
+                        {request.status !== 'resolved' && (
+                          <button
+                            onClick={() => markRequestResolved(request.id)}
+                            disabled={busy}
+                            className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 border border-emerald-500/20 hover:bg-emerald-500/20"
+                          >
+                            Risolvi
+                          </button>
+                        )}
+                        {request.status === 'resolved' && (
+                          <button
+                            onClick={() => deleteResolvedRequest(request.id)}
+                            disabled={busy}
+                            className="rounded-2xl bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 border border-red-500/20 hover:bg-red-500/20"
+                          >
+                            Cancella
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
