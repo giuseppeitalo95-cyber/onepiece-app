@@ -52,7 +52,7 @@ export async function GET(req: Request) {
     const { data: dbCards, error: dbError } = await supabase
       .from('cards')
       .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power')
-      .ilike('name', `%${q}%`)
+      .or(`name.ilike.%${q}%,card_id.ilike.%${q}%`)
 
     if (dbError) {
       console.error('❌ [SEARCH] Database search error:', dbError)
