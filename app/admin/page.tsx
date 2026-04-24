@@ -33,25 +33,78 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const refreshData = async () => {
-    await Promise.all([fetchProfiles(), fetchRequests()])
+  const testDatabaseConnection = async () => {
+    console.log('🧪 [ADMIN] Testing database connection...')
+
+    // Test 1: Check if we can access profiles table at all
+    try {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('count', { count: 'exact', head: true })
+
+      console.log('🧪 [ADMIN] Profiles count query:', { count: profilesData, error: profilesError })
+    } catch (err) {
+      console.error('🧪 [ADMIN] Profiles count error:', err)
+    }
+
+    // Test 2: Check if we can access auth.users (should fail due to RLS)
+    try {
+      const { data: authData, error: authError } = await supabase.auth.admin.listUsers()
+      console.log('🧪 [ADMIN] Auth users query:', { count: authData?.users?.length, error: authError })
+    } catch (err) {
+      console.error('🧪 [ADMIN] Auth users error (expected):', err instanceof Error ? err.message : String(err))
+    }
+
+    // Test 3: Check missing_card_reports
+    try {
+      const { data: reportsData, error: reportsError } = await supabase
+        .from('missing_card_reports')
+        .select('count', { count: 'exact', head: true })
+
+      console.log('🧪 [ADMIN] Reports count query:', { count: reportsData, error: reportsError })
+    } catch (err) {
+      console.error('🧪 [ADMIN] Reports count error:', err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const createMissingProfiles = async () => {
+    console.log('🔧 [ADMIN] Creating missing profiles...')
+
+    try {
+      // This is a workaround - we'll try to create profiles for any users that might exist
+      // Note: This won't work if we can't access auth.users, but let's try
+      setActionMessage('Tentativo di creazione profili mancanti...')
+
+      // For now, just show a message that this needs to be done manually
+      setActionMessage('I profili devono essere creati automaticamente dal callback di auth. Verifica che gli utenti abbiano completato la registrazione.')
+
+    } catch (err) {
+      console.error('❌ [ADMIN] Create profiles error:', err)
+      setActionMessage('Errore nella creazione profili.')
+    }
   }
 
   const fetchProfiles = async () => {
+    console.log('🔍 [ADMIN] Fetching profiles...')
     const { data, error } = await supabase
       .from('profiles')
       .select('id, username, username_locked, is_blocked')
 
+    console.log('🔍 [ADMIN] Profiles result:', { data, error, count: data?.length || 0 })
+
     if (error) {
-      console.warn('fetchProfiles error', error)
+      console.warn('❌ [ADMIN] fetchProfiles error', error)
+      setActionMessage(`Errore caricamento profili: ${error.message}`)
       setProfiles([])
       return
     }
 
     setProfiles(data || [])
+    console.log('✅ [ADMIN] Profiles loaded:', data?.length || 0, 'profiles')
   }
 
   const fetchRequests = async () => {
+    console.log('🔍 [ADMIN] Fetching requests...')
     const { data, error } = await supabase
       .from('missing_card_reports')
       .select(`
@@ -69,7 +122,7 @@ export default function AdminPage() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.warn('fetchRequests error', error)
+      console.warn('❌ [ADMIN] fetchRequests error', error)
       setRequests([])
       return
     }
@@ -80,24 +133,32 @@ export default function AdminPage() {
       reporter_username: request.profiles?.username || null
     }))
 
+    console.log('✅ [ADMIN] Requests loaded:', transformedData.length, 'requests')
     setRequests(transformedData)
   }
 
   useEffect(() => {
     const init = async () => {
+      console.log('🔐 [ADMIN] Initializing admin page...')
       const { data } = await supabase.auth.getSession()
       const user = data?.session?.user
 
+      console.log('🔐 [ADMIN] Current user:', user?.id, 'Expected admin:', ADMIN_USER_ID)
+
       if (!user) {
+        console.log('❌ [ADMIN] No user session, redirecting to /')
         router.replace('/')
         return
       }
 
       if (user.id !== ADMIN_USER_ID) {
+        console.log('❌ [ADMIN] User is not admin, redirecting to /dashboard')
         router.replace('/dashboard')
         return
       }
 
+      console.log('✅ [ADMIN] User is admin, loading data...')
+      await testDatabaseConnection()
       await refreshData()
       setLoading(false)
     }
@@ -173,6 +234,7 @@ export default function AdminPage() {
       return
     }
 
+    console.log('🗑️ [ADMIN] Deleting request:', requestId)
     setBusy(true)
     const { error } = await supabase
       .from('missing_card_reports')
@@ -180,9 +242,10 @@ export default function AdminPage() {
       .eq('id', requestId)
 
     if (error) {
+      console.error('❌ [ADMIN] Delete request error:', error)
       setActionMessage('Errore nell\'eliminazione della richiesta.')
-      console.error(error)
     } else {
+      console.log('✅ [ADMIN] Request deleted successfully')
       setActionMessage('Richiesta eliminata con successo.')
       await fetchRequests()
     }
@@ -215,7 +278,24 @@ export default function AdminPage() {
         </div>
 
         <div className="mt-6 rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
-          <p className="text-sm text-slate-300">Qui puoi visualizzare gli utenti, bloccarli, eliminarli e gestire le richieste di carte mancanti segnalate dagli utenti. Questa area è visibile solo al founder.</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-300">Qui puoi visualizzare gli utenti, bloccarli, eliminarli e gestire le richieste di carte mancanti segnalate dagli utenti. Questa area è visibile solo al founder.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={refreshData}
+                disabled={busy}
+                className="px-3 py-1 text-xs bg-green-500/20 text-green-200 border border-green-500/30 rounded-lg hover:bg-green-500/30 disabled:opacity-50"
+              >
+                Ricarica
+              </button>
+              <button
+                onClick={testDatabaseConnection}
+                className="px-3 py-1 text-xs bg-blue-500/20 text-blue-200 border border-blue-500/30 rounded-lg hover:bg-blue-500/30"
+              >
+                Debug DB
+              </button>
+            </div>
+          </div>
         </div>
 
         {actionMessage && (
@@ -235,7 +315,29 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-6 space-y-3">
-              {profiles.map((profile) => (
+              {profiles.length === 0 ? (
+                <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-6 text-center">
+                  <p className="text-amber-200 font-semibold mb-2">Nessun profilo trovato</p>
+                  <p className="text-sm text-amber-300/80 mb-4">
+                    Gli utenti potrebbero non aver completato la registrazione o le policies RLS non sono configurate correttamente.
+                  </p>
+                  <div className="flex gap-2 justify-center">
+                    <button
+                      onClick={refreshData}
+                      className="px-4 py-2 bg-amber-500/20 text-amber-200 border border-amber-500/30 rounded-lg hover:bg-amber-500/30"
+                    >
+                      Riprova
+                    </button>
+                    <button
+                      onClick={testDatabaseConnection}
+                      className="px-4 py-2 bg-blue-500/20 text-blue-200 border border-blue-500/30 rounded-lg hover:bg-blue-500/30"
+                    >
+                      Debug
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                profiles.map((profile) => (
                 <div key={profile.id} className="rounded-3xl border border-slate-800/80 bg-slate-950/80 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{profile.username || 'Utente anonimo'}</p>
@@ -260,7 +362,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </section>
 
