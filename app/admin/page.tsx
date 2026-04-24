@@ -42,8 +42,6 @@ export default function AdminPage() {
       .from('profiles')
       .select('id, username, username_locked, is_blocked')
 
-    console.log('fetchProfiles result:', { data, error })
-
     if (error) {
       console.warn('fetchProfiles error', error)
       setProfiles([])
@@ -81,8 +79,6 @@ export default function AdminPage() {
       ...request,
       reporter_username: request.profiles?.username || null
     }))
-
-    console.log('fetchRequests result:', { data, transformedData })
 
     setRequests(transformedData)
   }
