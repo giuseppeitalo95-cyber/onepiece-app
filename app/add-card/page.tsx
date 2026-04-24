@@ -27,6 +27,12 @@ export default function AddCard() {
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [addingId, setAddingId] = useState<string | null>(null)
+  const [showReportForm, setShowReportForm] = useState(false)
+  const [reportCardName, setReportCardName] = useState('')
+  const [reportCardOp, setReportCardOp] = useState('')
+  const [reportCardNumber, setReportCardNumber] = useState('')
+  const [reportStatus, setReportStatus] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
 
   // USER
   useEffect(() => {
@@ -145,6 +151,44 @@ export default function AddCard() {
     setAddingId(null)
   }
 
+  const submitMissingCardReport = async () => {
+    if (!reportCardName.trim() || !reportCardOp.trim() || !reportCardNumber.trim()) {
+      setReportStatus('Compila tutti i campi per inviare la segnalazione.')
+      return
+    }
+
+    setReportSubmitting(true)
+    setReportStatus('')
+
+    try {
+      const response = await fetch('/api/cards/report-missing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          card_name: reportCardName.trim(),
+          card_op: reportCardOp.trim(),
+          card_number: reportCardNumber.trim(),
+          user_id: userId,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Errore invio segnalazione')
+      }
+
+      setReportStatus('Segnalazione inviata! Grazie per aver aiutato a migliorare il database.')
+      setShowReportForm(false)
+      setReportCardName('')
+      setReportCardOp('')
+      setReportCardNumber('')
+    } catch (error) {
+      console.error('Report error', error)
+      setReportStatus('Errore durante l\'invio. Riprova tra poco.')
+    }
+
+    setReportSubmitting(false)
+  }
+
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds flex flex-col items-center pt-20 px-4 sm:px-0">
 
@@ -160,6 +204,58 @@ export default function AddCard() {
         placeholder="OP01-001"
         className="w-full max-w-[420px] px-4 py-3 rounded-xl bg-slate-900 border border-teal-700"
       />
+
+      <div className="w-full max-w-[420px] mt-4 rounded-[1.75rem] border border-amber-400/20 bg-amber-400/5 p-5 text-slate-200 shadow-inner shadow-black/20">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-white">Carta assente?</p>
+            <p className="text-sm text-slate-300">Aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
+          </div>
+          <button
+            onClick={() => setShowReportForm((prev) => !prev)}
+            className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
+          >
+            {showReportForm ? 'Chiudi segnalazione' : 'Segnala carta mancante'}
+          </button>
+        </div>
+
+        {showReportForm && (
+          <div className="mt-4 space-y-3 rounded-3xl border border-amber-300/20 bg-slate-950/90 p-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <input
+                value={reportCardName}
+                onChange={(e) => setReportCardName(e.target.value)}
+                placeholder="Nome carta"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+              />
+              <input
+                value={reportCardOp}
+                onChange={(e) => setReportCardOp(e.target.value)}
+                placeholder="OP della carta"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+              />
+              <input
+                value={reportCardNumber}
+                onChange={(e) => setReportCardNumber(e.target.value)}
+                placeholder="Numero carta"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                onClick={submitMissingCardReport}
+                disabled={reportSubmitting}
+                className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {reportSubmitting ? 'Invio...' : 'Invia segnalazione'}
+              </button>
+              {reportStatus && (
+                <p className="text-sm text-slate-300">{reportStatus}</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {loading && <p className="text-gray-400 mt-3">Ricerca...</p>}
 

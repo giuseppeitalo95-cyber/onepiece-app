@@ -224,6 +224,58 @@ export default function SearchPage() {
           </div>
 
           <div className="mt-4 space-y-3">
+            <div className="rounded-[1.75rem] border border-amber-400/20 bg-amber-400/5 p-5 text-slate-200 shadow-inner shadow-black/20">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Carta assente?</p>
+                  <p className="text-sm text-slate-300">Aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
+                </div>
+                <button
+                  onClick={() => setShowReportForm((prev) => !prev)}
+                  className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
+                >
+                  {showReportForm ? 'Chiudi segnalazione' : 'Segnala carta mancante'}
+                </button>
+              </div>
+
+              {showReportForm && (
+                <div className="mt-4 space-y-3 rounded-3xl border border-amber-300/20 bg-slate-950/90 p-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input
+                      value={reportCardName}
+                      onChange={(e) => setReportCardName(e.target.value)}
+                      placeholder="Nome carta"
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+                    />
+                    <input
+                      value={reportCardOp}
+                      onChange={(e) => setReportCardOp(e.target.value)}
+                      placeholder="OP della carta"
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+                    />
+                    <input
+                      value={reportCardNumber}
+                      onChange={(e) => setReportCardNumber(e.target.value)}
+                      placeholder="Numero carta"
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                      onClick={submitMissingCardReport}
+                      disabled={reportSubmitting}
+                      className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {reportSubmitting ? 'Invio...' : 'Invia segnalazione'}
+                    </button>
+                    {reportStatus && (
+                      <p className="text-sm text-slate-300">{reportStatus}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {searching && !loading && query.trim().length >= 2 && (
               <div className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4 text-sm text-slate-400">
                 Ricerca in corso...
@@ -237,56 +289,8 @@ export default function SearchPage() {
             )}
 
             {!loading && cards.length === 0 && query.trim().length >= 2 && (
-              <div className="rounded-[1.75rem] border border-amber-400/20 bg-amber-400/5 p-5 text-slate-200 shadow-inner shadow-black/20">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">Carta assente?</p>
-                    <p className="text-sm text-slate-300">Aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
-                  </div>
-                  <button
-                    onClick={() => setShowReportForm((prev) => !prev)}
-                    className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
-                  >
-                    {showReportForm ? 'Chiudi segnalazione' : 'Segnala carta mancante'}
-                  </button>
-                </div>
-
-                {showReportForm && (
-                  <div className="mt-4 space-y-3 rounded-3xl border border-amber-300/20 bg-slate-950/90 p-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <input
-                        value={reportCardName}
-                        onChange={(e) => setReportCardName(e.target.value)}
-                        placeholder="Nome carta"
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
-                      />
-                      <input
-                        value={reportCardOp}
-                        onChange={(e) => setReportCardOp(e.target.value)}
-                        placeholder="OP della carta"
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
-                      />
-                      <input
-                        value={reportCardNumber}
-                        onChange={(e) => setReportCardNumber(e.target.value)}
-                        placeholder="Numero carta"
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <button
-                        onClick={submitMissingCardReport}
-                        disabled={reportSubmitting}
-                        className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {reportSubmitting ? 'Invio...' : 'Invia segnalazione'}
-                      </button>
-                      {reportStatus && (
-                        <p className="text-sm text-slate-300">{reportStatus}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
+              <div className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4 text-sm text-slate-400">
+                Nessuna carta trovata. Prova con un nome diverso.
               </div>
             )}
 
