@@ -38,19 +38,6 @@ export default function Dashboard() {
   const [filterColor, setFilterColor] = useState('all')
   const [filterRarity, setFilterRarity] = useState('all')
   const [filterCost, setFilterCost] = useState('all')
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [adminNotificationsCount, setAdminNotificationsCount] = useState(0)
-
- const loadAdminNotifications = async () => {
-    const { count, error } = await supabase
-      .from('missing_card_reports')
-      .select('id', { count: 'exact' })
-      .eq('status', 'new')
-
-    if (!error && typeof count === 'number') {
-      setAdminNotificationsCount(count)
-    }
-  }
 
  useEffect(() => {
   if (addOpen || selectedCard) {
@@ -73,12 +60,6 @@ export default function Dashboard() {
 
       const id = session.user.id
       setUserId(id)
-
-      const isAdminUser = id === 'fcade84e-6413-4009-91df-a8c839a170cc'
-      setIsAdmin(isAdminUser)
-      if (isAdminUser) {
-        loadAdminNotifications()
-      }
 
       const { data } = await supabase
         .from('profiles')
@@ -236,20 +217,7 @@ export default function Dashboard() {
 
           <div className="hidden sm:flex flex-1" />
 
-          <div className="flex items-center justify-end flex-shrink-0 gap-2">
-            {isAdmin && (
-              <button
-                onClick={() => router.push('/admin')}
-                className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-400/15"
-              >
-                ADMIN
-                {adminNotificationsCount > 0 && (
-                  <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-slate-950">
-                    {adminNotificationsCount}
-                  </span>
-                )}
-              </button>
-            )}
+          <div className="flex justify-end flex-shrink-0">
             <button
               onClick={() => router.push('/profile')}
               className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
@@ -436,7 +404,7 @@ export default function Dashboard() {
       </div>
 
       {/* ADD BUTTON */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]">
+      <div className="fixed left-1/2 bottom-4 sm:bottom-6 z-50 -translate-x-1/2 pointer-events-none">
         <button
           onClick={() => setAddOpen(true)}
           className="pointer-events-auto flex flex-col items-center group"
@@ -517,7 +485,7 @@ export default function Dashboard() {
       {/* MODAL */}
       {addOpen && (
         <div
-          className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               refreshAfterAdd()
@@ -526,8 +494,8 @@ export default function Dashboard() {
           onTouchMove={(event) => event.preventDefault()}
         >
 
-          <div className="relative w-[calc(100vw-1.5rem)] sm:w-[min(95vw,1024px)] h-[70vh] sm:h-[90vh] max-w-[1024px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
-
+          
+<div className="relative w-full max-w-5xl h-[85vh] bg-slate-900 rounded-xl overflow-hidden border border-slate-700 flex flex-col">
             <button
               onClick={refreshAfterAdd}
               className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 bg-black/80 hover:bg-black/95 p-2 rounded-full transition flex-shrink-0 text-white"
@@ -538,7 +506,7 @@ export default function Dashboard() {
             <iframe
               title="add-card-form"
               src="/add-card"
-              className="w-full h-full"
+              className="w-full flex-1 min-h-0"
               style={{
                 display: 'block',
                 border: 'none',
