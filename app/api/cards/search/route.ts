@@ -48,13 +48,16 @@ export async function GET(req: Request) {
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4d2diemF0ZHVlZWZkaXl4bG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzMwNjMsImV4cCI6MjA5MjM0OTA2M30.8HFzw4B9i2wB8cBuuG-gR9xEswt8kp-QyA8zqvd6YRQ'
     )
 
+    console.log('🔍 [SEARCH] Searching for:', q)
     const { data: dbCards, error: dbError } = await supabase
       .from('cards')
       .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power')
       .ilike('name', `%${q}%`)
 
     if (dbError) {
-      console.error('Database search error:', dbError)
+      console.error('❌ [SEARCH] Database search error:', dbError)
+    } else {
+      console.log('✅ [SEARCH] Found', dbCards?.length || 0, 'cards in database:', dbCards)
     }
 
     // Converti le carte del database nel formato API
@@ -71,8 +74,12 @@ export async function GET(req: Request) {
       is_from_database: true
     }))
 
+    console.log('🔄 [SEARCH] API cards:', uniqueCards.length, 'DB cards:', dbCardsFormatted.length)
+
     // Combina carte API esterne + carte database
     const allCardsCombined = [...uniqueCards, ...dbCardsFormatted]
+
+    console.log('📊 [SEARCH] Total combined cards:', allCardsCombined.length)
 
     // Rimuovi duplicati finali basati su ID o nome
     const finalSeen = new Set<string>()
@@ -82,6 +89,8 @@ export async function GET(req: Request) {
       finalSeen.add(identifier)
       return true
     })
+
+    console.log('✅ [SEARCH] Final cards after deduplication:', finalCards.length)
 
     const cards = finalCards.slice(0, 50).map((c: any) => ({
       id: c.card_set_id || c.id,
@@ -97,6 +106,7 @@ export async function GET(req: Request) {
       is_from_database: c.is_from_database || false
     }))
 
+    console.log('🚀 [SEARCH] Returning', cards.length, 'cards')
     return Response.json(cards)
 
   } catch (err) {
