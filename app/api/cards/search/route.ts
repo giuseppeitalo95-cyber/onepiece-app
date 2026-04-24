@@ -28,19 +28,19 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-const query = q.toLowerCase().replace(/\s+/g, '')
+const normalize = (str: string) =>
+  str.toLowerCase().replace(/[\s-_]/g, '')
+
+const queryNorm = normalize(q)
 
 const filteredCards = allCards.filter((c: any) => {
   const name = (c.card_name || '').toLowerCase()
-  const id = (c.card_set_id || c.id || '').toLowerCase().replace(/\s+/g, '')
+  const idNorm = normalize(c.card_set_id || c.id || '')
 
-  // match su ID (anche parziale)
-  if (id.includes(query)) return true
-
-  // match su nome
-  if (name.includes(query)) return true
-
-  return false
+  return (
+    idNorm.includes(queryNorm) ||   // ricerca ID robusta
+    name.includes(q.toLowerCase())  // ricerca nome
+  )
 })
 
     // NON rimuovere duplicati per card_set_id (mantieni tutte le varianti)
