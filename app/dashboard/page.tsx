@@ -244,7 +244,7 @@ export default function Dashboard() {
         </div>
 
         {/* CONTENT */}
-        <div className="pt-20 px-3 sm:px-6">
+        <div className="h-[calc(100dvh-56px)] overflow-y-auto pt-20 px-3 sm:px-6">
 
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
