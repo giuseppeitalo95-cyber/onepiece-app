@@ -247,10 +247,10 @@ export default function Profile() {
         )}
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
-            {firstAccess ? 'Configura il profilo' : 'Area personale'}
+            {firstAccess ? 'Benvenuto nel Vault' : 'Area personale'}
           </p>
           <h1 className="text-2xl font-extrabold text-white">
-            {firstAccess ? 'Scegli nickname e foto' : 'Profilo'}
+            {firstAccess ? 'Benvenuto nel tuo One Piece Vault' : 'Profilo'}
           </h1>
         </div>
       </div>
@@ -293,7 +293,7 @@ export default function Profile() {
             <h2 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">{username || 'Utente'}.</h2>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
               {firstAccess
-                ? 'Completa il primo accesso inserendo il tuo nickname e scegliendo una foto profilo. Dopo la scelta, il nickname non potrà essere modificato.'
+                ? 'Benvenuto nel tuo One Piece Vault: il tuo raccoglitore digitale di carte. Qui puoi aggiungere la tua collezione e mostrare le tue carte agli amici. Puoi aggiungere amici, vedere le loro collezioni, richiedere scambi o vendite e tanto altro. Aiuta i tuoi compagni di gioco aggiungendo le tue carte e consigliando il sito. PS: alcune carte potrebbero ancora mancare e alcune funzionalità sono in fase di testing.'
                 : 'Qui puoi gestire il tuo account e aggiornare la foto profilo.'}
             </p>
           </div>
