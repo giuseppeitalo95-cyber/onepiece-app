@@ -28,10 +28,14 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-    // Filter cards by name containing the query (case-insensitive)
-    const filteredCards = allCards.filter((c: any) =>
-      c.card_name && c.card_name.toLowerCase().includes(q.toLowerCase())
-    )
+    const query = q.toLowerCase()
+
+const filteredCards = allCards.filter((c: any) => {
+  const name = (c.card_name || '').toLowerCase()
+  const id = (c.card_set_id || c.id || '').toLowerCase()
+
+  return name.includes(query) || id.includes(query)
+})
 
     // Remove duplicates based on card_set_id
     const seen = new Set<string>()
