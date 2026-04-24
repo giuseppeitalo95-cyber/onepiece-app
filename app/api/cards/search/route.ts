@@ -94,19 +94,21 @@ const uniqueCards = filteredCards
 
     console.log('✅ [SEARCH] Final cards after deduplication:', finalCards.length)
 
-    const cards = finalCards.slice(0, 50).map((c: any) => ({
-      id: c.card_set_id || c.id,
-      name: c.card_name || c.name,
-      image_url: c.card_image || c.image_url || null,
-      rarity: c.rarity || '—',
-      card_color: c.card_color ?? null,
-      card_type: c.card_type ?? null,
-      card_cost: c.card_cost ? Number(c.card_cost) : null,
-      card_power: c.card_power ? Number(c.card_power) : null,
-      market_price: c.market_price ? Number(c.market_price) : null,
-      inventory_price: c.inventory_price ? Number(c.inventory_price) : null,
-      is_from_database: c.is_from_database || false
-    }))
+    const cards = finalCards
+  .map((c: any) => ({
+    id: c.card_set_id || c.id,
+    name: c.card_name || c.name,
+    image_url: c.card_image || c.image_url || null,
+    rarity: c.rarity || '—',
+    card_color: c.card_color ?? null,
+    card_type: c.card_type ?? null,
+    card_cost: c.card_cost ? Number(c.card_cost) : null,
+    card_power: c.card_power ? Number(c.card_power) : null,
+    market_price: c.market_price ? Number(c.market_price) : null,
+    inventory_price: c.inventory_price ? Number(c.inventory_price) : null,
+    is_from_database: c.is_from_database || false
+  }))
+  .slice(0, 50)
 
     console.log('🚀 [SEARCH] Returning', cards.length, 'cards')
     return Response.json(cards)
