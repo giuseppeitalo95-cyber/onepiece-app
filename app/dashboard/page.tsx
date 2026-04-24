@@ -436,7 +436,7 @@ export default function Dashboard() {
       </div>
 
       {/* ADD BUTTON */}
-      <div className="fixed inset-x-0 bottom-4 sm:bottom-6 z-50 flex justify-center pointer-events-none">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
         <button
           onClick={() => setAddOpen(true)}
           className="pointer-events-auto flex flex-col items-center group"
