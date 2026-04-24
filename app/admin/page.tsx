@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, ShieldCheck, Trash2 } from 'lucide-react'
+import { Bell, ShieldCheck, Trash2, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 const ADMIN_USER_ID = 'fcade84e-6413-4009-91df-a8c839a170cc'
@@ -163,11 +163,19 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl rounded-[2rem] border border-teal-800/30 bg-slate-950/90 shadow-2xl shadow-slate-950/40 p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
+          >
+            <ArrowLeft />
+          </button>
+          <div className="flex-1 text-center">
             <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Pannello Founder</p>
             <h1 className="text-3xl font-extrabold text-white">Admin Dashboard</h1>
           </div>
+          <div className="w-10"></div> {/* Spacer per centrare il titolo */}
+        </div>
           <div className="rounded-3xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-slate-100">
             <div className="flex items-center gap-2">
               <Bell size={16} />
