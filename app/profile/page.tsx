@@ -3,7 +3,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Camera, UploadCloud, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Camera, UploadCloud, ShieldCheck, Bell } from 'lucide-react'
+
+const ADMIN_ACCOUNT = {
+  id: 'fcade84e-6413-4009-91df-a8c839a170cc',
+  email: 'giuseppeitalo95@gmail.com',
+  username: 'peppitalo'
+}
 
 export default function Profile() {
   const router = useRouter()
@@ -19,6 +25,8 @@ export default function Profile() {
   const [uploadStatus, setUploadStatus] = useState('')
   const [savingAvatar, setSavingAvatar] = useState(false)
   const [savingUsername, setSavingUsername] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminNotifications, setAdminNotifications] = useState(0)
 
   useEffect(() => {
     const load = async () => {
@@ -43,10 +51,21 @@ export default function Profile() {
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
       const isFirstAccess = !data?.username
 
+      const isAdminUser =
+        user.id === ADMIN_ACCOUNT.id &&
+        user.email === ADMIN_ACCOUNT.email &&
+        data?.username === ADMIN_ACCOUNT.username
+
       setUsername(data?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)
       setCanEdit(isFirstAccess)
       setFirstAccess(isFirstAccess)
+      setIsAdmin(isAdminUser)
+
+      if (isAdminUser) {
+        await fetchAdminNotifications()
+      }
+
       setLoading(false)
     }
 
@@ -64,6 +83,17 @@ export default function Profile() {
       .getPublicUrl(avatarPath)
 
     return publicData?.publicUrl ?? ''
+  }
+
+  const fetchAdminNotifications = async () => {
+    const { count, error } = await supabase
+      .from('missing_card_reports')
+      .select('id', { count: 'exact' })
+      .eq('status', 'new')
+
+    if (!error && typeof count === 'number') {
+      setAdminNotifications(count)
+    }
   }
 
   const resizeImageIfNeeded = async (file: File) => {
@@ -236,23 +266,40 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
-      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
-        {!firstAccess && (
+      <div className="flex items-center justify-between gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          {!firstAccess && (
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
+            >
+              <ArrowLeft />
+            </button>
+          )}
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
+              {firstAccess ? 'Configura il profilo' : 'Area personale'}
+            </p>
+            <h1 className="text-2xl font-extrabold text-white">
+              {firstAccess ? 'Benvenuto nel tuo One Piece Vault' : 'Profilo'}
+            </h1>
+          </div>
+        </div>
+
+        {isAdmin && (
           <button
-            onClick={() => router.push('/dashboard')}
-            className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
+            onClick={() => router.push('/admin')}
+            className="inline-flex items-center gap-2 rounded-2xl bg-amber-400/10 border border-amber-300/30 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/15"
           >
-            <ArrowLeft />
+            <Bell size={16} />
+            ADMIN
+            {adminNotifications > 0 && (
+              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-slate-950">
+                {adminNotifications}
+              </span>
+            )}
           </button>
         )}
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
-            {firstAccess ? 'Benvenuto nel Vault' : 'Area personale'}
-          </p>
-          <h1 className="text-2xl font-extrabold text-white">
-            {firstAccess ? 'Benvenuto nel tuo One Piece Vault' : 'Profilo'}
-          </h1>
-        </div>
       </div>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">

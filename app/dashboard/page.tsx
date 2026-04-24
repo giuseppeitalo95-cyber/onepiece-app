@@ -38,6 +38,19 @@ export default function Dashboard() {
   const [filterColor, setFilterColor] = useState('all')
   const [filterRarity, setFilterRarity] = useState('all')
   const [filterCost, setFilterCost] = useState('all')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminNotificationsCount, setAdminNotificationsCount] = useState(0)
+
+ const loadAdminNotifications = async () => {
+    const { count, error } = await supabase
+      .from('missing_card_reports')
+      .select('id', { count: 'exact' })
+      .eq('status', 'new')
+
+    if (!error && typeof count === 'number') {
+      setAdminNotificationsCount(count)
+    }
+  }
 
  useEffect(() => {
   if (addOpen || selectedCard) {
@@ -60,6 +73,12 @@ export default function Dashboard() {
 
       const id = session.user.id
       setUserId(id)
+
+      const isAdminUser = id === 'fcade84e-6413-4009-91df-a8c839a170cc'
+      setIsAdmin(isAdminUser)
+      if (isAdminUser) {
+        loadAdminNotifications()
+      }
 
       const { data } = await supabase
         .from('profiles')
@@ -217,7 +236,20 @@ export default function Dashboard() {
 
           <div className="hidden sm:flex flex-1" />
 
-          <div className="flex justify-end flex-shrink-0">
+          <div className="flex items-center justify-end flex-shrink-0 gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => router.push('/admin')}
+                className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-400/15"
+              >
+                ADMIN
+                {adminNotificationsCount > 0 && (
+                  <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-slate-950">
+                    {adminNotificationsCount}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               onClick={() => router.push('/profile')}
               className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
