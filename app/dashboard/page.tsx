@@ -195,7 +195,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="collezione" />
-      <div className="flex-1 w-full">
+      <div className="w-full min-h-screen">
 
         {/* TOPBAR */}
         <div className="fixed top-0 left-0 right-0 h-14 z-40 bg-slate-900/85 backdrop-blur-md border-b border-teal-800/30 flex items-center px-3 sm:px-4 gap-2 sm:gap-4">
