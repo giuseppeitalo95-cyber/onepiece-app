@@ -28,13 +28,19 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-const query = q.toLowerCase()
+const query = q.toLowerCase().replace(/\s+/g, '')
 
 const filteredCards = allCards.filter((c: any) => {
   const name = (c.card_name || '').toLowerCase()
-  const id = (c.card_set_id || c.id || '').toLowerCase()
+  const id = (c.card_set_id || c.id || '').toLowerCase().replace(/\s+/g, '')
 
-  return name.includes(query) || id.includes(query)
+  // match su ID (anche parziale)
+  if (id.includes(query)) return true
+
+  // match su nome
+  if (name.includes(query)) return true
+
+  return false
 })
 
     // NON rimuovere duplicati per card_set_id (mantieni tutte le varianti)
@@ -81,6 +87,11 @@ const uniqueCards = filteredCards
     console.log('📊 [SEARCH] Total combined cards:', allCardsCombined.length)
 
     const finalCards = allCardsCombined
+  .sort((a: any, b: any) => {
+    const idA = (a.card_set_id || a.id || '')
+    const idB = (b.card_set_id || b.id || '')
+    return idA.localeCompare(idB)
+  })
 
     console.log('✅ [SEARCH] Final cards after deduplication:', finalCards.length)
 
