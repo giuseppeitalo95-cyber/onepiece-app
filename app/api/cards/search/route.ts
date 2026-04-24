@@ -37,13 +37,8 @@ const filteredCards = allCards.filter((c: any) => {
   return name.includes(query) || id.includes(query)
 })
 
-    // Remove duplicates based on card_set_id
-    const seen = new Set<string>()
-    const uniqueCards = filteredCards.filter((c: any) => {
-      if (seen.has(c.card_set_id)) return false
-      seen.add(c.card_set_id)
-      return true
-    })
+    // NON rimuovere duplicati per card_set_id (mantieni tutte le varianti)
+const uniqueCards = filteredCards
 
     // 🔥 CERCA ANCHE NEL DATABASE SUPABASE
     const { createClient } = await import('@supabase/supabase-js')
