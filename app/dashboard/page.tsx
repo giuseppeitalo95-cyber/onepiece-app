@@ -435,18 +435,21 @@ export default function Dashboard() {
 
       </div>
 
-      {/* ADD BUTTON FIXED BOTTOM CENTER */}
-<div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-  <button
-    onClick={() => setAddOpen(true)}
-    className="flex items-center gap-2 px-5 py-3 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 shadow-lg hover:scale-105 transition"
-  >
-    <Plus className="text-black w-5 h-5" />
-    <span className="text-black font-semibold text-sm">
-      Aggiungi carta
-    </span>
-  </button>
-</div>
+      {/* ADD BUTTON */}
+      <div className="fixed inset-x-0 bottom-4 sm:bottom-6 z-50 flex justify-center pointer-events-none">
+        <button
+          onClick={() => setAddOpen(true)}
+          className="pointer-events-auto flex flex-col items-center group"
+        >
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110 onepiece-glow onepiece-decoration">
+            <Plus className="text-black sm:w-7 sm:h-7" size={24} />
+          </div>
+
+          <span className="text-[10px] sm:text-xs mt-1 sm:mt-2 text-amber-300 font-semibold">
+            Aggiungi carta
+          </span>
+        </button>
+      </div>
 {selectedCard && (
   <div
     className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
