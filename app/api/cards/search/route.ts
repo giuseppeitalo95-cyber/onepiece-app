@@ -28,13 +28,17 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-    const query = q.toLowerCase()
+    const query = q.toLowerCase().replace(/\s+/g, '')
 
 const filteredCards = allCards.filter((c: any) => {
   const name = (c.card_name || '').toLowerCase()
-  const id = (c.card_set_id || c.id || '').toLowerCase()
+  const id = (c.card_set_id || c.id || '').toLowerCase().replace(/\s+/g, '')
 
-  return name.includes(query) || id.includes(query)
+  // MATCH ESATTO PER CARD ID (OP14-028)
+  if (id === query) return true
+
+  // FALLBACK: ricerca per nome
+  return name.includes(query)
 })
 
     // NON rimuovere duplicati per card_set_id (mantieni tutte le varianti)
