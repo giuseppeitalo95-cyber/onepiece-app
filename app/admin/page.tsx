@@ -84,6 +84,10 @@ export default function AdminPage() {
     }
   }
 
+  const refreshData = async () => {
+    await Promise.all([fetchProfiles(), fetchRequests()])
+  }
+
   const fetchProfiles = async () => {
     console.log('🔍 [ADMIN] Fetching profiles...')
     const { data, error } = await supabase
