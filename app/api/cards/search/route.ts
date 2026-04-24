@@ -7,11 +7,10 @@ export async function GET(req: Request) {
   try {
     // Fetch from multiple endpoints to expand the card database
     const endpoints = [
-      `https://www.optcgapi.com/api/sets/filtered/?card_name=${encodeURIComponent(q)}`,
-      `https://www.optcgapi.com/api/allSTCards/`,
-      `https://www.optcgapi.com/api/allPromos/`,
-      `https://www.optcgapi.com/api/allDonCards/`
-    ]
+  `https://www.optcgapi.com/api/allSTCards/`,
+  `https://www.optcgapi.com/api/allPromos/`,
+  `https://www.optcgapi.com/api/allDonCards/`
+]
 
     const fetchPromises = endpoints.map(async (url) => {
       try {
