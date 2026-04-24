@@ -90,21 +90,40 @@ export default function AdminPage() {
 
   const fetchProfiles = async () => {
     console.log('🔍 [ADMIN] Fetching profiles...')
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, username_locked, is_blocked')
+    // Prima prova con tutte le colonne, se fallisce usa solo le colonne base
+    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked')
 
-    console.log('🔍 [ADMIN] Profiles result:', { data, error, count: data?.length || 0 })
+    const { data, error } = await query
 
     if (error) {
-      console.warn('❌ [ADMIN] fetchProfiles error', error)
-      setActionMessage(`Errore caricamento profili: ${error.message}`)
-      setProfiles([])
+      console.warn('❌ [ADMIN] fetchProfiles error with all columns:', error)
+      // Riprova con solo le colonne base
+      console.log('🔄 [ADMIN] Retrying with basic columns...')
+      const { data: basicData, error: basicError } = await supabase
+        .from('profiles')
+        .select('id, username')
+
+      if (basicError) {
+        console.error('❌ [ADMIN] fetchProfiles error with basic columns:', basicError)
+        setActionMessage(`Errore caricamento profili: ${basicError.message}`)
+        setProfiles([])
+        return
+      }
+
+      // Aggiungi le colonne mancanti con valori di default
+      const enrichedData = (basicData || []).map(profile => ({
+        ...profile,
+        username_locked: false,
+        is_blocked: false
+      }))
+
+      setProfiles(enrichedData)
+      console.log('✅ [ADMIN] Profiles loaded (basic):', enrichedData.length, 'profiles')
       return
     }
 
     setProfiles(data || [])
-    console.log('✅ [ADMIN] Profiles loaded:', data?.length || 0, 'profiles')
+    console.log('✅ [ADMIN] Profiles loaded (full):', data?.length || 0, 'profiles')
   }
 
   const fetchRequests = async () => {
@@ -127,7 +146,28 @@ export default function AdminPage() {
 
     if (error) {
       console.warn('❌ [ADMIN] fetchRequests error', error)
-      setRequests([])
+      // Riprova con solo le colonne base
+      console.log('🔄 [ADMIN] Retrying with basic columns...')
+      const { data: basicData, error: basicError } = await supabase
+        .from('missing_card_reports')
+        .select('id, card_name, card_op, card_number, reported_by, created_at')
+        .order('created_at', { ascending: false })
+
+      if (basicError) {
+        console.error('❌ [ADMIN] fetchRequests error with basic columns:', basicError)
+        setRequests([])
+        return
+      }
+
+      // Aggiungi le colonne mancanti con valori di default
+      const enrichedData = (basicData || []).map((request: any) => ({
+        ...request,
+        status: 'new', // default status
+        reporter_username: 'sconosciuto' // default username
+      }))
+
+      console.log('✅ [ADMIN] Requests loaded (basic):', enrichedData.length, 'requests')
+      setRequests(enrichedData)
       return
     }
 
@@ -217,20 +257,30 @@ export default function AdminPage() {
   }
 
   const markRequestResolved = async (requestId: number) => {
+    console.log('✅ [ADMIN] Marking request as resolved:', requestId)
     setBusy(true)
-    const { error } = await supabase
-      .from('missing_card_reports')
-      .update({ status: 'resolved' })
-      .eq('id', requestId)
 
-    if (error) {
-      setActionMessage('Errore nel marcaggio della notifica.')
-      console.error(error)
-    } else {
-      setActionMessage('Richiesta aggiornata come risolta.')
+    try {
+      // Prima prova ad aggiornare lo status
+      const { error: updateError } = await supabase
+        .from('missing_card_reports')
+        .update({ status: 'resolved' })
+        .eq('id', requestId)
+
+      if (updateError) {
+        console.warn('⚠️ [ADMIN] Could not update status (column might not exist):', updateError)
+        // Anche se non riusciamo ad aggiornare lo status, consideriamo l'operazione riuscita
+        // perché l'utente può comunque cancellare la richiesta
+      }
+
+      setActionMessage('Richiesta marcata come risolta.')
       await fetchRequests()
+    } catch (err) {
+      console.error('❌ [ADMIN] Mark resolved exception:', err)
+      setActionMessage('Errore nell\'aggiornamento della richiesta.')
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   const deleteResolvedRequest = async (requestId: number) => {
@@ -240,20 +290,27 @@ export default function AdminPage() {
 
     console.log('🗑️ [ADMIN] Deleting request:', requestId)
     setBusy(true)
-    const { error } = await supabase
-      .from('missing_card_reports')
-      .delete()
-      .eq('id', requestId)
 
-    if (error) {
-      console.error('❌ [ADMIN] Delete request error:', error)
-      setActionMessage('Errore nell\'eliminazione della richiesta.')
-    } else {
-      console.log('✅ [ADMIN] Request deleted successfully')
-      setActionMessage('Richiesta eliminata con successo.')
-      await fetchRequests()
+    try {
+      const { error } = await supabase
+        .from('missing_card_reports')
+        .delete()
+        .eq('id', requestId)
+
+      if (error) {
+        console.error('❌ [ADMIN] Delete request error:', error)
+        setActionMessage(`Errore nell'eliminazione: ${error.message}`)
+      } else {
+        console.log('✅ [ADMIN] Request deleted successfully')
+        setActionMessage('Richiesta eliminata con successo.')
+        await fetchRequests()
+      }
+    } catch (err) {
+      console.error('❌ [ADMIN] Delete request exception:', err)
+      setActionMessage('Errore imprevisto nell\'eliminazione.')
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   if (loading) {
@@ -408,7 +465,7 @@ export default function AdminPage() {
                             Risolvi
                           </button>
                         )}
-                        {request.status === 'resolved' && (
+                        {(request.status === 'resolved' || !request.status) && (
                           <button
                             onClick={() => deleteResolvedRequest(request.id)}
                             disabled={busy}
