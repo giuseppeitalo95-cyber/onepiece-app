@@ -80,14 +80,7 @@ const uniqueCards = filteredCards
 
     console.log('📊 [SEARCH] Total combined cards:', allCardsCombined.length)
 
-    // Rimuovi duplicati finali basati su ID o nome
-    const finalSeen = new Set<string>()
-    const finalCards = allCardsCombined.filter((c: any) => {
-      const identifier = c.card_set_id || c.id || c.name
-      if (finalSeen.has(identifier)) return false
-      finalSeen.add(identifier)
-      return true
-    })
+    const finalCards = allCardsCombined
 
     console.log('✅ [SEARCH] Final cards after deduplication:', finalCards.length)
 
