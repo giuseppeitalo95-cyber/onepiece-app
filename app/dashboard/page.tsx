@@ -193,7 +193,7 @@ export default function Dashboard() {
   })
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
+    <div className="h-dvh overflow-y-auto text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="collezione" />
       <div className="w-full min-h-screen">
 
@@ -483,6 +483,7 @@ export default function Dashboard() {
   </div>
 )}
       {/* MODAL */}
+      
       {addOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
