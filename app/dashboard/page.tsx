@@ -436,7 +436,7 @@ export default function Dashboard() {
       </div>
 
       {/* ADD BUTTON */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]">
         <button
           onClick={() => setAddOpen(true)}
           className="pointer-events-auto flex flex-col items-center group"
@@ -517,7 +517,7 @@ export default function Dashboard() {
       {/* MODAL */}
       {addOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
+          className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               refreshAfterAdd()
