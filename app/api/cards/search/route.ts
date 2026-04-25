@@ -80,7 +80,7 @@ const filteredCards = allCards.filter((c: any) => {
 
 
 
-    const cards = allCardsCombined.slice(0, 50).map((c: any) => ({
+    const cards = allCardsCombined.map((c: any) => ({
       id: c.card_set_id || c.id,
       name: c.card_name || c.name,
       image_url: c.card_image || c.image_url || null,
