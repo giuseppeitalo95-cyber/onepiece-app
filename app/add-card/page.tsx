@@ -71,7 +71,7 @@ useEffect(() => {
 
       const clean: Card[] = (data || [])
         .map((c: any) => ({
-          id: String(c.card_set_id || c.id),
+          id: String(c.card_set_id ?? c.card_id ?? c.id),
           name: c.card_name || c.name,
           image_url: c.card_image || c.image_url || null,
           rarity: c.rarity || '—',
