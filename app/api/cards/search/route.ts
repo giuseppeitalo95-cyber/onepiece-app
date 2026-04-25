@@ -37,14 +37,6 @@ const filteredCards = allCards.filter((c: any) => {
   return name.includes(query) || id.includes(query)
 })
 
-    // Remove duplicates based on card_set_id
-    const seen = new Set<string>()
-    const uniqueCards = filteredCards.filter((c: any) => {
-      if (seen.has(c.card_set_id)) return false
-      seen.add(c.card_set_id)
-      return true
-    })
-
     // 🔥 CERCA ANCHE NEL DATABASE SUPABASE
     const { createClient } = await import('@supabase/supabase-js')
     const supabase = createClient(
@@ -78,25 +70,17 @@ const filteredCards = allCards.filter((c: any) => {
       is_from_database: true
     }))
 
-    console.log('🔄 [SEARCH] API cards:', uniqueCards.length, 'DB cards:', dbCardsFormatted.length)
+    console.log('🔄 [SEARCH] API cards:', filteredCards.length, 'DB cards:', dbCardsFormatted.length)
 
     // Combina carte API esterne + carte database
-    const allCardsCombined = [...uniqueCards, ...dbCardsFormatted]
+    const allCardsCombined = [...filteredCards, ...dbCardsFormatted]
 
     console.log('📊 [SEARCH] Total combined cards:', allCardsCombined.length)
 
-    // Rimuovi duplicati finali basati su ID o nome
-    const finalSeen = new Set<string>()
-    const finalCards = allCardsCombined.filter((c: any) => {
-      const identifier = c.card_set_id || c.id || c.name
-      if (finalSeen.has(identifier)) return false
-      finalSeen.add(identifier)
-      return true
-    })
 
-    console.log('✅ [SEARCH] Final cards after deduplication:', finalCards.length)
 
-    const cards = finalCards.slice(0, 50).map((c: any) => ({
+
+    const cards = allCardsCombined.slice(0, 50).map((c: any) => ({
       id: c.card_set_id || c.id,
       name: c.card_name || c.name,
       image_url: c.card_image || c.image_url || null,
