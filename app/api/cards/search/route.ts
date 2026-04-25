@@ -28,11 +28,14 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-    const query = q.toLowerCase()
+   const normalize = (str: string) =>
+  str.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const query = normalize(q)
 
 const filteredCards = allCards.filter((c: any) => {
-  const name = (c.card_name || '').toLowerCase()
-  const id = (c.card_set_id || c.id || '').toLowerCase()
+  const name = normalize(c.card_name || '')
+const id = normalize(c.card_set_id || c.id || '')
 
   return name.includes(query) || id.includes(query)
 })
@@ -46,9 +49,14 @@ const filteredCards = allCards.filter((c: any) => {
 
     console.log('🔍 [SEARCH] Searching for:', q)
     const { data: dbCards, error: dbError } = await supabase
-      .from('cards')
-      .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power')
-      .or(`name.ilike.%${q}%,card_id.ilike.%${q}%`)
+  .from('cards')
+  .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power')
+const dbCardsFiltered = (dbCards || []).filter((c: any) => {
+  const name = normalize(c.name || '')
+  const id = normalize(c.card_id || '')
+
+  return name.includes(query) || id.includes(query)
+})
 
     if (dbError) {
       console.error('❌ [SEARCH] Database search error:', dbError)
@@ -57,7 +65,7 @@ const filteredCards = allCards.filter((c: any) => {
     }
 
     // Converti le carte del database nel formato API
-    const dbCardsFormatted = (dbCards || []).map((card: any) => ({
+   const dbCardsFormatted = dbCardsFiltered.map((card: any) => ({
       id: card.card_id,
       name: card.name,
       image_url: card.image_url,
