@@ -32,19 +32,15 @@ export async function GET(req: Request) {
   str.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 const query = normalize(q)
-const isProbablyId =
-  /^[a-z]{2}\d{2}/i.test(q.toLowerCase()) || /^[a-z]{2}\d{2}-\d+/i.test(q.toLowerCase())
 
-const filteredCards = allCards.filter((c: any) => {
+  const filteredCards = allCards.filter((c: any) => {
   const name = normalize(c.card_name || '')
   const id = normalize(c.card_set_id || c.id || '')
 
-  if (isProbablyId) {
-    return id.includes(query)
-  }
-
-  return name.includes(query)
+  return name.includes(query) || id.includes(query)
 })
+  
+
 
     // 🔥 CERCA ANCHE NEL DATABASE SUPABASE
     const { createClient } = await import('@supabase/supabase-js')
@@ -61,11 +57,7 @@ const dbCardsFiltered = (dbCards || []).filter((c: any) => {
   const name = normalize(c.name || '')
   const id = normalize(c.card_id || '')
 
-  if (isProbablyId) {
-  return id.includes(query)
-}
-
-return name.includes(query)
+  return name.includes(query) || id.includes(query)
 })
 
     if (dbError) {
