@@ -71,6 +71,7 @@ useEffect(() => {
 
       const clean: Card[] = (data || [])
         .map((c: any) => ({
+          
           id: String(c.card_set_id ?? c.card_id ?? c.id),
           name: c.card_name || c.name,
           image_url: c.card_image || c.image_url || null,
@@ -210,7 +211,7 @@ useEffect(() => {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-white">Carta assente?</p>
-            <p className="text-sm text-slate-300">Aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
+            <p className="text-sm text-slate-300">Cercala sia per nome carta che per OP-Numero, stiamo risolvendo i problemi di ricerca. In caso non ci fosse propio aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
           </div>
           <button
             onClick={() => setShowReportForm((prev) => !prev)}
