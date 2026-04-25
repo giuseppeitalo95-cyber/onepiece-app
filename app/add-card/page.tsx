@@ -51,56 +51,57 @@ export default function AddCard() {
   }, [])
 
   // SEARCH
-  useEffect(() => {
-    const search = async () => {
-      const q = query.trim()
+// SEARCH
+useEffect(() => {
+  const search = async () => {
+    const q = query.trim()
 
-      if (q.length < 2) {
-        setCards([])
-        return
-      }
-
-      setLoading(true)
-
-      try {
-        const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
-        const data = await res.json()
-
-        const seen = new Set<string>()
-
-        const clean: Card[] = (data || [])
-          .map((c: any) => ({
-            id: String(c.card_set_id || c.id),
-            name: c.card_name || c.name,
-            image_url: c.card_image || c.image_url || null,
-            rarity: c.rarity || '—',
-
-            // 🔥 STATISTICHE API
-            card_color: c.card_color ?? null,
-            card_type: c.card_type ?? null,
-            card_cost: c.card_cost ? Number(c.card_cost) : null,
-            card_power: c.card_power ? Number(c.card_power) : null,
-            market_price: c.market_price ? Number(c.market_price) : null,
-            inventory_price: c.inventory_price ? Number(c.inventory_price) : null,
-          }))
-          .filter((c: Card) => {
-            if (seen.has(c.id)) return false
-            seen.add(c.id)
-            return true
-          })
-          .slice(0, 24)
-
-        setCards(clean)
-      } catch {
-        setCards([])
-      }
-
-      setLoading(false)
+    if (q.length < 2) {
+      setCards([])
+      return
     }
 
-    const t = setTimeout(search, 300)
-    return () => clearTimeout(t)
-  }, [query])
+    setLoading(true)
+
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+
+      const seen = new Set<string>()
+
+      const clean: Card[] = (data || [])
+        .map((c: any) => ({
+          id: String(c.card_set_id || c.id),
+          name: c.card_name || c.name,
+          image_url: c.card_image || c.image_url || null,
+          rarity: c.rarity || '—',
+
+          card_color: c.card_color ?? null,
+          card_type: c.card_type ?? null,
+          card_cost: c.card_cost ? Number(c.card_cost) : null,
+          card_power: c.card_power ? Number(c.card_power) : null,
+          market_price: c.market_price ? Number(c.market_price) : null,
+          inventory_price: c.inventory_price ? Number(c.inventory_price) : null,
+        }))
+        .filter((c: Card) => {
+          if (seen.has(c.id)) return false
+          seen.add(c.id)
+          return true
+        })
+        .slice(0, 24)
+
+      setCards(clean)
+
+    } catch {
+      setCards([])
+    }
+
+    setLoading(false)
+  }
+
+  const t = setTimeout(search, 300)
+  return () => clearTimeout(t)
+}, [query])
 
   // ADD CARD
   const addCard = async (card: Card) => {
