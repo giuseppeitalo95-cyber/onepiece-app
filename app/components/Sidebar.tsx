@@ -13,11 +13,10 @@ type NavItemProps = {
 }
 
 const navItems = [
+  { label: 'Scanner', href: '/scan', key: 'scan' },
   { label: 'Collezione', href: '/dashboard', key: 'collezione' },
   { label: 'Amici', href: '/friends', key: 'amici' },
   { label: 'Ricerca Carta', href: '/search', key: 'ricerca' },
-  { label: 'Statistiche', href: '/dashboard#stats', key: 'statistiche' },
-  { label: 'Deck Meta', href: '/dashboard#meta', key: 'deckmeta' },
   { label: 'Profilo', href: '/profile', key: 'profilo' },
 ]
 

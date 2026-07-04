@@ -41,7 +41,7 @@ export default function Callback() {
       }
 
       const firstAccess = !profileData?.username
-      router.replace(firstAccess ? '/profile' : '/dashboard')
+      router.replace(firstAccess ? '/profile' : '/scan')
     }
 
     handle()

@@ -52,7 +52,7 @@ const query = normalize(q)
     console.log('🔍 [SEARCH] Searching for:', q)
     const { data: dbCards, error: dbError } = await supabase
   .from('cards')
-  .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power')
+  .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
 const dbCardsFiltered = (dbCards || []).filter((c: any) => {
   const name = normalize(c.name || '')
   const id = normalize(c.card_id || '')
@@ -76,6 +76,8 @@ const dbCardsFiltered = (dbCards || []).filter((c: any) => {
       card_type: card.card_type,
       card_cost: card.card_cost,
       card_power: card.card_power,
+      market_price: card.market_price,
+      inventory_price: card.inventory_price,
       // Aggiungi flag per identificare carte del database
       is_from_database: true
     }))
