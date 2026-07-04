@@ -206,10 +206,10 @@ export default function Dashboard() {
             <div className="relative flex flex-col items-center justify-center px-2">
               <img
                 src="/luffyhatlogo.webp"
-                className="absolute -top-2 w-10 h-10 sm:w-12 sm:h-12 object-contain onepiece-float"
+                className="absolute -top-6 sm:-top-8 w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg onepiece-float"
                 alt="Logo Cap"
               />
-              <span className="pt-4 sm:pt-5 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
+              <span className="pt-8 sm:pt-10 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
                 OPV
               </span>
             </div>
@@ -307,24 +307,34 @@ export default function Dashboard() {
             <p className="text-gray-400 text-sm">Caricamento collezione...</p>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-2 mt-4">
 
             {[...filteredCards]
   .sort((a, b) => {
     const parse = (id: string) => {
-      const match = id.match(/OP(\d+)-(\d+)/i)
-      if (!match) return { set: 0, num: 0 }
-
-      return {
-        set: parseInt(match[1], 10),
-        num: parseInt(match[2], 10),
+      const matchOp = id.match(/OP(\d+)-(\d+)/i)
+      const matchEb = id.match(/EB(\d+)-(\d+)/i)
+      
+      if (matchOp) {
+        return { type: 'op', set: parseInt(matchOp[1], 10), num: parseInt(matchOp[2], 10) }
       }
+      if (matchEb) {
+        return { type: 'eb', set: parseInt(matchEb[1], 10), num: parseInt(matchEb[2], 10) }
+      }
+      return { type: 'other', set: 0, num: 0 }
     }
 
     const A = parse(a.card_id)
     const B = parse(b.card_id)
 
-    // OP15 sopra OP14 ecc
+    // EB prima di OP
+    if (A.type !== B.type) {
+      if (A.type === 'eb') return -1
+      if (B.type === 'eb') return 1
+      return 0
+    }
+
+    // all'interno dello stesso tipo: set decrescente (15 → 14 → 13)
     if (A.set !== B.set) return B.set - A.set
 
     // dentro set: 001 → 002 → 025
@@ -333,7 +343,7 @@ export default function Dashboard() {
   .map((item) => (
               <div
                 key={item.card_id}
-                className="relative bg-slate-900 rounded-xl p-2 sm:p-3 border border-slate-700 hover:border-amber-400/60 transition onepiece-card-hover onepiece-border-glow"
+                className="relative bg-slate-900 rounded-lg p-1.5 sm:p-2 border border-slate-700 hover:border-amber-400/60 transition onepiece-card-hover onepiece-border-glow"
               >
 
                 {/* DELETE BUTTON */}

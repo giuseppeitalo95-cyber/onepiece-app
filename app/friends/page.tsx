@@ -298,9 +298,9 @@ export default function FriendsPage() {
                           onClick={() => openProfile(friend)}
                           className="group flex items-center gap-4 rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4 text-left transition hover:border-amber-400/50"
                         >
-                          <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-800 text-2xl text-amber-300 overflow-hidden">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-2xl text-amber-300 overflow-hidden">
                             {friend.avatar_url ? (
-                              <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-contain" />
+                              <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" />
                             ) : (
                               <span>{(friend.username || 'U').charAt(0).toUpperCase()}</span>
                             )}
@@ -338,9 +338,9 @@ export default function FriendsPage() {
                           <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4">
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-3xl bg-slate-800 text-amber-300 overflow-hidden">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                                   {sender?.avatar_url ? (
-                                    <img src={sender.avatar_url} alt={sender.username || 'Avatar'} className="h-full w-full object-contain" />
+                                    <img src={sender.avatar_url} alt={sender.username || 'Avatar'} className="h-full w-full object-cover" />
                                   ) : (
                                     <span>{(sender?.username || 'U').charAt(0).toUpperCase()}</span>
                                   )}
@@ -396,9 +396,9 @@ export default function FriendsPage() {
                         onClick={() => openProfile(profile)}
                         className="flex min-w-0 items-center gap-3 text-left"
                       >
-                        <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-800 text-amber-300 overflow-hidden">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                           {profile.avatar_url ? (
-                            <img src={profile.avatar_url} alt={profile.username || 'Avatar'} className="h-full w-full object-contain" />
+                            <img src={profile.avatar_url} alt={profile.username || 'Avatar'} className="h-full w-full object-cover" />
                           ) : (
                             <span>{(profile.username || 'U').charAt(0).toUpperCase()}</span>
                           )}

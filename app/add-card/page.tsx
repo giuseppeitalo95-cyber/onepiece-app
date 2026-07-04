@@ -67,8 +67,6 @@ useEffect(() => {
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
       const data = await res.json()
 
-      const seen = new Set<string>()
-
       const clean: Card[] = (data || [])
         .map((c: any) => ({
           
@@ -84,12 +82,7 @@ useEffect(() => {
           market_price: c.market_price ? Number(c.market_price) : null,
           inventory_price: c.inventory_price ? Number(c.inventory_price) : null,
         }))
-        .filter((c: Card) => {
-          if (seen.has(c.id)) return false
-          seen.add(c.id)
-          return true
-        })
-        .slice(0, 24)
+        .slice(0, 50)
 
       setCards(clean)
 
