@@ -223,23 +223,55 @@ export default function ScanPage() {
   }
 
   const runOcrOnCanvas = async (canvas: HTMLCanvasElement) => {
-    const tesseract = (window as Window & { Tesseract?: any }).Tesseract
-    if (!tesseract) return null
-
     try {
-      const result = await tesseract.recognize(canvas, 'eng', {
-        logger: () => undefined,
-        psm: 6,
-        oem: 1,
-        whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-:().'
+      const dataUrl = canvas.toDataURL('image/png')
+      const res = await fetch('/api/cards/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl })
       })
-      return result?.data?.text || null
+      const data = await res.json()
+      return typeof data?.text === 'string' ? data.text : null
     } catch {
       return null
     }
   }
 
-  const searchCardByText = async (query: string) => {
+  const compareImageToCandidate = async (sourceCanvas: HTMLCanvasElement, candidateUrl: string) => {
+    try {
+      const image = new Image()
+      image.src = `/api/cards/recognition-image?url=${encodeURIComponent(candidateUrl)}`
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error('load failed'))
+      })
+
+      const candidateCanvas = document.createElement('canvas')
+      candidateCanvas.width = 256
+      candidateCanvas.height = 256
+      const ctx = candidateCanvas.getContext('2d')
+      if (!ctx) return Number.POSITIVE_INFINITY
+      ctx.drawImage(image, 0, 0, candidateCanvas.width, candidateCanvas.height)
+
+      const sourceData = sourceCanvas.getContext('2d')?.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height)
+      const candidateData = ctx.getImageData(0, 0, candidateCanvas.width, candidateCanvas.height)
+      if (!sourceData || !candidateData) return Number.POSITIVE_INFINITY
+
+      let diff = 0
+      const total = Math.min(sourceData.data.length, candidateData.data.length)
+      for (let i = 0; i < total; i += 4) {
+        diff += Math.abs(sourceData.data[i] - candidateData.data[i])
+        diff += Math.abs(sourceData.data[i + 1] - candidateData.data[i + 1])
+        diff += Math.abs(sourceData.data[i + 2] - candidateData.data[i + 2])
+      }
+
+      return diff / total
+    } catch {
+      return Number.POSITIVE_INFINITY
+    }
+  }
+
+  const searchCardByText = async (query: string, cropCanvas: HTMLCanvasElement) => {
     if (!query) return null
 
     try {
@@ -276,6 +308,11 @@ export default function ScanPage() {
         const isLikelyCardId = /(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}/i.test(query)
         if (isLikelyCardId && normalizedId && normalizedId.includes(normalizedQuery)) score += 0.5
 
+        if (candidate.card_image || candidate.image_url) {
+          const imageScore = await compareImageToCandidate(cropCanvas, candidate.card_image || candidate.image_url)
+          if (imageScore < 65000000) score += 0.5
+        }
+
         if (!bestMatch || score > bestMatch.score) {
           bestMatch = {
             card: {
@@ -292,7 +329,7 @@ export default function ScanPage() {
         }
       }
 
-      return bestMatch && bestMatch.score > 1.2 ? bestMatch.card : null
+      return bestMatch && bestMatch.score > 1.3 ? bestMatch.card : null
     } catch {
       return null
     }
@@ -451,7 +488,7 @@ export default function ScanPage() {
       return
     }
 
-    const cardMatch = await searchCardByText(query)
+    const cardMatch = await searchCardByText(query, preprocessedCanvas)
     if (cardMatch) {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
