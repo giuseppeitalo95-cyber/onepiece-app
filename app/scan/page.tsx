@@ -272,45 +272,62 @@ export default function ScanPage() {
   }
 
   const searchCardByText = async (query: string, cropCanvas: HTMLCanvasElement) => {
-    if (!query) return null
-
     try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query || '')}`)
       const results = await res.json()
 
-      if (!Array.isArray(results) || results.length === 0) return null
+      // FIX: se la query testuale non trova nulla, proviamo a confrontare l'immagine
+      // con TUTTE le carte di riferimento caricate all'avvio (referenceCards), non solo
+      // con i risultati della ricerca testuale. Così il riconoscimento per immagine
+      // funziona anche quando l'OCR non ha letto nulla di utile.
+      const candidatePool = Array.isArray(results) && results.length > 0 ? results : referenceCards
 
-      const normalizedQuery = normalizeText(query)
+      if (!Array.isArray(candidatePool) || candidatePool.length === 0) return null
+
+      const normalizedQuery = normalizeText(query || '')
       const queryTokens = normalizedQuery.split(' ').filter(Boolean)
       let bestMatch: { card: ScannedCard; score: number } | null = null
 
-      for (const candidate of results) {
+      // Limitiamo il confronto immagine a un massimo di carte per non appesantire troppo
+      // (se il pool viene dai risultati di ricerca testuale è già piccolo e mirato;
+      // se viene dal pool di riferimento completo, confrontiamo un sottoinsieme)
+      const poolForImageCompare = candidatePool.length > 60 ? candidatePool.slice(0, 60) : candidatePool
+
+      for (const candidate of poolForImageCompare) {
         const name = String(candidate.card_name || candidate.name || '')
         const id = String(candidate.card_set_id || candidate.card_id || candidate.id || '')
         const normalizedName = normalizeText(name)
         const normalizedId = normalizeText(id)
 
         let score = 0
-        const exactCode = normalizedQuery.includes(normalizedId) || normalizedId.includes(normalizedQuery)
-        if (exactCode) score += 1.4
-        if (normalizedId && normalizedQuery.includes(normalizedId)) score += 0.8
-        if (normalizedId && normalizedId.includes(normalizedQuery)) score += 0.8
-        if (normalizedName && normalizedQuery.includes(normalizedName)) score += 0.9
-        if (normalizedName && normalizedName.includes(normalizedQuery)) score += 0.9
 
-        const nameTokens = normalizedName.split(' ').filter(Boolean)
-        const overlap = queryTokens.filter(token => nameTokens.includes(token)).length
-        score += overlap * 0.2
+        if (normalizedQuery) {
+          const exactCode = normalizedQuery.includes(normalizedId) || normalizedId.includes(normalizedQuery)
+          if (exactCode) score += 1.4
+          if (normalizedId && normalizedQuery.includes(normalizedId)) score += 0.8
+          if (normalizedId && normalizedId.includes(normalizedQuery)) score += 0.8
+          if (normalizedName && normalizedQuery.includes(normalizedName)) score += 0.9
+          if (normalizedName && normalizedName.includes(normalizedQuery)) score += 0.9
 
-        const hasStrongName = normalizedName && (normalizedName.includes(normalizedQuery) || overlap >= 2)
-        if (hasStrongName) score += 0.3
+          const nameTokens = normalizedName.split(' ').filter(Boolean)
+          const overlap = queryTokens.filter(token => nameTokens.includes(token)).length
+          score += overlap * 0.2
 
-        const isLikelyCardId = /(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}/i.test(query)
-        if (isLikelyCardId && normalizedId && normalizedId.includes(normalizedQuery)) score += 0.5
+          const hasStrongName = normalizedName && (normalizedName.includes(normalizedQuery) || overlap >= 2)
+          if (hasStrongName) score += 0.3
 
+          const isLikelyCardId = /(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}/i.test(query || '')
+          if (isLikelyCardId && normalizedId && normalizedId.includes(normalizedQuery)) score += 0.5
+        }
+
+        // FIX: il confronto immagine ora pesa molto di più. Se la foto è molto simile
+        // alla carta candidata, questo da solo può bastare per identificarla anche
+        // senza testo leggibile.
         if (candidate.card_image || candidate.image_url) {
           const imageScore = await compareImageToCandidate(cropCanvas, candidate.card_image || candidate.image_url)
-          if (imageScore < 65000000) score += 0.5
+          if (imageScore < 20000000) score += 1.5
+          else if (imageScore < 40000000) score += 0.9
+          else if (imageScore < 65000000) score += 0.5
         }
 
         if (!bestMatch || score > bestMatch.score) {
@@ -434,34 +451,51 @@ export default function ScanPage() {
     setDetectedRect(rect)
     setRecognitionMessage('Analisi del frame in corso...')
 
-    const cropCanvas = document.createElement('canvas')
-    cropCanvas.width = 720
-    cropCanvas.height = 720
-    const cropCtx = cropCanvas.getContext('2d')
+    // Ritaglio CODICE (striscia sottile in basso a sinistra)
+    const codeCropCanvas = document.createElement('canvas')
+    codeCropCanvas.width = 720
+    codeCropCanvas.height = 220
+    const codeCropCtx = codeCropCanvas.getContext('2d')
 
-    if (!cropCtx) return
+    // Ritaglio NOME (fascia vicino alla parte alta)
+    const nameCropCanvas = document.createElement('canvas')
+    nameCropCanvas.width = 720
+    nameCropCanvas.height = 220
+    const nameCropCtx = nameCropCanvas.getContext('2d')
 
-    const textRegionX = rect.x + rect.width * 0.08
-    const textRegionY = rect.y + rect.height * 0.58
-    const textRegionWidth = rect.width * 0.84
-    const textRegionHeight = rect.height * 0.3
+    if (!codeCropCtx || !nameCropCtx) return
 
-    cropCtx.drawImage(
+    const codeRegionX = rect.x + rect.width * 0.03
+    const codeRegionY = rect.y + rect.height * 0.925
+    const codeRegionWidth = rect.width * 0.55
+    const codeRegionHeight = rect.height * 0.06
+
+    codeCropCtx.drawImage(
       canvas,
-      textRegionX,
-      textRegionY,
-      textRegionWidth,
-      textRegionHeight,
-      0,
-      0,
-      cropCanvas.width,
-      cropCanvas.height
+      codeRegionX, codeRegionY, codeRegionWidth, codeRegionHeight,
+      0, 0, codeCropCanvas.width, codeCropCanvas.height
     )
 
-    const preprocessedCanvas = document.createElement('canvas')
-    preprocessedCanvas.width = 720
-    preprocessedCanvas.height = 720
-    preprocessForOcr(cropCanvas, preprocessedCanvas)
+    const nameRegionX = rect.x + rect.width * 0.06
+    const nameRegionY = rect.y + rect.height * 0.06
+    const nameRegionWidth = rect.width * 0.88
+    const nameRegionHeight = rect.height * 0.11
+
+    nameCropCtx.drawImage(
+      canvas,
+      nameRegionX, nameRegionY, nameRegionWidth, nameRegionHeight,
+      0, 0, nameCropCanvas.width, nameCropCanvas.height
+    )
+
+    const preprocessedCode = document.createElement('canvas')
+    preprocessedCode.width = 720
+    preprocessedCode.height = 220
+    preprocessForOcr(codeCropCanvas, preprocessedCode)
+
+    const preprocessedName = document.createElement('canvas')
+    preprocessedName.width = 720
+    preprocessedName.height = 220
+    preprocessForOcr(nameCropCanvas, preprocessedName)
 
     const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
     const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
@@ -476,19 +510,27 @@ export default function ScanPage() {
       return
     }
 
-    const ocrText = await runOcrOnCanvas(preprocessedCanvas)
-    if (!ocrText) {
-      setRecognitionMessage('Testo non leggibile. Avvicina la carta e riprova.')
-      return
+    const codeOcrText = await runOcrOnCanvas(preprocessedCode)
+    const nameOcrText = await runOcrOnCanvas(preprocessedName)
+
+    const codeQuery = codeOcrText ? extractCardQuery(codeOcrText) : null
+    const nameQuery = nameOcrText ? extractCardQuery(nameOcrText) : null
+    const query = codeQuery || nameQuery || ''
+
+    // FIX: la carta intera per il confronto immagine
+    const fullCardCanvas = document.createElement('canvas')
+    fullCardCanvas.width = 256
+    fullCardCanvas.height = 256
+    const fullCardCtx = fullCardCanvas.getContext('2d')
+    if (fullCardCtx) {
+      fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    const query = extractCardQuery(ocrText)
-    if (!query) {
-      setRecognitionMessage('Testo non abbastanza chiaro. Tieni la carta più ferma.')
-      return
-    }
+    // FIX: anche se il testo non è leggibile, proviamo comunque a riconoscere
+    // la carta SOLO tramite immagine (prima ci si fermava subito con "testo non leggibile")
+    setRecognitionMessage(query ? 'Cerco la carta...' : 'Testo non chiaro, provo a riconoscere dall\'immagine...')
 
-    const cardMatch = await searchCardByText(query, preprocessedCanvas)
+    const cardMatch = await searchCardByText(query, fullCardCanvas)
     if (cardMatch) {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
@@ -963,4 +1005,4 @@ export default function ScanPage() {
       </div>
     </div>
   )
-}
+}  

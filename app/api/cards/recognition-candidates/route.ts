@@ -1,8 +1,11 @@
 export async function GET() {
   try {
+    // FIX: aggiunto allSetCards (mancavano le carte dei set principali, quelle dei booster pack!)
+    // FIX: allPromos -> allPromoCards (endpoint sbagliato, dava sempre vuoto)
     const endpoints = [
+      'https://www.optcgapi.com/api/allSetCards/',
       'https://www.optcgapi.com/api/allSTCards/',
-      'https://www.optcgapi.com/api/allPromos/',
+      'https://www.optcgapi.com/api/allPromoCards/',
       'https://www.optcgapi.com/api/allDonCards/'
     ]
 
@@ -35,7 +38,7 @@ export async function GET() {
       })
     }
 
-    return Response.json(uniqueCards.slice(0, 120))
+    return Response.json(uniqueCards)
   } catch (err) {
     console.error('Recognition candidates error:', err)
     return Response.json([], { status: 500 })

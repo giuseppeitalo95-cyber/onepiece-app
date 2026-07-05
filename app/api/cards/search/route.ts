@@ -5,22 +5,30 @@ export async function GET(req: Request) {
   if (!q) return Response.json([])
 
   try {
-    // Fetch from multiple endpoints to expand the card database
+    // FIX: aggiunto allSetCards (carte dei set principali OP01-OP15, quelle dei booster pack!)
+    // FIX: allPromos -> allPromoCards (l'endpoint vecchio non esiste, dava sempre risultato vuoto)
+    // FIX: rimosso sets/filtered/?card_name= perché filtra SOLO per nome lato server e non
+    //      trova mai nulla quando la query è un codice tipo OP14-012
     const endpoints = [
-      `https://www.optcgapi.com/api/sets/filtered/?card_name=${encodeURIComponent(q)}`,
-      `https://www.optcgapi.com/api/allSTCards/`,
-      `https://www.optcgapi.com/api/allPromos/`,
-      `https://www.optcgapi.com/api/allDonCards/`
+      'https://www.optcgapi.com/api/allSetCards/',
+      'https://www.optcgapi.com/api/allSTCards/',
+      'https://www.optcgapi.com/api/allPromoCards/',
+      'https://www.optcgapi.com/api/allDonCards/'
     ]
 
     const fetchPromises = endpoints.map(async (url) => {
       try {
         const res = await fetch(url)
-        if (!res.ok) return []
+        if (!res.ok) {
+          console.error(`❌ [SEARCH] ${url} -> HTTP ${res.status}`)
+          return []
+        }
         const data = await res.json()
-        return Array.isArray(data) ? data : [data]
+        const arr = Array.isArray(data) ? data : [data]
+        console.log(`✅ [SEARCH] ${url} -> ${arr.length} carte`)
+        return arr
       } catch (err) {
-        console.error(`Error fetching ${url}:`, err)
+        console.error(`❌ [SEARCH] Errore fetch ${url}:`, err)
         return []
       }
     })
@@ -28,21 +36,19 @@ export async function GET(req: Request) {
     const results = await Promise.all(fetchPromises)
     const allCards = results.flat()
 
-   const normalize = (str: string) =>
-  str.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const normalize = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-const query = normalize(q)
+    const query = normalize(q)
 
-  const filteredCards = allCards.filter((c: any) => {
-  const name = normalize(c.card_name || '')
-  const id = normalize(c.card_set_id || c.id || '')
+    const filteredCards = allCards.filter((c: any) => {
+      const name = normalize(c.card_name || '')
+      const id = normalize(c.card_set_id || c.id || '')
+      return name.includes(query) || id.includes(query)
+    })
 
-  return name.includes(query) || id.includes(query)
-})
-  
-
-
-    console.log('🔄 [SEARCH] API cards:', filteredCards.length)
+    console.log('🔄 [SEARCH] Carte totali scaricate:', allCards.length)
+    console.log('🔄 [SEARCH] Carte filtrate per query "' + q + '":', filteredCards.length)
 
     const cards = filteredCards.map((c: any) => ({
       id: c.card_set_id || c.id,
@@ -58,7 +64,7 @@ const query = normalize(q)
       is_from_database: c.is_from_database || false
     }))
 
-    console.log('🚀 [SEARCH] Returning', cards.length, 'cards')
+    console.log('🚀 [SEARCH] Restituisco', cards.length, 'carte')
     return Response.json(cards)
 
   } catch (err) {
@@ -66,4 +72,3 @@ const query = normalize(q)
     return Response.json({ error: 'API error' }, { status: 500 })
   }
 }
-
