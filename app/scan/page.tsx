@@ -199,13 +199,39 @@ export default function ScanPage() {
     return words.slice(0, 4).join(' ')
   }
 
+  const preprocessForOcr = (sourceCanvas: HTMLCanvasElement, targetCanvas: HTMLCanvasElement) => {
+    const source = sourceCanvas.getContext('2d')
+    const target = targetCanvas.getContext('2d')
+    if (!source || !target) return
+
+    target.clearRect(0, 0, targetCanvas.width, targetCanvas.height)
+    target.drawImage(sourceCanvas, 0, 0, targetCanvas.width, targetCanvas.height)
+
+    const imageData = target.getImageData(0, 0, targetCanvas.width, targetCanvas.height)
+    const data = imageData.data
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      const gray = (r * 0.299 + g * 0.587 + b * 0.114)
+      const adjusted = gray > 140 ? 255 : 0
+      data[i] = adjusted
+      data[i + 1] = adjusted
+      data[i + 2] = adjusted
+    }
+    target.putImageData(imageData, 0, 0)
+  }
+
   const runOcrOnCanvas = async (canvas: HTMLCanvasElement) => {
     const tesseract = (window as Window & { Tesseract?: any }).Tesseract
     if (!tesseract) return null
 
     try {
       const result = await tesseract.recognize(canvas, 'eng', {
-        logger: () => undefined
+        logger: () => undefined,
+        psm: 6,
+        oem: 1,
+        whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-:().'
       })
       return result?.data?.text || null
     } catch {
@@ -378,17 +404,27 @@ export default function ScanPage() {
 
     if (!cropCtx) return
 
+    const textRegionX = rect.x + rect.width * 0.08
+    const textRegionY = rect.y + rect.height * 0.58
+    const textRegionWidth = rect.width * 0.84
+    const textRegionHeight = rect.height * 0.3
+
     cropCtx.drawImage(
       canvas,
-      rect.x,
-      rect.y,
-      rect.width,
-      rect.height,
+      textRegionX,
+      textRegionY,
+      textRegionWidth,
+      textRegionHeight,
       0,
       0,
       cropCanvas.width,
       cropCanvas.height
     )
+
+    const preprocessedCanvas = document.createElement('canvas')
+    preprocessedCanvas.width = 720
+    preprocessedCanvas.height = 720
+    preprocessForOcr(cropCanvas, preprocessedCanvas)
 
     const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
     const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
@@ -403,7 +439,7 @@ export default function ScanPage() {
       return
     }
 
-    const ocrText = await runOcrOnCanvas(cropCanvas)
+    const ocrText = await runOcrOnCanvas(preprocessedCanvas)
     if (!ocrText) {
       setRecognitionMessage('Testo non leggibile. Avvicina la carta e riprova.')
       return
@@ -517,6 +553,33 @@ export default function ScanPage() {
     setShowSummary(true)
     setPendingRecognition(null)
     setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')
+  }
+
+  const handleSummarySwipe = (direction: 'left' | 'right') => {
+    if (scannedCards.length <= 1) return
+    if (direction === 'left') {
+      setCarouselIndex(prev => (prev + 1) % scannedCards.length)
+    } else {
+      setCarouselIndex(prev => (prev - 1 + scannedCards.length) % scannedCards.length)
+    }
+  }
+
+  const handleTouchStart = (event: any) => {
+    if (event.touches?.length) {
+      const touch = event.touches[0]
+      ;(event.currentTarget as HTMLDivElement).dataset.touchStart = String(touch.clientX)
+    }
+  }
+
+  const handleTouchEnd = (event: any) => {
+    const start = Number((event.currentTarget as HTMLDivElement).dataset.touchStart || '0')
+    const end = event.changedTouches?.[0]?.clientX ?? 0
+    const delta = end - start
+    if (delta < -60) {
+      handleSummarySwipe('left')
+    } else if (delta > 60) {
+      handleSummarySwipe('right')
+    }
   }
 
   const searchCard = async (query: string) => {
@@ -745,58 +808,52 @@ export default function ScanPage() {
             </div>
           </div>
 
-          {(showSummary || scannedCards.length > 0) && (
-            <div className="border-t border-slate-700 bg-slate-900/50 px-3 py-4 sm:px-6">
-              <div className="mx-auto max-w-6xl">
-                <div className="mb-4 flex items-center justify-between">
+          {showSummary && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 px-3 py-4 sm:px-6">
+              <div className="w-full max-w-[460px] rounded-[30px] border border-amber-400/30 bg-slate-900/95 p-3 shadow-[0_25px_70px_rgba(0,0,0,0.45)]">
+                <div className="mb-3 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Riepilogo</p>
                     <h3 className="text-sm font-bold text-amber-300">{scannedCards.length > 0 ? 'Carte confermate' : 'Nessuna carta confermata'}</h3>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCarouselIndex(prev => Math.max(prev - 1, 0))}
-                      className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200 transition hover:border-amber-400/40 hover:text-amber-300"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <button
-                      onClick={() => setCarouselIndex(prev => Math.min(prev + 1, scannedCards.length - 1))}
-                      className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200 transition hover:border-amber-400/40 hover:text-amber-300"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setShowSummary(false)}
+                    className="rounded-full border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200"
+                  >
+                    Chiudi
+                  </button>
                 </div>
 
                 {scannedCards.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-800/50 p-4 text-center text-sm text-slate-400">
+                  <div className="rounded-[24px] border border-dashed border-slate-700 bg-slate-800/50 p-5 text-center text-sm text-slate-400">
                     Nessuna carta è stata confermata. Tieni la carta al centro e conferma il popup quando appare.
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4">
-                      {prevCard && (
-                      <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
-                        <img src={prevCard.image_url || ''} alt={prevCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
-                      </div>
-                    )}
+                  <div
+                    className="space-y-3"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                  >
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>{carouselIndex + 1} / {scannedCards.length}</span>
+                      <span>Trascina a sinistra o destra</span>
+                    </div>
 
                     {currentCard && (
-                      <div className="w-full max-w-[240px] rounded-[24px] border border-amber-400/20 bg-slate-800/70 p-3 shadow-[0_20px_45px_rgba(0,0,0,0.25)]">
+                      <div className="rounded-[24px] border border-amber-400/20 bg-slate-800/70 p-3 shadow-[0_20px_45px_rgba(0,0,0,0.25)]">
                         <img
                           src={currentCard.image_url || ''}
                           alt={currentCard.name || 'Carta'}
-                          className="aspect-[3/4] w-full rounded-[18px] object-cover"
+                          className="aspect-[3/4] w-full rounded-[18px] object-contain"
                         />
-                        <div className="mt-3 space-y-1 text-center">
-                          <p className="text-sm font-bold text-white">{currentCard.name}</p>
+                        <div className="mt-3 space-y-2 text-center">
+                          <p className="text-lg font-bold text-white">{currentCard.name}</p>
                           <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">{currentCard.card_id}</p>
-                          <div className="mt-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2">
-                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Valore</p>
+                          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
                             <p className="text-base font-bold text-amber-300">{((currentCard.market_price || currentCard.inventory_price || 0)).toFixed(2)}€</p>
                           </div>
-                          <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
+                          <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
                             <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.rarity || '—'}</span>
                             <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.card_type || '—'}</span>
                           </div>
@@ -819,25 +876,19 @@ export default function ScanPage() {
                       </div>
                     )}
 
-                      {nextCard && (
-                        <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
-                          <img src={nextCard.image_url || ''} alt={nextCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="w-full lg:max-w-[240px]">
-                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-                        {scannedCards.map((card, index) => (
-                          <button
-                            key={card.id}
-                            onClick={() => setCarouselIndex(index)}
-                            className={`rounded-2xl border p-1.5 transition ${index === carouselIndex ? 'border-amber-400/50 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'}`}
-                          >
-                            <img src={card.image_url || ''} alt={card.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleSummarySwipe('right')}
+                        className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleSummarySwipe('left')}
+                        className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
                   </div>
                 )}
