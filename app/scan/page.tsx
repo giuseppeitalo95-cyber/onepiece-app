@@ -197,6 +197,23 @@ export default function ScanPage() {
     setRecognitionMessage(`Carta riconosciuta: ${card.name}`)
   }
 
+  const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
+    const targetAspect = 0.72
+    const centerX = sourceRect.x + sourceRect.width / 2
+    const centerY = sourceRect.y + sourceRect.height / 2
+    const baseWidth = Math.max(sourceRect.width, 120)
+    const baseHeight = Math.max(sourceRect.height, 120)
+    const expandedWidth = Math.min(canvasWidth * 0.82, Math.max(baseWidth * 1.35, baseHeight * targetAspect * 1.15))
+    const expandedHeight = Math.min(canvasHeight * 0.9, Math.max(baseHeight * 1.3, expandedWidth / targetAspect))
+
+    return {
+      x: Math.max(0, Math.min(canvasWidth - expandedWidth, centerX - expandedWidth / 2)),
+      y: Math.max(0, Math.min(canvasHeight - expandedHeight, centerY - expandedHeight / 2)),
+      width: Math.max(80, Math.min(canvasWidth, expandedWidth)),
+      height: Math.max(80, Math.min(canvasHeight, expandedHeight))
+    }
+  }
+
   const detectCardFromFrame = async () => {
     if (!videoRef.current || !processingCanvasRef.current || referenceCards.length === 0) return
 
@@ -238,13 +255,8 @@ export default function ScanPage() {
           const ratio = r.width / Math.max(r.height, 1)
           const centered = Math.abs((r.x + r.width / 2) - canvas.width / 2) / canvas.width < 0.35
 
-          if (area > bestArea && area > 18000 && ratio > 0.55 && ratio < 1.45 && centered) {
-            rect = {
-              x: Math.max(0, r.x - 14),
-              y: Math.max(0, r.y - 14),
-              width: Math.min(canvas.width - Math.max(0, r.x - 14), r.width + 28),
-              height: Math.min(canvas.height - Math.max(0, r.y - 14), r.height + 28)
-            }
+          if (area > bestArea && area > 12000 && ratio > 0.45 && ratio < 1.7 && centered) {
+            rect = estimateCardRect({ x: r.x, y: r.y, width: r.width, height: r.height }, canvas.width, canvas.height)
             bestArea = area
           }
         }
@@ -363,12 +375,20 @@ export default function ScanPage() {
       }
     }
 
-    const threshold = cv?.Mat ? 0.42 : 0.24
-    if (bestMatch && (bestMatch.templateScore >= threshold || bestMatch.score < 0.24)) {
+    const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
+    const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
+
+    if (bestMatch && hasCardShape && bestMatch.score < 0.28) {
       addRecognizedCard(bestMatch.card)
     } else {
-      setRecognitionMessage('Carta non ancora riconosciuta. Inquadra la carta più vicina al centro.')
+      setRecognitionMessage('Carta non ancora riconosciuta. Tieni la carta al centro e riprova.')
     }
+  }
+
+  const handleScanCard = async () => {
+    if (!cameraActive || !cameraReady) return
+    setRecognitionMessage('Scansione in corso...')
+    await detectCardFromFrame()
   }
 
   const startCamera = async () => {
@@ -633,12 +653,22 @@ export default function ScanPage() {
 
               <div className="mt-4 space-y-3">
                 <div className="flex flex-col items-center gap-2">
-                  <button
-                    onClick={cameraActive ? stopCamera : startCamera}
-                    className={`flex h-16 w-16 items-center justify-center rounded-full border text-white shadow-lg transition ${cameraActive ? 'border-red-500/40 bg-red-500/20 hover:bg-red-500/30' : 'border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 hover:shadow-amber-400/30'}`}
-                  >
-                    <Camera size={24} />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={cameraActive ? stopCamera : startCamera}
+                      className={`flex h-16 w-16 items-center justify-center rounded-full border text-white shadow-lg transition ${cameraActive ? 'border-red-500/40 bg-red-500/20 hover:bg-red-500/30' : 'border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 hover:shadow-amber-400/30'}`}
+                    >
+                      <Camera size={24} />
+                    </button>
+                    {cameraActive && cameraReady && (
+                      <button
+                        onClick={handleScanCard}
+                        className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
+                      >
+                        Scansiona carta
+                      </button>
+                    )}
+                  </div>
                   <p className="text-sm font-semibold text-slate-300">{cameraActive ? 'Ferma camera' : 'Avvia scan'}</p>
                 </div>
 
