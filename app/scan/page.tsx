@@ -132,7 +132,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, referenceCards.length])
+  }, [cameraActive, cameraReady, referenceCards.length, opencvReady])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -157,24 +157,33 @@ export default function ScanPage() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
-    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    const bins = new Array(16).fill(0)
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = 96
+    tempCanvas.height = 96
+    const tempCtx = tempCanvas.getContext('2d')
+    if (!tempCtx) return null
+
+    tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height)
+    const { data } = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
+    const descriptor = new Array<number>(data.length / 4)
+
     for (let i = 0; i < data.length; i += 4) {
       const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
-      const bin = Math.min(15, Math.floor(avg / 16))
-      bins[bin] += 1
+      descriptor[i / 4] = avg / 255
     }
 
-    return bins
+    return descriptor
   }
 
   const compareDescriptors = (a: Array<number> | null, b: Array<number> | null) => {
     if (!a || !b) return Number.POSITIVE_INFINITY
+    if (a.length !== b.length) return Number.POSITIVE_INFINITY
+
     let diff = 0
     for (let i = 0; i < a.length; i += 1) {
       diff += Math.abs(a[i] - b[i])
     }
-    return diff
+    return diff / a.length
   }
 
   const addRecognizedCard = (card: ScannedCard) => {
@@ -224,10 +233,18 @@ export default function ScanPage() {
         cv.approxPolyDP(contour, approx, 0.02 * peri, true)
 
         if (approx.rows === 4) {
-          const area = cv.contourArea(contour)
-          if (area > bestArea && area > 8000) {
-            const r = cv.boundingRect(contour)
-            rect = { x: r.x, y: r.y, width: r.width, height: r.height }
+          const area = Math.abs(cv.contourArea(contour))
+          const r = cv.boundingRect(contour)
+          const ratio = r.width / Math.max(r.height, 1)
+          const centered = Math.abs((r.x + r.width / 2) - canvas.width / 2) / canvas.width < 0.35
+
+          if (area > bestArea && area > 18000 && ratio > 0.55 && ratio < 1.45 && centered) {
+            rect = {
+              x: Math.max(0, r.x - 14),
+              y: Math.max(0, r.y - 14),
+              width: Math.min(canvas.width - Math.max(0, r.x - 14), r.width + 28),
+              height: Math.min(canvas.height - Math.max(0, r.y - 14), r.height + 28)
+            }
             bestArea = area
           }
         }
@@ -256,8 +273,8 @@ export default function ScanPage() {
     setRecognitionMessage('Analisi del frame in corso...')
 
     const cropCanvas = document.createElement('canvas')
-    cropCanvas.width = 320
-    cropCanvas.height = 320
+    cropCanvas.width = 256
+    cropCanvas.height = 256
     const cropCtx = cropCanvas.getContext('2d')
 
     if (!cropCtx) return
@@ -277,27 +294,54 @@ export default function ScanPage() {
     const descriptor = readFrameDescriptor(cropCanvas)
     if (!descriptor) return
 
-    let bestMatch: { card: ScannedCard; score: number } | null = null
+    let bestMatch: { card: ScannedCard; score: number; templateScore: number } | null = null
 
     for (const ref of referenceCards) {
       if (!ref.image_url) continue
       try {
         const image = new Image()
-        image.crossOrigin = 'Anonymous'
-        image.src = ref.image_url
+        image.src = `/api/cards/recognition-image?url=${encodeURIComponent(ref.image_url)}`
         await new Promise<void>((resolve, reject) => {
           image.onload = () => resolve()
           image.onerror = () => reject(new Error('load failed'))
         })
 
         const refCanvas = document.createElement('canvas')
-        refCanvas.width = 320
-        refCanvas.height = 320
+        refCanvas.width = 256
+        refCanvas.height = 256
         const refCtx = refCanvas.getContext('2d')
         if (!refCtx) continue
         refCtx.drawImage(image, 0, 0, refCanvas.width, refCanvas.height)
         const refDescriptor = readFrameDescriptor(refCanvas)
-        const score = compareDescriptors(descriptor, refDescriptor)
+        const descriptorScore = compareDescriptors(descriptor, refDescriptor)
+
+        let templateScore = 0
+        if (cv?.Mat) {
+          const refMat = cv.imread(refCanvas)
+          const refGray = new cv.Mat()
+          cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY)
+          cv.GaussianBlur(refGray, refGray, new cv.Size(3, 3), 0)
+          cv.resize(refGray, refGray, new cv.Size(256, 256))
+
+          const cropMat = cv.imread(cropCanvas)
+          const cropGray = new cv.Mat()
+          cv.cvtColor(cropMat, cropGray, cv.COLOR_RGBA2GRAY)
+          cv.GaussianBlur(cropGray, cropGray, new cv.Size(3, 3), 0)
+          cv.resize(cropGray, cropGray, new cv.Size(256, 256))
+
+          const result = new cv.Mat()
+          cv.matchTemplate(cropGray, refGray, result, cv.TM_CCOEFF_NORMED)
+          const minMax = cv.minMaxLoc(result)
+          templateScore = Number(minMax.maxVal ?? 0)
+
+          result.delete()
+          cropGray.delete()
+          cropMat.delete()
+          refGray.delete()
+          refMat.delete()
+        }
+
+        const score = cv?.Mat ? descriptorScore * 0.35 + (1 - templateScore) * 0.65 : descriptorScore
 
         if (!bestMatch || score < bestMatch.score) {
           bestMatch = {
@@ -310,7 +354,8 @@ export default function ScanPage() {
               market_price: null,
               inventory_price: null
             },
-            score
+            score,
+            templateScore
           }
         }
       } catch {
@@ -318,7 +363,8 @@ export default function ScanPage() {
       }
     }
 
-    if (bestMatch && bestMatch.score < 15000) {
+    const threshold = cv?.Mat ? 0.42 : 0.24
+    if (bestMatch && (bestMatch.templateScore >= threshold || bestMatch.score < 0.24)) {
       addRecognizedCard(bestMatch.card)
     } else {
       setRecognitionMessage('Carta non ancora riconosciuta. Inquadra la carta più vicina al centro.')
