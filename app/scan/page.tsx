@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
-import { Camera, Search, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Camera, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type ScannedCard = {
   id: string
@@ -72,6 +72,7 @@ export default function ScanPage() {
     videoRef.current.playsInline = true
     videoRef.current.autoplay = true
     videoRef.current.setAttribute('playsinline', 'true')
+    videoRef.current.setAttribute('webkit-playsinline', 'true')
 
     try {
       await videoRef.current.play()
@@ -272,15 +273,24 @@ export default function ScanPage() {
     <div className="h-dvh overflow-hidden text-white onepiece-wave-bg onepiece-clouds flex">
       <Sidebar activePage="scan" />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-14 z-40 flex items-center justify-center border-b border-amber-400/20 bg-slate-900/85 px-3 backdrop-blur-md sm:px-4">
-          <div className="flex items-center gap-3 rounded-full border border-amber-400/25 bg-slate-950/70 px-3 py-1.5 shadow-lg shadow-amber-500/10">
-            <img src="/luffyhatlogo.webp" alt="Logo OnePiece Vault" className="h-8 w-8 object-contain" />
-            <div className="text-center">
-              <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">OnePiece Vault</p>
-              <p className="text-sm font-bold tracking-[0.25em] text-amber-300">SCANNER</p>
+      <div className="flex-1 flex flex-col overflow-hidden pt-14">
+        <div className="fixed top-0 left-0 right-0 h-14 z-40 flex items-center border-b border-teal-800/30 bg-slate-900/85 px-3 backdrop-blur-md sm:px-4">
+          <div className="hidden sm:flex flex-1" />
+
+          <div className="flex-1 flex items-center justify-center min-w-0">
+            <div className="relative flex flex-col items-center justify-center px-2">
+              <img
+                src="/luffyhatlogo.webp"
+                className="absolute -top-6 sm:-top-8 w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg onepiece-float"
+                alt="Logo Cap"
+              />
+              <span className="pt-8 sm:pt-10 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
+                OPV
+              </span>
             </div>
           </div>
+
+          <div className="hidden sm:flex flex-1" />
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -289,20 +299,16 @@ export default function ScanPage() {
               <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
                 <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
-                  {cameraActive && cameraReady ? (
-                    <>
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-amber-400/50" />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-400/5 via-transparent to-amber-400/10" />
-                    </>
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`h-full w-full object-cover ${cameraActive && cameraReady ? 'opacity-100' : 'opacity-0'}`}
+                  />
+
+                  {!cameraActive && !cameraReady && (
+                    <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
                       <div className="rounded-full border border-amber-400/25 bg-amber-400/10 p-5">
                         <Camera className="text-amber-400" size={58} />
                       </div>
@@ -311,6 +317,13 @@ export default function ScanPage() {
                         <p className="mt-2 text-sm text-slate-400">Avvia lo scan per vedere il live della telecamera.</p>
                       </div>
                     </div>
+                  )}
+
+                  {cameraActive && cameraReady && (
+                    <>
+                      <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-amber-400/50" />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-400/5 via-transparent to-amber-400/10" />
+                    </>
                   )}
                 </div>
               </div>
