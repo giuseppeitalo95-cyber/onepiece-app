@@ -36,9 +36,11 @@ export default function ScanPage() {
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [referenceCards, setReferenceCards] = useState<Array<{ id: string; name: string; image_url: string | null }>>([])
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
-  const [recognitionMessage, setRecognitionMessage] = useState('Aspetto il riconoscimento...')
-  const [recognizedCard, setRecognizedCard] = useState<ScannedCard | null>(null)
+  const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
+  const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
   const [opencvReady, setOpencvReady] = useState(false)
+  const [scanSessionActive, setScanSessionActive] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
 
@@ -120,11 +122,11 @@ export default function ScanPage() {
   }, [scannedCards.length])
 
   useEffect(() => {
-    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !opencvReady) return
+    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !opencvReady || !scanSessionActive) return
 
     detectionLoopRef.current = window.setInterval(() => {
       void detectCardFromFrame()
-    }, 900)
+    }, 1800)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -132,7 +134,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, referenceCards.length, opencvReady])
+  }, [cameraActive, cameraReady, referenceCards.length, opencvReady, scanSessionActive])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -186,15 +188,16 @@ export default function ScanPage() {
     return diff / a.length
   }
 
-  const addRecognizedCard = (card: ScannedCard) => {
+  const confirmRecognizedCard = (card: ScannedCard) => {
     setScannedCards(prev => {
       const alreadyExists = prev.some(item => item.card_id === card.card_id || item.name === card.name)
       if (alreadyExists) return prev
       return [card, ...prev]
     })
     setCarouselIndex(0)
-    setRecognizedCard(card)
-    setRecognitionMessage(`Carta riconosciuta: ${card.name}`)
+    setShowSummary(true)
+    setPendingRecognition(null)
+    setRecognitionMessage(`Carta confermata: ${card.name}`)
   }
 
   const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
@@ -378,10 +381,17 @@ export default function ScanPage() {
     const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
     const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
 
-    if (bestMatch && hasCardShape && bestMatch.score < 0.28) {
-      addRecognizedCard(bestMatch.card)
+    if (!bestMatch || !hasCardShape) {
+      setRecognitionMessage('Tieni la carta al centro e aspetta il riconoscimento.')
+      return
+    }
+
+    const confidence = Math.max(0, 1 - bestMatch.score)
+    if (confidence > 0.34) {
+      setPendingRecognition(bestMatch.card)
+      setRecognitionMessage(`Carta trovata: ${bestMatch.card.name}. Conferma o scarta.`)
     } else {
-      setRecognitionMessage('Carta non ancora riconosciuta. Tieni la carta al centro e riprova.')
+      setRecognitionMessage('Tieni la carta al centro e aspetta il riconoscimento.')
     }
   }
 
@@ -451,6 +461,10 @@ export default function ScanPage() {
       setCameraActive(true)
       setCameraReady(true)
       setCameraError(null)
+      setScanSessionActive(true)
+      setShowSummary(false)
+      setPendingRecognition(null)
+      setRecognitionMessage('Scanner attivo. Tieni la carta al centro.')
     } catch (err) {
       console.error('Camera error:', err)
       setCameraActive(false)
@@ -470,6 +484,10 @@ export default function ScanPage() {
     setCameraActive(false)
     setCameraReady(false)
     setCameraError(null)
+    setScanSessionActive(false)
+    setShowSummary(true)
+    setPendingRecognition(null)
+    setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')
   }
 
   const searchCard = async (query: string) => {
@@ -665,11 +683,11 @@ export default function ScanPage() {
                         onClick={handleScanCard}
                         className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
                       >
-                        Scansiona carta
+                        Scansiona ora
                       </button>
                     )}
                   </div>
-                  <p className="text-sm font-semibold text-slate-300">{cameraActive ? 'Ferma camera' : 'Avvia scan'}</p>
+                  <p className="text-sm font-semibold text-slate-300">{cameraActive ? 'Ferma scan' : 'Avvia scan'}</p>
                 </div>
 
                 {cameraError && (
@@ -682,7 +700,7 @@ export default function ScanPage() {
                   {recognitionMessage}
                 </div>
 
-                {scannedCards.length > 0 && (
+                {(showSummary || scannedCards.length > 0) && (
                   <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Carte</p>
@@ -698,13 +716,13 @@ export default function ScanPage() {
             </div>
           </div>
 
-          {scannedCards.length > 0 && (
+          {(showSummary || scannedCards.length > 0) && (
             <div className="border-t border-slate-700 bg-slate-900/50 px-3 py-4 sm:px-6">
               <div className="mx-auto max-w-6xl">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Riepilogo</p>
-                    <h3 className="text-sm font-bold text-amber-300">Carte appena raccolte</h3>
+                    <h3 className="text-sm font-bold text-amber-300">{scannedCards.length > 0 ? 'Carte confermate' : 'Nessuna carta confermata'}</h3>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -722,9 +740,14 @@ export default function ScanPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4">
-                    {prevCard && (
+                {scannedCards.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-800/50 p-4 text-center text-sm text-slate-400">
+                    Nessuna carta è stata confermata. Tieni la carta al centro e conferma il popup quando appare.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4">
+                      {prevCard && (
                       <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
                         <img src={prevCard.image_url || ''} alt={prevCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
                       </div>
@@ -767,26 +790,54 @@ export default function ScanPage() {
                       </div>
                     )}
 
-                    {nextCard && (
-                      <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
-                        <img src={nextCard.image_url || ''} alt={nextCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
-                      </div>
-                    )}
-                  </div>
+                      {nextCard && (
+                        <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
+                          <img src={nextCard.image_url || ''} alt={nextCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="w-full lg:max-w-[240px]">
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-                      {scannedCards.map((card, index) => (
-                        <button
-                          key={card.id}
-                          onClick={() => setCarouselIndex(index)}
-                          className={`rounded-2xl border p-1.5 transition ${index === carouselIndex ? 'border-amber-400/50 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'}`}
-                        >
-                          <img src={card.image_url || ''} alt={card.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
-                        </button>
-                      ))}
+                    <div className="w-full lg:max-w-[240px]">
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+                        {scannedCards.map((card, index) => (
+                          <button
+                            key={card.id}
+                            onClick={() => setCarouselIndex(index)}
+                            className={`rounded-2xl border p-1.5 transition ${index === carouselIndex ? 'border-amber-400/50 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'}`}
+                          >
+                            <img src={card.image_url || ''} alt={card.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {pendingRecognition && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6">
+              <div className="w-full max-w-[420px] rounded-[28px] border border-amber-400/30 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+                <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
+                <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
+                <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-700 bg-slate-800/80 p-2">
+                  <img src={pendingRecognition.image_url || ''} alt={pendingRecognition.name || 'Carta'} className="h-[320px] w-full rounded-[18px] object-contain" />
+                </div>
+                <p className="mt-3 text-center text-sm text-slate-300">Questa è la carta che hai appena scansionato?</p>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => setPendingRecognition(null)}
+                    className="flex-1 rounded-2xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
+                  >
+                    Scarta
+                  </button>
+                  <button
+                    onClick={() => confirmRecognizedCard(pendingRecognition)}
+                    className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
+                  >
+                    Conferma
+                  </button>
                 </div>
               </div>
             </div>
