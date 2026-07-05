@@ -34,6 +34,12 @@ export default function ScanPage() {
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   const [carouselIndex, setCarouselIndex] = useState(0)
+  const [referenceCards, setReferenceCards] = useState<Array<{ id: string; name: string; image_url: string | null }>>([])
+  const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const [recognitionMessage, setRecognitionMessage] = useState('Aspetto il riconoscimento...')
+  const [recognizedCard, setRecognizedCard] = useState<ScannedCard | null>(null)
+  const processingCanvasRef = useRef<HTMLCanvasElement>(null)
+  const detectionLoopRef = useRef<number | null>(null)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -48,10 +54,26 @@ export default function ScanPage() {
   }, [router])
 
   useEffect(() => {
+    const loadReferenceCards = async () => {
+      try {
+        const res = await fetch('/api/cards/recognition-candidates')
+        const data = await res.json()
+        setReferenceCards(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error('Reference cards error:', err)
+      }
+    }
+
+    loadReferenceCards()
+
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
+      }
+      if (detectionLoopRef.current) {
+        window.clearInterval(detectionLoopRef.current)
+        detectionLoopRef.current = null
       }
     }
   }, [])
@@ -63,6 +85,21 @@ export default function ScanPage() {
     }
     setCarouselIndex(prev => Math.min(prev, scannedCards.length - 1))
   }, [scannedCards.length])
+
+  useEffect(() => {
+    if (!cameraActive || !cameraReady || referenceCards.length === 0) return
+
+    detectionLoopRef.current = window.setInterval(() => {
+      void detectCardFromFrame()
+    }, 800)
+
+    return () => {
+      if (detectionLoopRef.current) {
+        window.clearInterval(detectionLoopRef.current)
+        detectionLoopRef.current = null
+      }
+    }
+  }, [cameraActive, cameraReady, referenceCards.length])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -80,6 +117,191 @@ export default function ScanPage() {
       videoRef.current.onloadedmetadata = () => {
         videoRef.current?.play().catch(() => undefined)
       }
+    }
+  }
+
+  const readFrameDescriptor = (canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const bins = new Array(16).fill(0)
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
+      const bin = Math.min(15, Math.floor(avg / 16))
+      bins[bin] += 1
+    }
+
+    return bins
+  }
+
+  const compareDescriptors = (a: Array<number> | null, b: Array<number> | null) => {
+    if (!a || !b) return Number.POSITIVE_INFINITY
+    let diff = 0
+    for (let i = 0; i < a.length; i += 1) {
+      diff += Math.abs(a[i] - b[i])
+    }
+    return diff
+  }
+
+  const addRecognizedCard = (card: ScannedCard) => {
+    setScannedCards(prev => {
+      const alreadyExists = prev.some(item => item.card_id === card.card_id || item.name === card.name)
+      if (alreadyExists) return prev
+      return [card, ...prev]
+    })
+    setCarouselIndex(0)
+    setRecognizedCard(card)
+    setRecognitionMessage(`Carta riconosciuta: ${card.name}`)
+  }
+
+  const detectCardFromFrame = async () => {
+    if (!videoRef.current || !processingCanvasRef.current || referenceCards.length === 0) return
+
+    const video = videoRef.current
+    const canvas = processingCanvasRef.current
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
+
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const cv = (window as Window & { cv?: any }).cv
+    if (!cv?.Mat) {
+      const fallbackRect = {
+        x: canvas.width * 0.2,
+        y: canvas.height * 0.2,
+        width: canvas.width * 0.6,
+        height: canvas.height * 0.6
+      }
+      setDetectedRect(fallbackRect)
+      return
+    }
+
+    const src = cv.imread(canvas)
+    const gray = new cv.Mat()
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+
+    const blurred = new cv.Mat()
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
+
+    const edges = new cv.Mat()
+    cv.Canny(blurred, edges, 60, 140)
+
+    const contours = new cv.MatVector()
+    const hierarchy = new cv.Mat()
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    let bestRect: { x: number; y: number; width: number; height: number } | null = null
+    let bestArea = 0
+
+    for (let i = 0; i < contours.size(); i += 1) {
+      const contour = contours.get(i)
+      const peri = cv.arcLength(contour, true)
+      const approx = new cv.Mat()
+      cv.approxPolyDP(contour, approx, 0.02 * peri, true)
+
+      if (approx.rows === 4) {
+        const area = cv.contourArea(contour)
+        if (area > bestArea && area > 8000) {
+          const rect = cv.boundingRect(contour)
+          bestRect = {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+          }
+          bestArea = area
+        }
+      }
+
+      contour.delete()
+      approx.delete()
+    }
+
+    hierarchy.delete()
+    contours.delete()
+    edges.delete()
+    blurred.delete()
+    gray.delete()
+    src.delete()
+
+    if (!bestRect) {
+      setDetectedRect(null)
+      return
+    }
+
+    setDetectedRect(bestRect)
+
+    const cropCanvas = document.createElement('canvas')
+    cropCanvas.width = 320
+    cropCanvas.height = 320
+    const cropCtx = cropCanvas.getContext('2d')
+
+    if (!cropCtx) return
+
+    cropCtx.drawImage(
+      canvas,
+      bestRect.x,
+      bestRect.y,
+      bestRect.width,
+      bestRect.height,
+      0,
+      0,
+      cropCanvas.width,
+      cropCanvas.height
+    )
+
+    const descriptor = readFrameDescriptor(cropCanvas)
+    if (!descriptor) return
+
+    let bestMatch: { card: ScannedCard; score: number } | null = null
+
+    for (const ref of referenceCards) {
+      if (!ref.image_url) continue
+      try {
+        const image = new Image()
+        image.crossOrigin = 'Anonymous'
+        image.src = ref.image_url
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve()
+          image.onerror = () => reject(new Error('load failed'))
+        })
+
+        const refCanvas = document.createElement('canvas')
+        refCanvas.width = 320
+        refCanvas.height = 320
+        const refCtx = refCanvas.getContext('2d')
+        if (!refCtx) continue
+        refCtx.drawImage(image, 0, 0, refCanvas.width, refCanvas.height)
+        const refDescriptor = readFrameDescriptor(refCanvas)
+        const score = compareDescriptors(descriptor, refDescriptor)
+
+        if (!bestMatch || score < bestMatch.score) {
+          bestMatch = {
+            card: {
+              id: `${ref.id}-${Date.now()}`,
+              card_id: String(ref.id),
+              name: ref.name,
+              image_url: ref.image_url,
+              rarity: '—',
+              market_price: null,
+              inventory_price: null
+            },
+            score
+          }
+        }
+      } catch {
+        // ignora template che non si carica
+      }
+    }
+
+    if (bestMatch && bestMatch.score < 7000) {
+      addRecognizedCard(bestMatch.card)
+    } else {
+      setRecognitionMessage('Carta non ancora riconosciuta. Avvicina la carta al centro.')
     }
   }
 
