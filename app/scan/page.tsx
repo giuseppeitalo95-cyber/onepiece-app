@@ -64,13 +64,22 @@ export default function ScanPage() {
     setCarouselIndex(prev => Math.min(prev, scannedCards.length - 1))
   }, [scannedCards.length])
 
-  const attachStream = (stream: MediaStream) => {
+  const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
+
     videoRef.current.srcObject = stream
     videoRef.current.muted = true
     videoRef.current.playsInline = true
     videoRef.current.autoplay = true
-    videoRef.current.play().catch(() => undefined)
+    videoRef.current.setAttribute('playsinline', 'true')
+
+    try {
+      await videoRef.current.play()
+    } catch {
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().catch(() => undefined)
+      }
+    }
   }
 
   const startCamera = async () => {
@@ -80,7 +89,7 @@ export default function ScanPage() {
     }
 
     if (streamRef.current) {
-      attachStream(streamRef.current)
+      await attachStream(streamRef.current)
       setCameraActive(true)
       setCameraReady(true)
       setCameraError(null)
@@ -88,22 +97,48 @@ export default function ScanPage() {
     }
 
     try {
-      const permission = await navigator.permissions?.query?.({ name: 'camera' as PermissionName })
-      if (permission?.state === 'denied') {
-        throw new Error('Camera denied')
+      const constraintsList = [
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        },
+        {
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        },
+        {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        }
+      ]
+
+      let stream: MediaStream | null = null
+      for (const constraints of constraintsList) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints)
+          break
+        } catch {
+          stream = null
+        }
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      })
+      if (!stream) {
+        throw new Error('Camera unavailable')
+      }
 
       streamRef.current = stream
-      attachStream(stream)
+      await attachStream(stream)
       setCameraActive(true)
       setCameraReady(true)
       setCameraError(null)
@@ -111,11 +146,7 @@ export default function ScanPage() {
       console.error('Camera error:', err)
       setCameraActive(false)
       setCameraReady(false)
-      if (err instanceof Error && err.message === 'Camera denied') {
-        setCameraError('La camera è stata bloccata. Consenti l’uso una volta e poi potrai riutilizzarla subito.')
-      } else {
-        setCameraError('Non è stato possibile avviare la camera. Prova a ricaricare la pagina e consentire l’accesso.')
-      }
+      setCameraError('Non è stato possibile avviare la camera. Prova a ricaricare la pagina e a consentire l’accesso dalla richiesta del browser.')
     }
   }
 
@@ -244,9 +275,7 @@ export default function ScanPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="h-14 z-40 flex items-center justify-center border-b border-amber-400/20 bg-slate-900/85 px-3 backdrop-blur-md sm:px-4">
           <div className="flex items-center gap-3 rounded-full border border-amber-400/25 bg-slate-950/70 px-3 py-1.5 shadow-lg shadow-amber-500/10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-400/30 bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 text-[10px] font-black tracking-[0.3em] text-slate-950">
-              OPV
-            </div>
+            <img src="/luffyhatlogo.webp" alt="Logo OnePiece Vault" className="h-8 w-8 object-contain" />
             <div className="text-center">
               <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">OnePiece Vault</p>
               <p className="text-sm font-bold tracking-[0.25em] text-amber-300">SCANNER</p>
@@ -287,45 +316,14 @@ export default function ScanPage() {
               </div>
 
               <div className="mt-4 space-y-3">
-                <div className="flex gap-2">
-                  {!cameraActive ? (
-                    <button
-                      onClick={startCamera}
-                      className="flex-1 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:shadow-lg hover:shadow-amber-400/40"
-                    >
-                      <span className="flex items-center justify-center gap-2">
-                        <Camera size={18} />
-                        Avvia scan
-                      </span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={stopCamera}
-                      className="flex-1 rounded-2xl border border-red-500/40 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/25"
-                    >
-                      Ferma camera
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') searchCard(searchInput)
-                    }}
-                    placeholder="Cerca carta o codice"
-                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                  />
+                <div className="flex flex-col items-center gap-2">
                   <button
-                    onClick={() => searchCard(searchInput)}
-                    disabled={searching || !searchInput.trim()}
-                    className="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:bg-amber-300 disabled:opacity-60"
+                    onClick={cameraActive ? stopCamera : startCamera}
+                    className={`flex h-16 w-16 items-center justify-center rounded-full border text-white shadow-lg transition ${cameraActive ? 'border-red-500/40 bg-red-500/20 hover:bg-red-500/30' : 'border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 hover:shadow-amber-400/30'}`}
                   >
-                    <Search size={18} />
+                    <Camera size={24} />
                   </button>
+                  <p className="text-sm font-semibold text-slate-300">{cameraActive ? 'Ferma camera' : 'Avvia scan'}</p>
                 </div>
 
                 {cameraError && (
