@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
-import { Camera, Search, X, Plus, Trash2, ShoppingCart } from 'lucide-react'
+import { Camera, Search, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type ScannedCard = {
   id: string
@@ -23,16 +23,18 @@ type ScannedCard = {
 export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   const [userId, setUserId] = useState<string | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [scannedCards, setScannedCards] = useState<ScannedCard[]>([])
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
+  const [carouselIndex, setCarouselIndex] = useState(0)
 
-  // AUTH CHECK
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -43,48 +45,93 @@ export default function ScanPage() {
       setUserId(session.user.id)
     }
     checkUser()
-  }, [])
+  }, [router])
 
-  // CLEANUP CAMERA
   useEffect(() => {
     return () => {
-      if (videoRef.current?.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-        tracks.forEach(track => track.stop())
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
       }
     }
   }, [])
 
-  // CAMERA START
+  useEffect(() => {
+    if (scannedCards.length === 0) {
+      setCarouselIndex(0)
+      return
+    }
+    setCarouselIndex(prev => Math.min(prev, scannedCards.length - 1))
+  }, [scannedCards.length])
+
+  const attachStream = (stream: MediaStream) => {
+    if (!videoRef.current) return
+    videoRef.current.srcObject = stream
+    videoRef.current.muted = true
+    videoRef.current.playsInline = true
+    videoRef.current.autoplay = true
+    videoRef.current.play().catch(() => undefined)
+  }
+
   const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('La camera non è disponibile nel tuo browser.')
+      return
+    }
+
+    if (streamRef.current) {
+      attachStream(streamRef.current)
+      setCameraActive(true)
+      setCameraReady(true)
+      setCameraError(null)
+      return
+    }
+
     try {
+      const permission = await navigator.permissions?.query?.({ name: 'camera' as PermissionName })
+      if (permission?.state === 'denied') {
+        throw new Error('Camera denied')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment',
+          facingMode: { ideal: 'environment' },
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        }
+        },
+        audio: false
       })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraActive(true)
-      }
+
+      streamRef.current = stream
+      attachStream(stream)
+      setCameraActive(true)
+      setCameraReady(true)
+      setCameraError(null)
     } catch (err) {
       console.error('Camera error:', err)
-      alert('Accesso alla fotocamera rifiutato')
-    }
-  }
-
-  // CAMERA STOP
-  const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-      tracks.forEach(track => track.stop())
       setCameraActive(false)
+      setCameraReady(false)
+      if (err instanceof Error && err.message === 'Camera denied') {
+        setCameraError('La camera è stata bloccata. Consenti l’uso una volta e poi potrai riutilizzarla subito.')
+      } else {
+        setCameraError('Non è stato possibile avviare la camera. Prova a ricaricare la pagina e consentire l’accesso.')
+      }
     }
   }
 
-  // SEARCH CARD
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setCameraActive(false)
+    setCameraReady(false)
+    setCameraError(null)
+  }
+
   const searchCard = async (query: string) => {
     if (!query.trim()) return
 
@@ -99,9 +146,7 @@ export default function ScanPage() {
         return
       }
 
-      // Prendi il primo risultato
       const card = results[0]
-      
       const newCard: ScannedCard = {
         id: `${Date.now()}-${Math.random()}`,
         card_id: String(card.card_set_id ?? card.card_id ?? card.id),
@@ -116,8 +161,9 @@ export default function ScanPage() {
         inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
       }
 
-      setScannedCards([...scannedCards, newCard])
+      setScannedCards(prev => [...prev, newCard])
       setSearchInput('')
+      setCarouselIndex(scannedCards.length)
     } catch (err) {
       console.error('Search error:', err)
       alert('Errore ricerca carta')
@@ -125,12 +171,10 @@ export default function ScanPage() {
     setSearching(false)
   }
 
-  // REMOVE FROM SCAN
   const removeCard = (id: string) => {
-    setScannedCards(scannedCards.filter(c => c.id !== id))
+    setScannedCards(prev => prev.filter(c => c.id !== id))
   }
 
-  // ADD TO COLLECTION
   const addToCollection = async (card: ScannedCard) => {
     if (!userId || adding) return
 
@@ -184,119 +228,121 @@ export default function ScanPage() {
     setAdding(null)
   }
 
-  // CALCULATE TOTALS
   const totalValue = scannedCards.reduce((sum, card) => {
     const price = card.market_price || card.inventory_price || 0
     return sum + price
   }, 0)
 
+  const currentCard = scannedCards[carouselIndex] ?? null
+  const prevCard = scannedCards[carouselIndex - 1] ?? null
+  const nextCard = scannedCards[carouselIndex + 1] ?? null
+
   return (
     <div className="h-dvh overflow-hidden text-white onepiece-wave-bg onepiece-clouds flex">
       <Sidebar activePage="scan" />
 
-      {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        
-        {/* TOP BAR */}
-        <div className="h-14 z-40 bg-slate-900/85 backdrop-blur-md border-b border-teal-800/30 flex items-center px-3 sm:px-4 gap-2">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="relative flex flex-col items-center justify-center">
-              <img
-                src="/luffyhatlogo.webp"
-                className="absolute -top-6 w-12 h-12 object-contain drop-shadow-lg"
-                alt="Logo"
-              />
-              <span className="pt-3 text-base font-bold tracking-[0.15em] text-amber-300">
-                SCANNER
-              </span>
+        <div className="h-14 z-40 flex items-center justify-center border-b border-amber-400/20 bg-slate-900/85 px-3 backdrop-blur-md sm:px-4">
+          <div className="flex items-center gap-3 rounded-full border border-amber-400/25 bg-slate-950/70 px-3 py-1.5 shadow-lg shadow-amber-500/10">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-400/30 bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 text-[10px] font-black tracking-[0.3em] text-slate-950">
+              OPV
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">OnePiece Vault</p>
+              <p className="text-sm font-bold tracking-[0.25em] text-amber-300">SCANNER</p>
             </div>
           </div>
         </div>
 
-        {/* CONTENT */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          
-          {/* CAMERA AREA - Centered with card shape */}
-          <div className="flex-1 flex items-center justify-center px-3 sm:px-6 py-4">
-            <div className="relative w-full max-w-sm">
-              {/* CARD FRAME */}
-              <div className="relative bg-slate-950 rounded-2xl shadow-2xl overflow-hidden border-4 border-amber-400/30" style={{aspectRatio: '3/4'}}>
-                {cameraActive ? (
-                  <>
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                    {/* OVERLAY FRAME */}
-                    <div className="absolute inset-0 border-2 border-amber-400/50 rounded-xl pointer-events-none" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-amber-400/5 via-transparent to-amber-400/5 pointer-events-none" />
-                  </>
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col items-center justify-center gap-4 p-6 text-center">
-                    <Camera className="text-amber-400" size={64} />
-                    <div>
-                      <p className="text-lg font-semibold text-amber-300">Scanner Disattivo</p>
-                      <p className="text-sm text-gray-400 mt-2">Premi il tasto per avviare la fotocamera</p>
+          <div className="flex-1 flex items-center justify-center px-3 py-4 sm:px-6">
+            <div className="w-full max-w-[480px]">
+              <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
+                <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
+                <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
+                  {cameraActive && cameraReady ? (
+                    <>
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-amber-400/50" />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-400/5 via-transparent to-amber-400/10" />
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
+                      <div className="rounded-full border border-amber-400/25 bg-amber-400/10 p-5">
+                        <Camera className="text-amber-400" size={58} />
+                      </div>
+                      <div>
+                        <p className="text-xl font-semibold text-amber-300">Preview camera</p>
+                        <p className="mt-2 text-sm text-slate-400">Avvia lo scan per vedere il live della telecamera.</p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
-              {/* HUD - Below card */}
               <div className="mt-4 space-y-3">
-                {/* BUTTONS */}
                 <div className="flex gap-2">
                   {!cameraActive ? (
                     <button
                       onClick={startCamera}
-                      className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 py-2.5 px-4 rounded-xl font-bold hover:shadow-lg hover:shadow-amber-400/50 transition text-sm"
+                      className="flex-1 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:shadow-lg hover:shadow-amber-400/40"
                     >
-                      <Camera size={18} />
-                      Avvia Scan
+                      <span className="flex items-center justify-center gap-2">
+                        <Camera size={18} />
+                        Avvia scan
+                      </span>
                     </button>
                   ) : (
                     <button
                       onClick={stopCamera}
-                      className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/50 py-2.5 px-4 rounded-xl font-bold transition text-sm"
+                      className="flex-1 rounded-2xl border border-red-500/40 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/25"
                     >
-                      Ferma
+                      Ferma camera
                     </button>
                   )}
                 </div>
 
-                {/* SEARCH INPUT */}
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyPress={(e) => {
+                    onKeyDown={(e) => {
                       if (e.key === 'Enter') searchCard(searchInput)
                     }}
-                    placeholder="OP01-001"
-                    className="flex-1 px-3 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder:text-gray-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20 text-sm"
+                    placeholder="Cerca carta o codice"
+                    className="flex-1 rounded-2xl border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                   />
                   <button
                     onClick={() => searchCard(searchInput)}
                     disabled={searching || !searchInput.trim()}
-                    className="px-4 py-2.5 bg-amber-400 text-slate-900 rounded-xl font-bold hover:bg-amber-300 transition disabled:opacity-60 text-sm"
+                    className="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:bg-amber-300 disabled:opacity-60"
                   >
                     <Search size={18} />
                   </button>
                 </div>
 
-                {/* STATS */}
+                {cameraError && (
+                  <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+                    {cameraError}
+                  </div>
+                )}
+
                 {scannedCards.length > 0 && (
-                  <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 flex justify-between items-center">
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
                     <div>
-                      <p className="text-xs text-gray-400">Carte Scannerizzate</p>
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Carte</p>
                       <p className="text-lg font-bold text-amber-300">{scannedCards.length}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-400">Valore Totale</p>
-                      <p className="text-lg font-bold text-green-400">{totalValue.toFixed(2)}€</p>
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
+                      <p className="text-lg font-bold text-emerald-400">{totalValue.toFixed(2)}€</p>
                     </div>
                   </div>
                 )}
@@ -304,63 +350,101 @@ export default function ScanPage() {
             </div>
           </div>
 
-          {/* CARDS LIST - Below */}
           {scannedCards.length > 0 && (
-            <div className="flex-1 overflow-y-auto border-t border-slate-700 bg-slate-900/40 px-3 sm:px-6 py-4">
-              <div className="max-w-6xl mx-auto">
-                <h3 className="text-sm font-bold text-amber-300 mb-3">
-                  Carte Scannerizzate ({scannedCards.length})
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {scannedCards.map((card) => {
-                    const price = card.market_price || card.inventory_price || 0
-                    return (
-                      <div
-                        key={card.id}
-                        className="bg-slate-800/60 border border-slate-700 rounded-lg p-2 flex flex-col"
-                      >
-                        {card.image_url && (
-                          <div className="w-full aspect-[3/4] bg-black rounded mb-1 overflow-hidden">
-                            <img
-                              src={card.image_url}
-                              alt={card.name || 'Card'}
-                              className="w-full h-full object-contain"
-                            />
+            <div className="border-t border-slate-700 bg-slate-900/50 px-3 py-4 sm:px-6">
+              <div className="mx-auto max-w-6xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Riepilogo</p>
+                    <h3 className="text-sm font-bold text-amber-300">Carte appena raccolte</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCarouselIndex(prev => Math.max(prev - 1, 0))}
+                      className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200 transition hover:border-amber-400/40 hover:text-amber-300"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      onClick={() => setCarouselIndex(prev => Math.min(prev + 1, scannedCards.length - 1))}
+                      className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200 transition hover:border-amber-400/40 hover:text-amber-300"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4">
+                    {prevCard && (
+                      <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
+                        <img src={prevCard.image_url || ''} alt={prevCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
+                      </div>
+                    )}
+
+                    {currentCard && (
+                      <div className="w-full max-w-[240px] rounded-[24px] border border-amber-400/20 bg-slate-800/70 p-3 shadow-[0_20px_45px_rgba(0,0,0,0.25)]">
+                        <img
+                          src={currentCard.image_url || ''}
+                          alt={currentCard.name || 'Carta'}
+                          className="aspect-[3/4] w-full rounded-[18px] object-cover"
+                        />
+                        <div className="mt-3 space-y-1 text-center">
+                          <p className="text-sm font-bold text-white">{currentCard.name}</p>
+                          <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">{currentCard.card_id}</p>
+                          <div className="mt-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2">
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Valore</p>
+                            <p className="text-base font-bold text-amber-300">{((currentCard.market_price || currentCard.inventory_price || 0)).toFixed(2)}€</p>
                           </div>
-                        )}
-                        <p className="font-bold text-xs line-clamp-1">{card.name}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{card.card_id}</p>
-                        <div className="my-1 p-1 bg-amber-400/10 rounded border border-amber-400/30">
-                          <p className="text-[10px] text-amber-300 font-bold">{price.toFixed(2)}€</p>
+                          <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
+                            <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.rarity || '—'}</span>
+                            <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.card_type || '—'}</span>
+                          </div>
                         </div>
-                        <div className="flex gap-1 mt-auto">
+                        <div className="mt-3 flex gap-2">
                           <button
-                            onClick={() => addToCollection(card)}
-                            disabled={adding === card.id}
-                            className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 py-1 rounded text-xs font-semibold transition"
+                            onClick={() => addToCollection(currentCard)}
+                            disabled={adding === currentCard.id}
+                            className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
                           >
-                            {adding === card.id ? '...' : <Plus size={12} className="mx-auto" />}
+                            {adding === currentCard.id ? '...' : 'Aggiungi'}
                           </button>
                           <button
-                            onClick={() => removeCard(card.id)}
-                            className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/50 py-1 rounded text-xs font-semibold transition"
+                            onClick={() => removeCard(currentCard.id)}
+                            className="flex-1 rounded-2xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/25"
                           >
-                            <Trash2 size={12} className="mx-auto" />
+                            <span className="flex items-center justify-center gap-1"><Trash2 size={12} /> Elimina</span>
                           </button>
                         </div>
                       </div>
-                    )
-                  })}
+                    )}
+
+                    {nextCard && (
+                      <div className="hidden w-[120px] rounded-2xl border border-slate-700/70 bg-slate-800/50 p-2 opacity-50 sm:block">
+                        <img src={nextCard.image_url || ''} alt={nextCard.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-full lg:max-w-[240px]">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+                      {scannedCards.map((card, index) => (
+                        <button
+                          key={card.id}
+                          onClick={() => setCarouselIndex(index)}
+                          className={`rounded-2xl border p-1.5 transition ${index === carouselIndex ? 'border-amber-400/50 bg-amber-400/10' : 'border-slate-700 bg-slate-800/60'}`}
+                        >
+                          <img src={card.image_url || ''} alt={card.name || 'Carta'} className="aspect-[3/4] w-full rounded-xl object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-
         </div>
-
       </div>
-
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }
