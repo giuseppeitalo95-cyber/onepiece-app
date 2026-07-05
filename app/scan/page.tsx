@@ -39,6 +39,7 @@ export default function ScanPage() {
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
   const [opencvReady, setOpencvReady] = useState(false)
+  const [ocrReady, setOcrReady] = useState(false)
   const [scanSessionActive, setScanSessionActive] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -89,6 +90,31 @@ export default function ScanPage() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const existingOcrScript = document.getElementById('tesseract-script') as HTMLScriptElement | null
+    if (existingOcrScript) {
+      if ((window as Window & { Tesseract?: unknown }).Tesseract) {
+        setOcrReady(true)
+      } else {
+        existingOcrScript.addEventListener('load', () => setOcrReady(true), { once: true })
+      }
+      return
+    }
+
+    const script = document.createElement('script')
+    script.id = 'tesseract-script'
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
+    script.async = true
+    script.onload = () => setOcrReady(true)
+    document.body.appendChild(script)
+
+    return () => {
+      script.onload = null
+    }
+  }, [])
+
+  useEffect(() => {
     const loadReferenceCards = async () => {
       try {
         const res = await fetch('/api/cards/recognition-candidates')
@@ -122,7 +148,7 @@ export default function ScanPage() {
   }, [scannedCards.length])
 
   useEffect(() => {
-    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !opencvReady || !scanSessionActive) return
+    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !scanSessionActive) return
 
     detectionLoopRef.current = window.setInterval(() => {
       void detectCardFromFrame()
@@ -134,7 +160,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, referenceCards.length, opencvReady, scanSessionActive])
+  }, [cameraActive, cameraReady, referenceCards.length, ocrReady, scanSessionActive])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -155,37 +181,95 @@ export default function ScanPage() {
     }
   }
 
-  const readFrameDescriptor = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
+  const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
 
-    const tempCanvas = document.createElement('canvas')
-    tempCanvas.width = 96
-    tempCanvas.height = 96
-    const tempCtx = tempCanvas.getContext('2d')
-    if (!tempCtx) return null
+  const extractCardQuery = (text: string) => {
+    const cleaned = text.replace(/\s+/g, ' ').trim()
+    if (!cleaned) return null
 
-    tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height)
-    const { data } = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
-    const descriptor = new Array<number>(data.length / 4)
+    const codeMatch = cleaned.match(/\b(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}\b/i)
+    if (codeMatch) return codeMatch[0].toUpperCase()
 
-    for (let i = 0; i < data.length; i += 4) {
-      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
-      descriptor[i / 4] = avg / 255
-    }
+    const words = cleaned
+      .split(' ')
+      .map(word => word.trim())
+      .filter(Boolean)
+      .filter(word => word.length > 2 && !['the', 'and', 'for', 'with', 'card', 'cards'].includes(word.toLowerCase()))
 
-    return descriptor
+    return words.slice(0, 4).join(' ')
   }
 
-  const compareDescriptors = (a: Array<number> | null, b: Array<number> | null) => {
-    if (!a || !b) return Number.POSITIVE_INFINITY
-    if (a.length !== b.length) return Number.POSITIVE_INFINITY
+  const runOcrOnCanvas = async (canvas: HTMLCanvasElement) => {
+    const tesseract = (window as Window & { Tesseract?: any }).Tesseract
+    if (!tesseract) return null
 
-    let diff = 0
-    for (let i = 0; i < a.length; i += 1) {
-      diff += Math.abs(a[i] - b[i])
+    try {
+      const result = await tesseract.recognize(canvas, 'eng', {
+        logger: () => undefined
+      })
+      return result?.data?.text || null
+    } catch {
+      return null
     }
-    return diff / a.length
+  }
+
+  const searchCardByText = async (query: string) => {
+    if (!query) return null
+
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
+      const results = await res.json()
+
+      if (!Array.isArray(results) || results.length === 0) return null
+
+      const normalizedQuery = normalizeText(query)
+      const queryTokens = normalizedQuery.split(' ').filter(Boolean)
+      let bestMatch: { card: ScannedCard; score: number } | null = null
+
+      for (const candidate of results) {
+        const name = String(candidate.card_name || candidate.name || '')
+        const id = String(candidate.card_set_id || candidate.card_id || candidate.id || '')
+        const normalizedName = normalizeText(name)
+        const normalizedId = normalizeText(id)
+
+        let score = 0
+        const exactCode = normalizedQuery.includes(normalizedId) || normalizedId.includes(normalizedQuery)
+        if (exactCode) score += 1.4
+        if (normalizedId && normalizedQuery.includes(normalizedId)) score += 0.8
+        if (normalizedId && normalizedId.includes(normalizedQuery)) score += 0.8
+        if (normalizedName && normalizedQuery.includes(normalizedName)) score += 0.9
+        if (normalizedName && normalizedName.includes(normalizedQuery)) score += 0.9
+
+        const nameTokens = normalizedName.split(' ').filter(Boolean)
+        const overlap = queryTokens.filter(token => nameTokens.includes(token)).length
+        score += overlap * 0.2
+
+        const hasStrongName = normalizedName && (normalizedName.includes(normalizedQuery) || overlap >= 2)
+        if (hasStrongName) score += 0.3
+
+        const isLikelyCardId = /(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}/i.test(query)
+        if (isLikelyCardId && normalizedId && normalizedId.includes(normalizedQuery)) score += 0.5
+
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = {
+            card: {
+              id: `${candidate.card_set_id || candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
+              card_id: String(candidate.card_set_id || candidate.card_id || candidate.id || ''),
+              name,
+              image_url: candidate.card_image || candidate.image_url || null,
+              rarity: candidate.rarity || '—',
+              market_price: candidate.market_price ? Number(candidate.market_price) : null,
+              inventory_price: candidate.inventory_price ? Number(candidate.inventory_price) : null,
+            },
+            score
+          }
+        }
+      }
+
+      return bestMatch && bestMatch.score > 1.2 ? bestMatch.card : null
+    } catch {
+      return null
+    }
   }
 
   const confirmRecognizedCard = (card: ScannedCard) => {
@@ -288,8 +372,8 @@ export default function ScanPage() {
     setRecognitionMessage('Analisi del frame in corso...')
 
     const cropCanvas = document.createElement('canvas')
-    cropCanvas.width = 256
-    cropCanvas.height = 256
+    cropCanvas.width = 720
+    cropCanvas.height = 720
     const cropCtx = cropCanvas.getContext('2d')
 
     if (!cropCtx) return
@@ -306,92 +390,37 @@ export default function ScanPage() {
       cropCanvas.height
     )
 
-    const descriptor = readFrameDescriptor(cropCanvas)
-    if (!descriptor) return
-
-    let bestMatch: { card: ScannedCard; score: number; templateScore: number } | null = null
-
-    for (const ref of referenceCards) {
-      if (!ref.image_url) continue
-      try {
-        const image = new Image()
-        image.src = `/api/cards/recognition-image?url=${encodeURIComponent(ref.image_url)}`
-        await new Promise<void>((resolve, reject) => {
-          image.onload = () => resolve()
-          image.onerror = () => reject(new Error('load failed'))
-        })
-
-        const refCanvas = document.createElement('canvas')
-        refCanvas.width = 256
-        refCanvas.height = 256
-        const refCtx = refCanvas.getContext('2d')
-        if (!refCtx) continue
-        refCtx.drawImage(image, 0, 0, refCanvas.width, refCanvas.height)
-        const refDescriptor = readFrameDescriptor(refCanvas)
-        const descriptorScore = compareDescriptors(descriptor, refDescriptor)
-
-        let templateScore = 0
-        if (cv?.Mat) {
-          const refMat = cv.imread(refCanvas)
-          const refGray = new cv.Mat()
-          cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY)
-          cv.GaussianBlur(refGray, refGray, new cv.Size(3, 3), 0)
-          cv.resize(refGray, refGray, new cv.Size(256, 256))
-
-          const cropMat = cv.imread(cropCanvas)
-          const cropGray = new cv.Mat()
-          cv.cvtColor(cropMat, cropGray, cv.COLOR_RGBA2GRAY)
-          cv.GaussianBlur(cropGray, cropGray, new cv.Size(3, 3), 0)
-          cv.resize(cropGray, cropGray, new cv.Size(256, 256))
-
-          const result = new cv.Mat()
-          cv.matchTemplate(cropGray, refGray, result, cv.TM_CCOEFF_NORMED)
-          const minMax = cv.minMaxLoc(result)
-          templateScore = Number(minMax.maxVal ?? 0)
-
-          result.delete()
-          cropGray.delete()
-          cropMat.delete()
-          refGray.delete()
-          refMat.delete()
-        }
-
-        const score = cv?.Mat ? descriptorScore * 0.35 + (1 - templateScore) * 0.65 : descriptorScore
-
-        if (!bestMatch || score < bestMatch.score) {
-          bestMatch = {
-            card: {
-              id: `${ref.id}-${Date.now()}`,
-              card_id: String(ref.id),
-              name: ref.name,
-              image_url: ref.image_url,
-              rarity: '—',
-              market_price: null,
-              inventory_price: null
-            },
-            score,
-            templateScore
-          }
-        }
-      } catch {
-        // ignora template che non si carica
-      }
-    }
-
     const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
     const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
 
-    if (!bestMatch || !hasCardShape) {
+    if (!hasCardShape) {
       setRecognitionMessage('Tieni la carta al centro e aspetta il riconoscimento.')
       return
     }
 
-    const confidence = Math.max(0, 1 - bestMatch.score)
-    if (confidence > 0.34) {
-      setPendingRecognition(bestMatch.card)
-      setRecognitionMessage(`Carta trovata: ${bestMatch.card.name}. Conferma o scarta.`)
+    if (!ocrReady) {
+      setRecognitionMessage('Inizializzo il riconoscimento del testo...')
+      return
+    }
+
+    const ocrText = await runOcrOnCanvas(cropCanvas)
+    if (!ocrText) {
+      setRecognitionMessage('Testo non leggibile. Avvicina la carta e riprova.')
+      return
+    }
+
+    const query = extractCardQuery(ocrText)
+    if (!query) {
+      setRecognitionMessage('Testo non abbastanza chiaro. Tieni la carta più ferma.')
+      return
+    }
+
+    const cardMatch = await searchCardByText(query)
+    if (cardMatch) {
+      setPendingRecognition(cardMatch)
+      setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
     } else {
-      setRecognitionMessage('Tieni la carta al centro e aspetta il riconoscimento.')
+      setRecognitionMessage('Nessuna carta abbastanza sicura. Allinea meglio il nome o il codice.')
     }
   }
 

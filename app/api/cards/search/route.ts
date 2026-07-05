@@ -42,57 +42,9 @@ const query = normalize(q)
   
 
 
-    // 🔥 CERCA ANCHE NEL DATABASE SUPABASE
-    const { createClient } = await import('@supabase/supabase-js')
-    const supabase = createClient(
-      'https://jxwgbzatdueefdiyxlns.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4d2diemF0ZHVlZWZkaXl4bG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzMwNjMsImV4cCI6MjA5MjM0OTA2M30.8HFzw4B9i2wB8cBuuG-gR9xEswt8kp-QyA8zqvd6YRQ'
-    )
+    console.log('🔄 [SEARCH] API cards:', filteredCards.length)
 
-    console.log('🔍 [SEARCH] Searching for:', q)
-    const { data: dbCards, error: dbError } = await supabase
-  .from('cards')
-  .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
-const dbCardsFiltered = (dbCards || []).filter((c: any) => {
-  const name = normalize(c.name || '')
-  const id = normalize(c.card_id || '')
-
-  return name.includes(query) || id.includes(query)
-})
-
-    if (dbError) {
-      console.error('❌ [SEARCH] Database search error:', dbError)
-    } else {
-      console.log('✅ [SEARCH] Found', dbCards?.length || 0, 'cards in database:', dbCards)
-    }
-
-    // Converti le carte del database nel formato API
-   const dbCardsFormatted = dbCardsFiltered.map((card: any) => ({
-      id: card.card_id,
-      name: card.name,
-      image_url: card.image_url,
-      rarity: card.rarity,
-      card_color: card.card_color,
-      card_type: card.card_type,
-      card_cost: card.card_cost,
-      card_power: card.card_power,
-      market_price: card.market_price,
-      inventory_price: card.inventory_price,
-      // Aggiungi flag per identificare carte del database
-      is_from_database: true
-    }))
-
-    console.log('🔄 [SEARCH] API cards:', filteredCards.length, 'DB cards:', dbCardsFormatted.length)
-
-    // Combina carte API esterne + carte database
-    const allCardsCombined = [...filteredCards, ...dbCardsFormatted]
-
-    console.log('📊 [SEARCH] Total combined cards:', allCardsCombined.length)
-
-
-
-
-    const cards = allCardsCombined.map((c: any) => ({
+    const cards = filteredCards.map((c: any) => ({
       id: c.card_set_id || c.id,
       name: c.card_name || c.name,
       image_url: c.card_image || c.image_url || null,
