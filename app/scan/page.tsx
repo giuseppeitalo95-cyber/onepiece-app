@@ -38,6 +38,7 @@ export default function ScanPage() {
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [recognitionMessage, setRecognitionMessage] = useState('Aspetto il riconoscimento...')
   const [recognizedCard, setRecognizedCard] = useState<ScannedCard | null>(null)
+  const [opencvReady, setOpencvReady] = useState(false)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
 
@@ -52,6 +53,38 @@ export default function ScanPage() {
     }
     checkUser()
   }, [router])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const existingScript = document.getElementById('opencv-script') as HTMLScriptElement | null
+    if (existingScript) {
+      if ((window as Window & { cv?: { Mat?: unknown } }).cv?.Mat) {
+        setOpencvReady(true)
+      } else {
+        existingScript.addEventListener('load', () => setOpencvReady(true), { once: true })
+      }
+      return
+    }
+
+    const script = document.createElement('script')
+    script.id = 'opencv-script'
+    script.src = 'https://docs.opencv.org/4.x/opencv.js'
+    script.async = true
+    script.onload = () => {
+      const cv = (window as Window & { cv?: { onRuntimeInitialized?: () => void } }).cv
+      if (cv?.onRuntimeInitialized) {
+        cv.onRuntimeInitialized = () => setOpencvReady(true)
+      } else {
+        setOpencvReady(true)
+      }
+    }
+    document.body.appendChild(script)
+
+    return () => {
+      script.onload = null
+    }
+  }, [])
 
   useEffect(() => {
     const loadReferenceCards = async () => {
@@ -87,11 +120,11 @@ export default function ScanPage() {
   }, [scannedCards.length])
 
   useEffect(() => {
-    if (!cameraActive || !cameraReady || referenceCards.length === 0) return
+    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !opencvReady) return
 
     detectionLoopRef.current = window.setInterval(() => {
       void detectCardFromFrame()
-    }, 800)
+    }, 900)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -169,71 +202,58 @@ export default function ScanPage() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const cv = (window as Window & { cv?: any }).cv
-    if (!cv?.Mat) {
-      const fallbackRect = {
-        x: canvas.width * 0.2,
-        y: canvas.height * 0.2,
-        width: canvas.width * 0.6,
-        height: canvas.height * 0.6
-      }
-      setDetectedRect(fallbackRect)
-      return
-    }
+    let rect = null as { x: number; y: number; width: number; height: number } | null
 
-    const src = cv.imread(canvas)
-    const gray = new cv.Mat()
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+    if (cv?.Mat) {
+      const src = cv.imread(canvas)
+      const gray = new cv.Mat()
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+      const blurred = new cv.Mat()
+      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
+      const edges = new cv.Mat()
+      cv.Canny(blurred, edges, 60, 140)
+      const contours = new cv.MatVector()
+      const hierarchy = new cv.Mat()
+      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
-    const blurred = new cv.Mat()
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
+      let bestArea = 0
+      for (let i = 0; i < contours.size(); i += 1) {
+        const contour = contours.get(i)
+        const peri = cv.arcLength(contour, true)
+        const approx = new cv.Mat()
+        cv.approxPolyDP(contour, approx, 0.02 * peri, true)
 
-    const edges = new cv.Mat()
-    cv.Canny(blurred, edges, 60, 140)
-
-    const contours = new cv.MatVector()
-    const hierarchy = new cv.Mat()
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    let bestRect: { x: number; y: number; width: number; height: number } | null = null
-    let bestArea = 0
-
-    for (let i = 0; i < contours.size(); i += 1) {
-      const contour = contours.get(i)
-      const peri = cv.arcLength(contour, true)
-      const approx = new cv.Mat()
-      cv.approxPolyDP(contour, approx, 0.02 * peri, true)
-
-      if (approx.rows === 4) {
-        const area = cv.contourArea(contour)
-        if (area > bestArea && area > 8000) {
-          const rect = cv.boundingRect(contour)
-          bestRect = {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height
+        if (approx.rows === 4) {
+          const area = cv.contourArea(contour)
+          if (area > bestArea && area > 8000) {
+            const r = cv.boundingRect(contour)
+            rect = { x: r.x, y: r.y, width: r.width, height: r.height }
+            bestArea = area
           }
-          bestArea = area
         }
+
+        contour.delete()
+        approx.delete()
       }
 
-      contour.delete()
-      approx.delete()
+      hierarchy.delete()
+      contours.delete()
+      edges.delete()
+      blurred.delete()
+      gray.delete()
+      src.delete()
     }
 
-    hierarchy.delete()
-    contours.delete()
-    edges.delete()
-    blurred.delete()
-    gray.delete()
-    src.delete()
-
-    if (!bestRect) {
-      setDetectedRect(null)
-      return
+    if (!rect) {
+      const centerWidth = Math.floor(canvas.width * 0.65)
+      const centerHeight = Math.floor(canvas.height * 0.7)
+      const x = Math.floor((canvas.width - centerWidth) / 2)
+      const y = Math.floor((canvas.height - centerHeight) / 2)
+      rect = { x, y, width: centerWidth, height: centerHeight }
     }
 
-    setDetectedRect(bestRect)
+    setDetectedRect(rect)
+    setRecognitionMessage('Analisi del frame in corso...')
 
     const cropCanvas = document.createElement('canvas')
     cropCanvas.width = 320
@@ -244,10 +264,10 @@ export default function ScanPage() {
 
     cropCtx.drawImage(
       canvas,
-      bestRect.x,
-      bestRect.y,
-      bestRect.width,
-      bestRect.height,
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
       0,
       0,
       cropCanvas.width,
@@ -298,10 +318,10 @@ export default function ScanPage() {
       }
     }
 
-    if (bestMatch && bestMatch.score < 7000) {
+    if (bestMatch && bestMatch.score < 15000) {
       addRecognizedCard(bestMatch.card)
     } else {
-      setRecognitionMessage('Carta non ancora riconosciuta. Avvicina la carta al centro.')
+      setRecognitionMessage('Carta non ancora riconosciuta. Inquadra la carta più vicina al centro.')
     }
   }
 
@@ -528,6 +548,21 @@ export default function ScanPage() {
                     muted
                     className={`h-full w-full object-cover ${cameraActive && cameraReady ? 'opacity-100' : 'opacity-0'}`}
                   />
+                  <canvas ref={processingCanvasRef} className="hidden" />
+
+                  {detectedRect && cameraActive && cameraReady && (
+                    <div className="pointer-events-none absolute inset-0">
+                      <div
+                        className="absolute rounded-xl border-2 border-emerald-400/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
+                        style={{
+                          left: `${(detectedRect.x / (videoRef.current?.videoWidth || 1)) * 100}%`,
+                          top: `${(detectedRect.y / (videoRef.current?.videoHeight || 1)) * 100}%`,
+                          width: `${(detectedRect.width / (videoRef.current?.videoWidth || 1)) * 100}%`,
+                          height: `${(detectedRect.height / (videoRef.current?.videoHeight || 1)) * 100}%`
+                        }}
+                      />
+                    </div>
+                  )}
 
                   {!cameraActive && !cameraReady && (
                     <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
@@ -566,6 +601,10 @@ export default function ScanPage() {
                     {cameraError}
                   </div>
                 )}
+
+                <div className="rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-300">
+                  {recognitionMessage}
+                </div>
 
                 {scannedCards.length > 0 && (
                   <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
