@@ -33,8 +33,19 @@ export async function GET() {
       seen.add(key)
       uniqueCards.push({
         id: String(card.card_set_id || card.id || key),
+        card_id: String(card.card_set_id || card.id || key),
         name: card.card_name || card.name || 'Carta',
-        image_url: card.card_image || card.image_url || null
+        image_url: card.card_image || card.image_url || null,
+        rarity: card.rarity || '—',
+        market_price: card.market_price ? Number(card.market_price) : null,
+        inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
+        card_color: card.card_color ?? null,
+        card_type: card.card_type ?? null,
+        card_cost: card.card_cost ? Number(card.card_cost) : null,
+        card_power: card.card_power ? Number(card.card_power) : null,
+        card_text: card.card_text || '',
+        set_name: card.set_name || '',
+        sub_types: card.sub_types || ''
       })
     }
 

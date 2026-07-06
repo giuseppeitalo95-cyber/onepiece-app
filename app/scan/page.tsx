@@ -20,6 +20,12 @@ type ScannedCard = {
   inventory_price?: number | null
 }
 
+type ReferenceCard = ScannedCard & {
+  card_text?: string | null
+  set_name?: string | null
+  sub_types?: string | null
+}
+
 export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -34,7 +40,7 @@ export default function ScanPage() {
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   const [carouselIndex, setCarouselIndex] = useState(0)
-  const [referenceCards, setReferenceCards] = useState<Array<{ id: string; name: string; image_url: string | null }>>([])
+  const [referenceCards, setReferenceCards] = useState<ReferenceCard[]>([])
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
@@ -206,6 +212,85 @@ export default function ScanPage() {
       .filter(word => word.length > 2 && !['the', 'and', 'for', 'with', 'card', 'cards'].includes(word.toLowerCase()))
 
     return words.slice(0, 4).join(' ')
+  }
+
+  const meaningfulTokens = (value: string) => {
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'this', 'that', 'your', 'you', 'may', 'card', 'cards',
+      'turn', 'play', 'from', 'hand', 'draw', 'when', 'then', 'cost', 'power', 'character',
+      'leader', 'event', 'stage', 'don', 'one', 'piece', 'counter', 'activate', 'main'
+    ])
+
+    return normalizeText(value)
+      .split(' ')
+      .filter(token => token.length >= 4 && !stopWords.has(token))
+  }
+
+  const toScannedCard = (candidate: ReferenceCard): ScannedCard => ({
+    id: `${candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
+    card_id: String(candidate.card_id || candidate.id || ''),
+    name: candidate.name,
+    image_url: candidate.image_url || null,
+    rarity: candidate.rarity || '—',
+    card_color: candidate.card_color ?? null,
+    card_type: candidate.card_type ?? null,
+    card_cost: candidate.card_cost ?? null,
+    card_power: candidate.card_power ?? null,
+    market_price: candidate.market_price ?? null,
+    inventory_price: candidate.inventory_price ?? null,
+  })
+
+  const findBestReferenceMatch = async (ocrText: string, cropCanvas: HTMLCanvasElement) => {
+    const cardCode = extractCardCode(ocrText)
+    const normalizedOcr = normalizeText(ocrText)
+    const ocrTokens = meaningfulTokens(ocrText)
+
+    if (cardCode) {
+      const exact = referenceCards.find(card => normalizeText(card.card_id || card.id).replace(/\s/g, '') === normalizeText(cardCode).replace(/\s/g, ''))
+      if (exact) return toScannedCard(exact)
+    }
+
+    if (ocrTokens.length < 2) return null
+
+    const scored = referenceCards
+      .map(card => {
+        const haystack = [
+          card.name,
+          card.card_id,
+          card.card_text,
+          card.set_name,
+          card.sub_types,
+          card.card_type,
+          card.card_color
+        ].filter(Boolean).join(' ')
+        const haystackText = normalizeText(haystack)
+        const nameText = normalizeText(card.name || '')
+        const idText = normalizeText(card.card_id || card.id || '')
+
+        let score = 0
+        if (idText && normalizedOcr.includes(idText)) score += 10
+        if (nameText && normalizedOcr.includes(nameText)) score += 6
+
+        const cardTokens = new Set(meaningfulTokens(haystack))
+        for (const token of ocrTokens) {
+          if (cardTokens.has(token)) score += nameText.includes(token) ? 2.2 : 1
+        }
+
+        return { card, score }
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+
+    const best = scored[0]
+    const second = scored[1]
+    if (!best || best.score < 5 || (second && best.score - second.score < 2)) return null
+
+    if (best.card.image_url && best.score < 8) {
+      const imageScore = await compareImageToCandidate(cropCanvas, best.card.image_url)
+      if (imageScore > 95) return null
+    }
+
+    return toScannedCard(best.card)
   }
 
   const preprocessForOcr = (sourceCanvas: HTMLCanvasElement, targetCanvas: HTMLCanvasElement) => {
@@ -536,28 +621,46 @@ export default function ScanPage() {
       return
     }
 
-    const [codeOcrText, rawCodeOcrText, nameOcrText] = await Promise.all([
-      runOcrOnCanvas(preprocessedCode),
-      runOcrOnCanvas(codeCropCanvas),
-      runOcrOnCanvas(preprocessedName)
-    ])
-
-    const codeQuery = codeOcrText || rawCodeOcrText ? extractCardQuery(`${codeOcrText || ''} ${rawCodeOcrText || ''}`) : null
-    const nameQuery = nameOcrText ? extractCardQuery(nameOcrText) : null
-    const query = codeQuery || nameQuery || ''
-
-    // FIX: la carta intera per il confronto immagine
     const fullCardCanvas = document.createElement('canvas')
-    fullCardCanvas.width = 256
-    fullCardCanvas.height = 256
+    fullCardCanvas.width = 720
+    fullCardCanvas.height = 1000
     const fullCardCtx = fullCardCanvas.getContext('2d')
     if (fullCardCtx) {
-      fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
+      fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
     }
 
-    setRecognitionMessage(query ? `Cerco la carta: ${query}` : 'Codice non leggibile. Avvicina il bordo basso della carta.')
+    const preprocessedFullCard = document.createElement('canvas')
+    preprocessedFullCard.width = 720
+    preprocessedFullCard.height = 1000
+    preprocessForOcr(fullCardCanvas, preprocessedFullCard)
 
-    const cardMatch = await searchCardByText(query, fullCardCanvas)
+    const imageMatchCanvas = document.createElement('canvas')
+    imageMatchCanvas.width = 256
+    imageMatchCanvas.height = 256
+    const imageMatchCtx = imageMatchCanvas.getContext('2d')
+    if (imageMatchCtx) {
+      imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
+    }
+
+    const recognitionCanvas = document.createElement('canvas')
+    recognitionCanvas.width = 900
+    recognitionCanvas.height = 1580
+    const recognitionCtx = recognitionCanvas.getContext('2d')
+    if (!recognitionCtx) return
+
+    recognitionCtx.fillStyle = '#ffffff'
+    recognitionCtx.fillRect(0, 0, recognitionCanvas.width, recognitionCanvas.height)
+    recognitionCtx.drawImage(preprocessedCode, 0, 0, 900, 420)
+    recognitionCtx.drawImage(preprocessedName, 0, 430, 900, 260)
+    recognitionCtx.drawImage(preprocessedFullCard, 90, 710, 720, 850)
+
+    const ocrText = await runOcrOnCanvas(recognitionCanvas)
+    const codeQuery = ocrText ? extractCardQuery(ocrText) : null
+    const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
+
+    setRecognitionMessage(allOcrText.trim() ? 'Confronto testo letto con database carte...' : 'Testo non leggibile. Avvicina la carta e aumenta la luce.')
+
+    const cardMatch = await findBestReferenceMatch(allOcrText, imageMatchCanvas)
     if (cardMatch) {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
