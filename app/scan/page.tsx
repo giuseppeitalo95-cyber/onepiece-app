@@ -39,7 +39,8 @@ export default function ScanPage() {
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
   const [opencvReady, setOpencvReady] = useState(false)
-  const [ocrReady, setOcrReady] = useState(false)
+  const [ocrReady] = useState(true)
+  const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
   const [scanSessionActive, setScanSessionActive] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -82,31 +83,6 @@ export default function ScanPage() {
         setOpencvReady(true)
       }
     }
-    document.body.appendChild(script)
-
-    return () => {
-      script.onload = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const existingOcrScript = document.getElementById('tesseract-script') as HTMLScriptElement | null
-    if (existingOcrScript) {
-      if ((window as Window & { Tesseract?: unknown }).Tesseract) {
-        setOcrReady(true)
-      } else {
-        existingOcrScript.addEventListener('load', () => setOcrReady(true), { once: true })
-      }
-      return
-    }
-
-    const script = document.createElement('script')
-    script.id = 'tesseract-script'
-    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
-    script.async = true
-    script.onload = () => setOcrReady(true)
     document.body.appendChild(script)
 
     return () => {
@@ -174,8 +150,16 @@ export default function ScanPage() {
 
     try {
       await videoRef.current.play()
+      setVideoSize({
+        width: videoRef.current.videoWidth || 1,
+        height: videoRef.current.videoHeight || 1
+      })
     } catch {
       videoRef.current.onloadedmetadata = () => {
+        setVideoSize({
+          width: videoRef.current?.videoWidth || 1,
+          height: videoRef.current?.videoHeight || 1
+        })
         videoRef.current?.play().catch(() => undefined)
       }
     }
@@ -187,7 +171,7 @@ export default function ScanPage() {
     const cleaned = text.replace(/\s+/g, ' ').trim()
     if (!cleaned) return null
 
-    const codeMatch = cleaned.match(/\b(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}\b/i)
+    const codeMatch = cleaned.match(/\b(?:op|st|eb|prb|sp|don|ex|cp|p)\d{1,2}-\d{1,3}\b/i)
     if (codeMatch) return codeMatch[0].toUpperCase()
 
     const words = cleaned
@@ -265,7 +249,7 @@ export default function ScanPage() {
         diff += Math.abs(sourceData.data[i + 2] - candidateData.data[i + 2])
       }
 
-      return diff / total
+      return diff / (total / 4 * 3)
     } catch {
       return Number.POSITIVE_INFINITY
     }
@@ -325,9 +309,9 @@ export default function ScanPage() {
         // senza testo leggibile.
         if (candidate.card_image || candidate.image_url) {
           const imageScore = await compareImageToCandidate(cropCanvas, candidate.card_image || candidate.image_url)
-          if (imageScore < 20000000) score += 1.5
-          else if (imageScore < 40000000) score += 0.9
-          else if (imageScore < 65000000) score += 0.5
+          if (imageScore < 55) score += 1.5
+          else if (imageScore < 85) score += 0.9
+          else if (imageScore < 115) score += 0.5
         }
 
         if (!bestMatch || score > bestMatch.score) {
@@ -392,6 +376,7 @@ export default function ScanPage() {
 
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
+    setVideoSize({ width: video.videoWidth, height: video.videoHeight })
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const cv = (window as Window & { cv?: any }).cv
@@ -451,7 +436,7 @@ export default function ScanPage() {
     setDetectedRect(rect)
     setRecognitionMessage('Analisi del frame in corso...')
 
-    // Ritaglio CODICE (striscia sottile in basso a sinistra)
+    // Ritaglio CODICE (striscia in basso: il codice puo stare anche verso destra)
     const codeCropCanvas = document.createElement('canvas')
     codeCropCanvas.width = 720
     codeCropCanvas.height = 220
@@ -465,10 +450,10 @@ export default function ScanPage() {
 
     if (!codeCropCtx || !nameCropCtx) return
 
-    const codeRegionX = rect.x + rect.width * 0.03
-    const codeRegionY = rect.y + rect.height * 0.925
-    const codeRegionWidth = rect.width * 0.55
-    const codeRegionHeight = rect.height * 0.06
+    const codeRegionX = rect.x + rect.width * 0.02
+    const codeRegionY = rect.y + rect.height * 0.86
+    const codeRegionWidth = rect.width * 0.96
+    const codeRegionHeight = rect.height * 0.13
 
     codeCropCtx.drawImage(
       canvas,
@@ -810,10 +795,10 @@ export default function ScanPage() {
                       <div
                         className="absolute rounded-xl border-2 border-emerald-400/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
                         style={{
-                          left: `${(detectedRect.x / (videoRef.current?.videoWidth || 1)) * 100}%`,
-                          top: `${(detectedRect.y / (videoRef.current?.videoHeight || 1)) * 100}%`,
-                          width: `${(detectedRect.width / (videoRef.current?.videoWidth || 1)) * 100}%`,
-                          height: `${(detectedRect.height / (videoRef.current?.videoHeight || 1)) * 100}%`
+                          left: `${(detectedRect.x / videoSize.width) * 100}%`,
+                          top: `${(detectedRect.y / videoSize.height) * 100}%`,
+                          width: `${(detectedRect.width / videoSize.width) * 100}%`,
+                          height: `${(detectedRect.height / videoSize.height) * 100}%`
                         }}
                       />
                     </div>
