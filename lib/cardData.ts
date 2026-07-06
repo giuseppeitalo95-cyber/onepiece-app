@@ -198,7 +198,7 @@ export const getAllCards = async () => {
     fetchOfficialCards()
   ])
 
-  const cards = [...oldResults.flat().map(normalizeOldCard), ...officialCards.map(normalizeOldCard)]
+  const cards = [...officialCards.map(normalizeOldCard), ...oldResults.flat().map(normalizeOldCard)]
   const unique = new Map<string, RawCard>()
 
   for (const card of cards) {

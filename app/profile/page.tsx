@@ -6,12 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Camera, UploadCloud, ShieldCheck, Bell } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-
-const ADMIN_ACCOUNT = {
-  id: 'fcade84e-6413-4009-91df-a8c839a170cc',
-  email: 'giuseppeitalo95@gmail.com',
-  username: 'peppitalo'
-}
+import { isAdminAccount } from '@/lib/admin'
 
 export default function Profile() {
   const router = useRouter()
@@ -53,10 +48,7 @@ export default function Profile() {
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
       const isFirstAccess = !data?.username
 
-      const isAdminUser =
-        user.id === ADMIN_ACCOUNT.id &&
-        user.email === ADMIN_ACCOUNT.email &&
-        data?.username === ADMIN_ACCOUNT.username
+      const isAdminUser = isAdminAccount(user, data)
 
       setUsername(data?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)

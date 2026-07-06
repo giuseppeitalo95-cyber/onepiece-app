@@ -4,12 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShieldCheck, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-
-const ADMIN_ACCOUNT = {
-  id: 'fcade84e-6413-4009-91df-a8c839a170cc',
-  email: 'giuseppeitalo95@gmail.com',
-  username: 'peppitalo'
-}
+import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 
 type ProfileItem = {
   id: string
@@ -232,11 +227,7 @@ export default function AdminPage() {
         .eq('id', user.id)
         .maybeSingle()
 
-      if (
-        user.id !== ADMIN_ACCOUNT.id ||
-        user.email !== ADMIN_ACCOUNT.email ||
-        adminProfile?.username !== ADMIN_ACCOUNT.username
-      ) {
+      if (!isAdminAccount(user, adminProfile)) {
         console.log('❌ [ADMIN] User is not admin, redirecting to /dashboard')
         router.replace('/dashboard')
         return

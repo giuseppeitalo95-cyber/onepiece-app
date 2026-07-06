@@ -32,6 +32,32 @@ const imageToBase64 = (image: string) => {
   return commaIndex >= 0 ? image.slice(commaIndex + 1) : image
 }
 
+const uniqueLines = (value: string) => {
+  const seen = new Set<string>()
+  return value
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => {
+      const key = line.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .join('\n')
+}
+
+const extractVisionText = (result: any) => {
+  const textParts = [
+    result?.fullTextAnnotation?.text,
+    ...(result?.textAnnotations || []).map((item: any) => item?.description),
+    ...(result?.webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
+    ...(result?.webDetection?.webEntities || []).map((item: any) => item?.description),
+  ].filter(Boolean)
+
+  return uniqueLines(textParts.join('\n'))
+}
+
 async function reserveMonthlyScan() {
   if (!adminSupabase) {
     return {
@@ -71,9 +97,15 @@ async function reserveMonthlyScan() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const image = body?.image || body?.dataUrl || body?.base64Image
+    const rawImages = Array.isArray(body?.images)
+      ? body.images
+      : [body?.image || body?.dataUrl || body?.base64Image]
 
-    if (!image) {
+    const images = rawImages
+      .filter((image: unknown): image is string => typeof image === 'string' && image.length > 0)
+      .slice(0, 6)
+
+    if (images.length === 0) {
       return Response.json({ text: '', error: 'Missing image' }, { status: 400 })
     }
 
@@ -101,22 +133,21 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        requests: [
-          {
+        requests: images.map((image: string, index: number) => ({
             image: {
               content: imageToBase64(image)
             },
             features: [
               {
-                type: 'DOCUMENT_TEXT_DETECTION',
-                maxResults: 1
-              }
+                type: 'TEXT_DETECTION',
+                maxResults: 50
+              },
+              ...(index === 0 ? [{ type: 'WEB_DETECTION', maxResults: 10 }] : [])
             ],
             imageContext: {
               languageHints: ['en']
             }
-          }
-        ]
+          }))
       })
     })
 
@@ -135,7 +166,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await response.json()
-    const result = data?.responses?.[0]
+    const responses = data?.responses || []
+    const result = responses.find((item: any) => item?.error) || responses[0]
 
     if (result?.error) {
       console.error('Google Vision API error:', result.error)
@@ -150,7 +182,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const text = result?.fullTextAnnotation?.text || result?.textAnnotations?.[0]?.description || ''
+    const text = uniqueLines(responses.map(extractVisionText).filter(Boolean).join('\n'))
 
     return Response.json({
       text,

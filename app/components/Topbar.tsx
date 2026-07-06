@@ -3,11 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-
-const ADMIN_ACCOUNT = {
-  email: 'giuseppeitalo95@gmail.com',
-  username: 'peppitalo'
-}
+import { isAdminAccount } from '@/lib/admin'
 
 export default function Topbar() {
   const router = useRouter()
@@ -32,7 +28,7 @@ export default function Topbar() {
 
       setUsername(data?.username || 'Utente')
       setAvatarUrl(data?.avatar_url || '')
-      setIsAdmin(session.user.email === ADMIN_ACCOUNT.email && data?.username === ADMIN_ACCOUNT.username)
+      setIsAdmin(isAdminAccount(session.user, data))
       setLoading(false)
     }
 

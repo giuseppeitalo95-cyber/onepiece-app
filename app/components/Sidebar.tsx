@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { LogOut, Menu, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { isAdminAccount } from '@/lib/admin'
 
 type NavItemProps = {
   label: string
@@ -19,11 +20,6 @@ const navItems = [
   { label: 'Ricerca Carta', href: '/search', key: 'ricerca' },
   { label: 'Profilo', href: '/profile', key: 'profilo' },
 ]
-
-const ADMIN_ACCOUNT = {
-  email: 'giuseppeitalo95@gmail.com',
-  username: 'peppitalo'
-}
 
 const NavItem = ({ label, href, active, onClick }: NavItemProps) => {
   const router = useRouter()
@@ -51,7 +47,7 @@ export default function Sidebar({ activePage }: { activePage: string }) {
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user || session.user.email !== ADMIN_ACCOUNT.email) return
+      if (!session?.user) return
 
       const { data } = await supabase
         .from('profiles')
@@ -59,7 +55,7 @@ export default function Sidebar({ activePage }: { activePage: string }) {
         .eq('id', session.user.id)
         .maybeSingle()
 
-      setIsAdmin(data?.username === ADMIN_ACCOUNT.username)
+      setIsAdmin(isAdminAccount(session.user, data))
     }
 
     checkAdmin()

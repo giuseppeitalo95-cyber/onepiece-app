@@ -133,7 +133,7 @@ export default function ScanPage() {
   }, [scannedCards.length])
 
   useEffect(() => {
-    if (!cameraActive || !cameraReady || referenceCards.length === 0 || !scanSessionActive) return
+    if (!cameraActive || !cameraReady || !scanSessionActive) return
 
     detectionLoopRef.current = window.setInterval(() => {
       if (!detectionInProgressRef.current && !pendingRecognition) {
@@ -147,7 +147,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, referenceCards.length, ocrReady, scanSessionActive, pendingRecognition])
+  }, [cameraActive, cameraReady, ocrReady, scanSessionActive, pendingRecognition])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -370,13 +370,14 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const runOcrOnCanvas = async (canvas: HTMLCanvasElement) => {
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.86)
+
+  const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
     try {
-      const dataUrl = canvas.toDataURL('image/png')
       const res = await fetch('/api/cards/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl })
+        body: JSON.stringify({ images: canvases.map(canvasToImage) })
       })
       const data = await res.json()
 
@@ -392,6 +393,22 @@ export default function ScanPage() {
       return typeof data?.text === 'string' ? data.text : null
     } catch {
       setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
+      return null
+    }
+  }
+
+  const recognizeCardByText = async (text: string) => {
+    if (!text.trim()) return null
+
+    try {
+      const res = await fetch('/api/cards/recognize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+      const data = await res.json()
+      return data?.card ? toScannedCard(data.card) : null
+    } catch {
       return null
     }
   }
@@ -548,7 +565,7 @@ export default function ScanPage() {
   }
 
   const detectCardFromFrameUnsafe = async () => {
-    if (!videoRef.current || !processingCanvasRef.current || referenceCards.length === 0) return
+    if (!videoRef.current || !processingCanvasRef.current) return
 
     const video = videoRef.current
     const canvas = processingCanvasRef.current
@@ -674,7 +691,7 @@ export default function ScanPage() {
 
     const visionCanvas = document.createElement('canvas')
     visionCanvas.width = 1000
-    visionCanvas.height = 2300
+    visionCanvas.height = 3200
     const visionCtx = visionCanvas.getContext('2d')
     if (!visionCtx) return
     visionCtx.fillStyle = '#ffffff'
@@ -682,6 +699,8 @@ export default function ScanPage() {
     visionCtx.drawImage(fullCardCanvas, 50, 20, 900, 1250)
     visionCtx.drawImage(nameCropCanvas, 50, 1290, 900, 540)
     visionCtx.drawImage(codeCropCanvas, 50, 1860, 900, 360)
+    visionCtx.drawImage(preprocessedName, 50, 2240, 900, 540)
+    visionCtx.drawImage(preprocessedCode, 50, 2800, 900, 360)
 
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 256
@@ -691,13 +710,18 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    const ocrText = await runOcrOnCanvas(visionCanvas)
+    const ocrText = await runOcrOnCanvases([visionCanvas])
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
 
     setRecognitionMessage(allOcrText.trim() ? 'Confronto testo letto con database carte...' : 'Testo non leggibile. Avvicina la carta e aumenta la luce.')
 
-    const cardMatch = await findBestReferenceMatch(allOcrText, imageMatchCanvas)
+    const localMatch = referenceCards.length > 0
+      ? await findBestReferenceMatch(allOcrText, imageMatchCanvas)
+      : null
+    const serverMatch = localMatch || await recognizeCardByText(allOcrText)
+    const searchMatch = serverMatch || await searchCardByText(codeQuery || allOcrText, imageMatchCanvas)
+    const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
