@@ -45,6 +45,7 @@ export default function ScanPage() {
   const [showSummary, setShowSummary] = useState(false)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
+  const detectionInProgressRef = useRef(false)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -127,8 +128,10 @@ export default function ScanPage() {
     if (!cameraActive || !cameraReady || referenceCards.length === 0 || !scanSessionActive) return
 
     detectionLoopRef.current = window.setInterval(() => {
-      void detectCardFromFrame()
-    }, 1800)
+      if (!detectionInProgressRef.current && !pendingRecognition) {
+        void detectCardFromFrame()
+      }
+    }, 2000)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -136,7 +139,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, referenceCards.length, ocrReady, scanSessionActive])
+  }, [cameraActive, cameraReady, referenceCards.length, ocrReady, scanSessionActive, pendingRecognition])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -167,12 +170,34 @@ export default function ScanPage() {
 
   const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
 
+  const normalizeOcrNumber = (value: string) =>
+    value
+      .toUpperCase()
+      .replace(/O/g, '0')
+      .replace(/[IL]/g, '1')
+      .replace(/S/g, '5')
+      .replace(/B/g, '8')
+      .replace(/[^0-9]/g, '')
+
+  const extractCardCode = (text: string) => {
+    const compact = text.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const codeMatch = compact.match(/(OP|0P|ST|EB|PRB|SP|DON|D0N|EX|CP|P)([A-Z0-9]{1,2})([A-Z0-9]{3})/)
+    if (!codeMatch) return null
+
+    const prefix = codeMatch[1].replace('0P', 'OP').replace('D0N', 'DON')
+    const setNumber = normalizeOcrNumber(codeMatch[2]).padStart(2, '0')
+    const cardNumber = normalizeOcrNumber(codeMatch[3]).padStart(3, '0')
+
+    if (!setNumber || !cardNumber) return null
+    return `${prefix}${setNumber}-${cardNumber}`
+  }
+
   const extractCardQuery = (text: string) => {
     const cleaned = text.replace(/\s+/g, ' ').trim()
     if (!cleaned) return null
 
-    const codeMatch = cleaned.match(/\b(?:op|st|eb|prb|sp|don|ex|cp|p)\d{1,2}-\d{1,3}\b/i)
-    if (codeMatch) return codeMatch[0].toUpperCase()
+    const codeMatch = extractCardCode(cleaned)
+    if (codeMatch) return codeMatch
 
     const words = cleaned
       .split(' ')
@@ -257,25 +282,21 @@ export default function ScanPage() {
 
   const searchCardByText = async (query: string, cropCanvas: HTMLCanvasElement) => {
     try {
+      if (!query) return null
+
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query || '')}`)
       const results = await res.json()
 
-      // FIX: se la query testuale non trova nulla, proviamo a confrontare l'immagine
-      // con TUTTE le carte di riferimento caricate all'avvio (referenceCards), non solo
-      // con i risultati della ricerca testuale. Così il riconoscimento per immagine
-      // funziona anche quando l'OCR non ha letto nulla di utile.
-      const candidatePool = Array.isArray(results) && results.length > 0 ? results : referenceCards
+      if (!query || !Array.isArray(results) || results.length === 0) return null
 
-      if (!Array.isArray(candidatePool) || candidatePool.length === 0) return null
+      const candidatePool = results
 
       const normalizedQuery = normalizeText(query || '')
       const queryTokens = normalizedQuery.split(' ').filter(Boolean)
       let bestMatch: { card: ScannedCard; score: number } | null = null
 
-      // Limitiamo il confronto immagine a un massimo di carte per non appesantire troppo
-      // (se il pool viene dai risultati di ricerca testuale è già piccolo e mirato;
-      // se viene dal pool di riferimento completo, confrontiamo un sottoinsieme)
-      const poolForImageCompare = candidatePool.length > 60 ? candidatePool.slice(0, 60) : candidatePool
+      // La foto serve solo a scegliere tra candidati gia filtrati dal testo.
+      const poolForImageCompare = candidatePool.length > 12 ? candidatePool.slice(0, 12) : candidatePool
 
       for (const candidate of poolForImageCompare) {
         const name = String(candidate.card_name || candidate.name || '')
@@ -300,7 +321,7 @@ export default function ScanPage() {
           const hasStrongName = normalizedName && (normalizedName.includes(normalizedQuery) || overlap >= 2)
           if (hasStrongName) score += 0.3
 
-          const isLikelyCardId = /(?:op|st|sp|don|ex|cp|p)\d{1,2}-\d{1,3}/i.test(query || '')
+          const isLikelyCardId = Boolean(extractCardCode(query || ''))
           if (isLikelyCardId && normalizedId && normalizedId.includes(normalizedQuery)) score += 0.5
         }
 
@@ -330,7 +351,7 @@ export default function ScanPage() {
         }
       }
 
-      return bestMatch && bestMatch.score > 1.3 ? bestMatch.card : null
+      return bestMatch && bestMatch.score > 1.6 ? bestMatch.card : null
     } catch {
       return null
     }
@@ -366,6 +387,17 @@ export default function ScanPage() {
   }
 
   const detectCardFromFrame = async () => {
+    if (detectionInProgressRef.current) return
+    detectionInProgressRef.current = true
+
+    try {
+      await detectCardFromFrameUnsafe()
+    } finally {
+      detectionInProgressRef.current = false
+    }
+  }
+
+  const detectCardFromFrameUnsafe = async () => {
     if (!videoRef.current || !processingCanvasRef.current || referenceCards.length === 0) return
 
     const video = videoRef.current
@@ -439,7 +471,7 @@ export default function ScanPage() {
     // Ritaglio CODICE (striscia in basso: il codice puo stare anche verso destra)
     const codeCropCanvas = document.createElement('canvas')
     codeCropCanvas.width = 720
-    codeCropCanvas.height = 220
+    codeCropCanvas.height = 360
     const codeCropCtx = codeCropCanvas.getContext('2d')
 
     // Ritaglio NOME (fascia vicino alla parte alta)
@@ -450,16 +482,25 @@ export default function ScanPage() {
 
     if (!codeCropCtx || !nameCropCtx) return
 
-    const codeRegionX = rect.x + rect.width * 0.02
-    const codeRegionY = rect.y + rect.height * 0.86
-    const codeRegionWidth = rect.width * 0.96
-    const codeRegionHeight = rect.height * 0.13
+    const codeRegions = [
+      { x: 0.02, y: 0.84, width: 0.96, height: 0.15 },
+      { x: 0.38, y: 0.80, width: 0.60, height: 0.18 },
+      { x: 0.02, y: 0.80, width: 0.62, height: 0.18 }
+    ]
 
-    codeCropCtx.drawImage(
-      canvas,
-      codeRegionX, codeRegionY, codeRegionWidth, codeRegionHeight,
-      0, 0, codeCropCanvas.width, codeCropCanvas.height
-    )
+    codeRegions.forEach((region, index) => {
+      codeCropCtx.drawImage(
+        canvas,
+        rect.x + rect.width * region.x,
+        rect.y + rect.height * region.y,
+        rect.width * region.width,
+        rect.height * region.height,
+        0,
+        index * 120,
+        codeCropCanvas.width,
+        120
+      )
+    })
 
     const nameRegionX = rect.x + rect.width * 0.06
     const nameRegionY = rect.y + rect.height * 0.06
@@ -474,7 +515,7 @@ export default function ScanPage() {
 
     const preprocessedCode = document.createElement('canvas')
     preprocessedCode.width = 720
-    preprocessedCode.height = 220
+    preprocessedCode.height = 360
     preprocessForOcr(codeCropCanvas, preprocessedCode)
 
     const preprocessedName = document.createElement('canvas')
@@ -495,10 +536,13 @@ export default function ScanPage() {
       return
     }
 
-    const codeOcrText = await runOcrOnCanvas(preprocessedCode)
-    const nameOcrText = await runOcrOnCanvas(preprocessedName)
+    const [codeOcrText, rawCodeOcrText, nameOcrText] = await Promise.all([
+      runOcrOnCanvas(preprocessedCode),
+      runOcrOnCanvas(codeCropCanvas),
+      runOcrOnCanvas(preprocessedName)
+    ])
 
-    const codeQuery = codeOcrText ? extractCardQuery(codeOcrText) : null
+    const codeQuery = codeOcrText || rawCodeOcrText ? extractCardQuery(`${codeOcrText || ''} ${rawCodeOcrText || ''}`) : null
     const nameQuery = nameOcrText ? extractCardQuery(nameOcrText) : null
     const query = codeQuery || nameQuery || ''
 
@@ -511,9 +555,7 @@ export default function ScanPage() {
       fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    // FIX: anche se il testo non è leggibile, proviamo comunque a riconoscere
-    // la carta SOLO tramite immagine (prima ci si fermava subito con "testo non leggibile")
-    setRecognitionMessage(query ? 'Cerco la carta...' : 'Testo non chiaro, provo a riconoscere dall\'immagine...')
+    setRecognitionMessage(query ? `Cerco la carta: ${query}` : 'Codice non leggibile. Avvicina il bordo basso della carta.')
 
     const cardMatch = await searchCardByText(query, fullCardCanvas)
     if (cardMatch) {
