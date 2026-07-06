@@ -227,6 +227,22 @@ export default function ScanPage() {
       .filter(token => token.length >= 4 && !stopWords.has(token))
   }
 
+  const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  const tokenSimilarity = (a: string, b: string) => {
+    if (a === b) return 1
+    if (a.length < 4 || b.length < 4) return 0
+    if (a.includes(b) || b.includes(a)) return 0.85
+
+    const maxLength = Math.max(a.length, b.length)
+    let same = 0
+    const minLength = Math.min(a.length, b.length)
+    for (let i = 0; i < minLength; i += 1) {
+      if (a[i] === b[i]) same += 1
+    }
+    return same / maxLength
+  }
+
   const toScannedCard = (candidate: ReferenceCard): ScannedCard => ({
     id: `${candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
     card_id: String(candidate.card_id || candidate.id || ''),
@@ -265,17 +281,22 @@ export default function ScanPage() {
           card.card_color,
           card.image_url
         ].filter(Boolean).join(' ')
-        const haystackText = normalizeText(haystack)
         const nameText = normalizeText(card.name || '')
-        const idText = normalizeText(card.card_id || card.id || '')
+        const idText = compactText(card.card_id || card.id || '')
+        const compactOcr = compactText(ocrText)
+        const nameTokens = meaningfulTokens(card.name || '')
+        const cardTokens = meaningfulTokens(haystack)
 
         let score = 0
-        if (idText && normalizedOcr.includes(idText)) score += 12
+        if (idText && compactOcr.includes(idText)) score += 20
         if (nameText && normalizedOcr.includes(nameText)) score += 8
 
-        const cardTokens = new Set(meaningfulTokens(haystack))
+        const cardTokenSet = new Set(cardTokens)
         for (const token of ocrTokens) {
-          if (cardTokens.has(token)) score += nameText.includes(token) ? 3 : 1
+          if (cardTokenSet.has(token)) score += nameText.includes(token) ? 4 : 1.2
+          for (const nameToken of nameTokens) {
+            if (tokenSimilarity(token, nameToken) >= 0.78) score += 2.5
+          }
         }
 
         return { card, score }
@@ -285,12 +306,8 @@ export default function ScanPage() {
 
     const best = scored[0]
     const second = scored[1]
-    if (!best || best.score < 3 || (second && best.score < 8 && best.score - second.score < 1)) return null
-
-    if (best.card.image_url && best.score < 6) {
-      const imageScore = await compareImageToCandidate(cropCanvas, best.card.image_url)
-      if (imageScore > 125) return null
-    }
+    if (!best || best.score < 2.5) return null
+    if (second && best.score < 6 && best.score - second.score < 0.5) return null
 
     return toScannedCard(best.card)
   }
@@ -556,8 +573,8 @@ export default function ScanPage() {
     }
 
     if (!rect) {
-      const centerWidth = Math.floor(canvas.width * 0.65)
-      const centerHeight = Math.floor(canvas.height * 0.7)
+      const centerWidth = Math.floor(canvas.width * 0.9)
+      const centerHeight = Math.floor(canvas.height * 0.9)
       const x = Math.floor((canvas.width - centerWidth) / 2)
       const y = Math.floor((canvas.height - centerHeight) / 2)
       rect = { x, y, width: centerWidth, height: centerHeight }
@@ -634,13 +651,23 @@ export default function ScanPage() {
       return
     }
 
+    const fullCardCanvas = document.createElement('canvas')
+    fullCardCanvas.width = 900
+    fullCardCanvas.height = 1250
+    const fullCardCtx = fullCardCanvas.getContext('2d')
+    if (!fullCardCtx) return
+    fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
+
     const visionCanvas = document.createElement('canvas')
-    visionCanvas.width = 1280
-    visionCanvas.height = Math.max(720, Math.round(canvas.height * (1280 / canvas.width)))
+    visionCanvas.width = 1000
+    visionCanvas.height = 1900
     const visionCtx = visionCanvas.getContext('2d')
-    if (visionCtx) {
-      visionCtx.drawImage(canvas, 0, 0, visionCanvas.width, visionCanvas.height)
-    }
+    if (!visionCtx) return
+    visionCtx.fillStyle = '#ffffff'
+    visionCtx.fillRect(0, 0, visionCanvas.width, visionCanvas.height)
+    visionCtx.drawImage(fullCardCanvas, 50, 20, 900, 1250)
+    visionCtx.drawImage(nameCropCanvas, 50, 1290, 900, 260)
+    visionCtx.drawImage(codeCropCanvas, 50, 1570, 900, 300)
 
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 256
@@ -661,7 +688,8 @@ export default function ScanPage() {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
     } else {
-      setRecognitionMessage('Nessuna carta abbastanza sicura. Allinea meglio il nome o il codice.')
+      const previewText = allOcrText.replace(/\s+/g, ' ').trim().slice(0, 90)
+      setRecognitionMessage(previewText ? `Testo letto ma nessun match: ${previewText}` : 'Google Vision non ha letto testo utile. Avvicina la carta e aumenta la luce.')
     }
   }
 

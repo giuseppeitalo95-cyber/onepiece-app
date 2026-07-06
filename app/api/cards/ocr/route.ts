@@ -110,10 +110,6 @@ export async function POST(req: NextRequest) {
               {
                 type: 'DOCUMENT_TEXT_DETECTION',
                 maxResults: 1
-              },
-              {
-                type: 'WEB_DETECTION',
-                maxResults: 10
               }
             ],
             imageContext: {
@@ -155,21 +151,9 @@ export async function POST(req: NextRequest) {
     }
 
     const text = result?.fullTextAnnotation?.text || result?.textAnnotations?.[0]?.description || ''
-    const webDetection = result?.webDetection || {}
-    const webTextParts = [
-      ...(webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
-      ...(webDetection?.webEntities || []).map((item: any) => item?.description),
-      ...(webDetection?.fullMatchingImages || []).map((item: any) => item?.url),
-      ...(webDetection?.partialMatchingImages || []).map((item: any) => item?.url),
-      ...(webDetection?.visuallySimilarImages || []).map((item: any) => item?.url),
-      ...(webDetection?.pagesWithMatchingImages || []).flatMap((item: any) => [
-        item?.url,
-        item?.pageTitle
-      ])
-    ].filter(Boolean)
 
     return Response.json({
-      text: [text, ...webTextParts].join('\n'),
+      text,
       scansUsed: usage.used,
       scansLimit: usage.limit
     })
