@@ -218,7 +218,8 @@ export default function ScanPage() {
     const stopWords = new Set([
       'the', 'and', 'for', 'with', 'this', 'that', 'your', 'you', 'may', 'card', 'cards',
       'turn', 'play', 'from', 'hand', 'draw', 'when', 'then', 'cost', 'power', 'character',
-      'leader', 'event', 'stage', 'don', 'one', 'piece', 'counter', 'activate', 'main'
+      'leader', 'event', 'stage', 'don', 'one', 'piece', 'counter', 'activate', 'main',
+      'opponent', 'during', 'battle', 'trash', 'rest', 'look', 'life', 'less', 'more'
     ])
 
     return normalizeText(value)
@@ -250,7 +251,7 @@ export default function ScanPage() {
       if (exact) return toScannedCard(exact)
     }
 
-    if (ocrTokens.length < 2) return null
+    if (ocrTokens.length < 1) return null
 
     const scored = referenceCards
       .map(card => {
@@ -268,12 +269,12 @@ export default function ScanPage() {
         const idText = normalizeText(card.card_id || card.id || '')
 
         let score = 0
-        if (idText && normalizedOcr.includes(idText)) score += 10
-        if (nameText && normalizedOcr.includes(nameText)) score += 6
+        if (idText && normalizedOcr.includes(idText)) score += 12
+        if (nameText && normalizedOcr.includes(nameText)) score += 8
 
         const cardTokens = new Set(meaningfulTokens(haystack))
         for (const token of ocrTokens) {
-          if (cardTokens.has(token)) score += nameText.includes(token) ? 2.2 : 1
+          if (cardTokens.has(token)) score += nameText.includes(token) ? 3 : 1
         }
 
         return { card, score }
@@ -283,11 +284,11 @@ export default function ScanPage() {
 
     const best = scored[0]
     const second = scored[1]
-    if (!best || best.score < 5 || (second && best.score - second.score < 2)) return null
+    if (!best || best.score < 3 || (second && best.score < 8 && best.score - second.score < 1)) return null
 
-    if (best.card.image_url && best.score < 8) {
+    if (best.card.image_url && best.score < 6) {
       const imageScore = await compareImageToCandidate(cropCanvas, best.card.image_url)
-      if (imageScore > 95) return null
+      if (imageScore > 125) return null
     }
 
     return toScannedCard(best.card)
@@ -640,11 +641,6 @@ export default function ScanPage() {
       fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
     }
 
-    const preprocessedFullCard = document.createElement('canvas')
-    preprocessedFullCard.width = 720
-    preprocessedFullCard.height = 1000
-    preprocessForOcr(fullCardCanvas, preprocessedFullCard)
-
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 256
     imageMatchCanvas.height = 256
@@ -653,19 +649,7 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    const recognitionCanvas = document.createElement('canvas')
-    recognitionCanvas.width = 900
-    recognitionCanvas.height = 1580
-    const recognitionCtx = recognitionCanvas.getContext('2d')
-    if (!recognitionCtx) return
-
-    recognitionCtx.fillStyle = '#ffffff'
-    recognitionCtx.fillRect(0, 0, recognitionCanvas.width, recognitionCanvas.height)
-    recognitionCtx.drawImage(preprocessedCode, 0, 0, 900, 420)
-    recognitionCtx.drawImage(preprocessedName, 0, 430, 900, 260)
-    recognitionCtx.drawImage(preprocessedFullCard, 90, 710, 720, 850)
-
-    const ocrText = await runOcrOnCanvas(recognitionCanvas)
+    const ocrText = await runOcrOnCanvas(fullCardCanvas)
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
 

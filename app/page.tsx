@@ -1,8 +1,26 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export default function Home() {
+  const router = useRouter()
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        router.replace('/dashboard')
+        return
+      }
+      setCheckingSession(false)
+    }
+
+    checkSession()
+  }, [router])
+
   const login = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -10,6 +28,14 @@ export default function Home() {
         redirectTo: 'https://onepiece-app-one.vercel.app/auth/callback'
       }
     })
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center onepiece-wave-bg onepiece-clouds px-4 py-8">
+        <div className="text-sm font-semibold text-amber-300">Caricamento...</div>
+      </div>
+    )
   }
 
   return (
