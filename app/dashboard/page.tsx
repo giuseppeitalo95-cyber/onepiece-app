@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
+import Topbar from '@/app/components/Topbar'
 import { useRouter } from 'next/navigation'
 
 const ADMIN_ACCOUNT = {
@@ -205,61 +206,7 @@ export default function Dashboard() {
       <Sidebar activePage="collezione" />
       <div className="w-full min-h-screen">
 
-        {/* TOPBAR */}
-        <div className="fixed top-0 left-0 right-0 h-14 z-40 bg-slate-900/85 backdrop-blur-md border-b border-teal-800/30 flex items-center px-3 sm:px-4 gap-2 sm:gap-4">
-
-          <div className="hidden sm:flex flex-1" />
-
-          <div className="flex-1 flex items-center justify-center min-w-0">
-            <div className="relative flex flex-col items-center justify-center px-2">
-              <img
-                src="/luffyhatlogo.webp"
-                className="absolute -top-6 sm:-top-8 w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg onepiece-float"
-                alt="Logo Cap"
-              />
-              <span className="pt-8 sm:pt-10 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
-                OPV
-              </span>
-            </div>
-          </div>
-
-          <div className="hidden sm:flex flex-1" />
-
-          <div className="flex justify-end flex-shrink-0">
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                <button
-                  onClick={() => router.push('/admin')}
-                  className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-400/20"
-                >
-                  Admin
-                </button>
-              )}
-              <button
-                onClick={() => router.push('/profile')}
-                className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
-              >
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0 overflow-hidden border border-amber-400/30">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-900 font-bold text-sm">
-                      {(username || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
-                  {loading ? '...' : username}
-                </span>
-              </button>
-            </div>
-          </div>
-
-        </div>
+        <Topbar />
 
         {/* CONTENT */}
         <div className="h-[calc(100dvh-56px)] overflow-y-auto pt-20 px-3 sm:px-6">

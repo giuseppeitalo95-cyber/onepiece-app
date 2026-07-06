@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Camera, UploadCloud, ShieldCheck, Bell } from 'lucide-react'
+import Sidebar from '@/app/components/Sidebar'
+import Topbar from '@/app/components/Topbar'
 
 const ADMIN_ACCOUNT = {
   id: 'fcade84e-6413-4009-91df-a8c839a170cc',
@@ -265,7 +267,9 @@ export default function Profile() {
     .join('') || 'OP'
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
+    <div className="min-h-screen pt-14 text-white onepiece-wave-bg onepiece-clouds">
+      <Sidebar activePage="profilo" />
+      <Topbar />
       <div className="flex items-center justify-between gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div className="flex items-center gap-3">
           {!firstAccess && (

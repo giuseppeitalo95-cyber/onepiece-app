@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
+import Topbar from '@/app/components/Topbar'
 import { Camera, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type ScannedCard = {
@@ -21,6 +22,7 @@ type ScannedCard = {
 }
 
 type ReferenceCard = ScannedCard & {
+  card_image?: string | null
   card_text?: string | null
   set_name?: string | null
   sub_types?: string | null
@@ -252,7 +254,7 @@ export default function ScanPage() {
     id: `${candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
     card_id: String(candidate.card_id || candidate.id || ''),
     name: candidate.name,
-    image_url: candidate.image_url || null,
+    image_url: candidate.image_url || candidate.card_image || null,
     rarity: candidate.rarity || '—',
     card_color: candidate.card_color ?? null,
     card_type: candidate.card_type ?? null,
@@ -279,6 +281,9 @@ export default function ScanPage() {
         const haystack = [
           card.name,
           card.card_id,
+          card.rarity,
+          card.card_cost,
+          card.card_power,
           card.card_text,
           card.set_name,
           card.sub_types,
@@ -311,8 +316,31 @@ export default function ScanPage() {
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
 
-    const best = scored[0]
-    const second = scored[1]
+    const imageCandidates = await Promise.all(
+      scored.slice(0, 12).map(async item => {
+        const imageUrl = item.card.image_url || item.card.card_image
+        if (!imageUrl) return item
+
+        const imageScore = await compareImageToCandidate(cropCanvas, imageUrl)
+        let imageBonus = 0
+        if (imageScore < 55) imageBonus = 10
+        else if (imageScore < 80) imageBonus = 6
+        else if (imageScore < 110) imageBonus = 3
+
+        return {
+          ...item,
+          score: item.score + imageBonus
+        }
+      })
+    )
+
+    const finalScored = [
+      ...imageCandidates,
+      ...scored.slice(12)
+    ].sort((a, b) => b.score - a.score)
+
+    const best = finalScored[0]
+    const second = finalScored[1]
     if (!best || best.score < 2.5) return null
     if (second && best.score < 6 && best.score - second.score < 0.5) return null
 
@@ -574,10 +602,10 @@ export default function ScanPage() {
     codeCropCanvas.height = 360
     const codeCropCtx = codeCropCanvas.getContext('2d')
 
-    // Ritaglio NOME (fascia vicino alla parte alta)
+    // Ritagli leggibili: effetto, nome e riga codice sono le zone piu utili per il match.
     const nameCropCanvas = document.createElement('canvas')
-    nameCropCanvas.width = 720
-    nameCropCanvas.height = 220
+    nameCropCanvas.width = 900
+    nameCropCanvas.height = 540
     const nameCropCtx = nameCropCanvas.getContext('2d')
 
     if (!codeCropCtx || !nameCropCtx) return
@@ -602,16 +630,25 @@ export default function ScanPage() {
       )
     })
 
-    const nameRegionX = rect.x + rect.width * 0.06
-    const nameRegionY = rect.y + rect.height * 0.06
-    const nameRegionWidth = rect.width * 0.88
-    const nameRegionHeight = rect.height * 0.11
+    const textRegions = [
+      { x: 0.06, y: 0.47, width: 0.88, height: 0.16 },
+      { x: 0.06, y: 0.68, width: 0.88, height: 0.15 },
+      { x: 0.38, y: 0.80, width: 0.58, height: 0.12 }
+    ]
 
-    nameCropCtx.drawImage(
-      canvas,
-      nameRegionX, nameRegionY, nameRegionWidth, nameRegionHeight,
-      0, 0, nameCropCanvas.width, nameCropCanvas.height
-    )
+    textRegions.forEach((region, index) => {
+      nameCropCtx.drawImage(
+        canvas,
+        rect.x + rect.width * region.x,
+        rect.y + rect.height * region.y,
+        rect.width * region.width,
+        rect.height * region.height,
+        0,
+        index * 180,
+        nameCropCanvas.width,
+        180
+      )
+    })
 
     const preprocessedCode = document.createElement('canvas')
     preprocessedCode.width = 720
@@ -619,8 +656,8 @@ export default function ScanPage() {
     preprocessForOcr(codeCropCanvas, preprocessedCode)
 
     const preprocessedName = document.createElement('canvas')
-    preprocessedName.width = 720
-    preprocessedName.height = 220
+    preprocessedName.width = 900
+    preprocessedName.height = 540
     preprocessForOcr(nameCropCanvas, preprocessedName)
 
     if (!ocrReady) {
@@ -637,14 +674,14 @@ export default function ScanPage() {
 
     const visionCanvas = document.createElement('canvas')
     visionCanvas.width = 1000
-    visionCanvas.height = 1900
+    visionCanvas.height = 2300
     const visionCtx = visionCanvas.getContext('2d')
     if (!visionCtx) return
     visionCtx.fillStyle = '#ffffff'
     visionCtx.fillRect(0, 0, visionCanvas.width, visionCanvas.height)
     visionCtx.drawImage(fullCardCanvas, 50, 20, 900, 1250)
-    visionCtx.drawImage(nameCropCanvas, 50, 1290, 900, 260)
-    visionCtx.drawImage(codeCropCanvas, 50, 1570, 900, 300)
+    visionCtx.drawImage(nameCropCanvas, 50, 1290, 900, 540)
+    visionCtx.drawImage(codeCropCanvas, 50, 1860, 900, 360)
 
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 256
@@ -905,24 +942,7 @@ export default function ScanPage() {
       <Sidebar activePage="scan" />
 
       <div className="flex-1 flex flex-col overflow-hidden pt-14">
-        <div className="fixed top-0 left-0 right-0 h-14 z-40 flex items-center border-b border-teal-800/30 bg-slate-900/85 px-3 backdrop-blur-md sm:px-4">
-          <div className="hidden sm:flex flex-1" />
-
-          <div className="flex-1 flex items-center justify-center min-w-0">
-            <div className="relative flex flex-col items-center justify-center px-2">
-              <img
-                src="/luffyhatlogo.webp"
-                className="absolute -top-6 sm:-top-8 w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg onepiece-float"
-                alt="Logo Cap"
-              />
-              <span className="pt-8 sm:pt-10 text-base sm:text-2xl font-extrabold tracking-[0.25em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 text-transparent bg-clip-text whitespace-nowrap">
-                OPV
-              </span>
-            </div>
-          </div>
-
-          <div className="hidden sm:flex flex-1" />
-        </div>
+        <Topbar />
 
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 flex items-center justify-center px-3 py-4 sm:px-6">

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Users, UserPlus, Check, X, Search, Heart } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
+import Topbar from '@/app/components/Topbar'
 
 type ProfileItem = {
   id: string
@@ -229,8 +230,9 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen overflow-x-hidden text-white onepiece-wave-bg onepiece-clouds">
+    <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="amici" />
+      <Topbar />
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area sociale</p>

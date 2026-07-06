@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
+import Topbar from '@/app/components/Topbar'
 import { Search, X } from 'lucide-react'
 
 type Card = {
@@ -198,6 +199,7 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="ricerca" />
+      <Topbar />
 
       <div className="flex flex-col gap-4 px-4 pt-24 pb-8 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-6xl rounded-[2rem] border border-teal-800/30 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/40">
