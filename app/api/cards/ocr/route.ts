@@ -141,8 +141,7 @@ export async function POST(req: NextRequest) {
               {
                 type: 'TEXT_DETECTION',
                 maxResults: 50
-              },
-              ...(index === 0 ? [{ type: 'WEB_DETECTION', maxResults: 10 }] : [])
+              }
             ],
             imageContext: {
               languageHints: ['en']
@@ -197,9 +196,19 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   try {
+    const baseStatus = {
+      googleVisionConfigured: Boolean(googleVisionApiKey),
+      serviceRoleConfigured: Boolean(adminSupabase),
+      scansLimit: MONTHLY_SCAN_LIMIT
+    }
+
     if (!adminSupabase) {
       return Response.json(
-        { scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: 'Missing SUPABASE_SERVICE_ROLE_KEY' },
+        {
+          ...baseStatus,
+          scansUsed: 0,
+          error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
+        },
         { status: 503 }
       )
     }
@@ -213,18 +222,32 @@ export async function GET() {
 
     if (error) {
       return Response.json(
-        { scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: error.message },
+        {
+          ...baseStatus,
+          scansUsed: 0,
+          error: error.message
+        },
         { status: 503 }
       )
     }
 
     return Response.json({
+      ...baseStatus,
       month,
       scansUsed: Number(data?.scan_count || 0),
-      scansLimit: MONTHLY_SCAN_LIMIT
+      error: googleVisionApiKey ? null : 'Missing GOOGLE_VISION_API_KEY'
     })
   } catch (error) {
     console.error('Scan usage read error:', error)
-    return Response.json({ scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: 'Scan usage read error' }, { status: 500 })
+    return Response.json(
+      {
+        googleVisionConfigured: Boolean(googleVisionApiKey),
+        serviceRoleConfigured: Boolean(adminSupabase),
+        scansUsed: 0,
+        scansLimit: MONTHLY_SCAN_LIMIT,
+        error: 'Scan usage read error'
+      },
+      { status: 500 }
+    )
   }
 }

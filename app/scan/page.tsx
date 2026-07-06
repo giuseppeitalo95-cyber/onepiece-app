@@ -28,6 +28,14 @@ type ReferenceCard = ScannedCard & {
   sub_types?: string | null
 }
 
+type OcrStatus = {
+  googleVisionConfigured?: boolean
+  serviceRoleConfigured?: boolean
+  scansUsed?: number
+  scansLimit?: number
+  error?: string | null
+}
+
 export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -51,6 +59,7 @@ export default function ScanPage() {
   const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
   const [scanSessionActive, setScanSessionActive] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null)
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
   const detectionInProgressRef = useRef(false)
@@ -66,6 +75,26 @@ export default function ScanPage() {
     }
     checkUser()
   }, [router])
+
+  useEffect(() => {
+    const loadOcrStatus = async () => {
+      try {
+        const res = await fetch('/api/cards/ocr')
+        const data = await res.json()
+        setOcrStatus(data)
+
+        if (!data?.googleVisionConfigured) {
+          setRecognitionMessage('Google Vision non configurato: aggiungi GOOGLE_VISION_API_KEY su Vercel.')
+        } else if (!data?.serviceRoleConfigured) {
+          setRecognitionMessage('Limite scansioni non configurato: aggiungi SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+        }
+      } catch {
+        setRecognitionMessage('Impossibile controllare la configurazione Google Vision.')
+      }
+    }
+
+    loadOcrStatus()
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -738,6 +767,16 @@ export default function ScanPage() {
   }
 
   const startCamera = async () => {
+    if (ocrStatus && !ocrStatus.googleVisionConfigured) {
+      setCameraError('Google Vision non e configurato. Devi aggiungere GOOGLE_VISION_API_KEY su Vercel.')
+      return
+    }
+
+    if (ocrStatus && !ocrStatus.serviceRoleConfigured) {
+      setCameraError('Il blocco delle 1000 scansioni non e configurato. Devi aggiungere SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+      return
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('La camera non è disponibile nel tuo browser.')
       return
