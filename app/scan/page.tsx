@@ -325,8 +325,19 @@ export default function ScanPage() {
         body: JSON.stringify({ image: dataUrl })
       })
       const data = await res.json()
+
+      if (!res.ok) {
+        if (data?.scanLimitReached) {
+          setRecognitionMessage(`Limite mensile globale raggiunto: ${data.scansUsed}/${data.scansLimit} scansioni.`)
+        } else if (data?.error) {
+          setRecognitionMessage(`OCR non configurato: ${data.error}`)
+        }
+        return null
+      }
+
       return typeof data?.text === 'string' ? data.text : null
     } catch {
+      setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
       return null
     }
   }
