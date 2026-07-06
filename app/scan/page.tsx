@@ -243,6 +243,11 @@ export default function ScanPage() {
     return same / maxLength
   }
 
+  const splitNameParts = (value: string) =>
+    meaningfulTokens(value)
+      .flatMap(token => token.split(/\d+/))
+      .filter(token => token.length >= 4)
+
   const toScannedCard = (candidate: ReferenceCard): ScannedCard => ({
     id: `${candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
     card_id: String(candidate.card_id || candidate.id || ''),
@@ -282,13 +287,15 @@ export default function ScanPage() {
           card.image_url
         ].filter(Boolean).join(' ')
         const nameText = normalizeText(card.name || '')
+        const compactName = compactText(card.name || '')
         const idText = compactText(card.card_id || card.id || '')
         const compactOcr = compactText(ocrText)
-        const nameTokens = meaningfulTokens(card.name || '')
+        const nameTokens = splitNameParts(card.name || '')
         const cardTokens = meaningfulTokens(haystack)
 
         let score = 0
         if (idText && compactOcr.includes(idText)) score += 20
+        if (compactName && compactOcr.includes(compactName)) score += 14
         if (nameText && normalizedOcr.includes(nameText)) score += 8
 
         const cardTokenSet = new Set(cardTokens)
@@ -526,59 +533,11 @@ export default function ScanPage() {
     setVideoSize({ width: video.videoWidth, height: video.videoHeight })
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    const cv = (window as Window & { cv?: any }).cv
-    let rect = null as { x: number; y: number; width: number; height: number } | null
-
-    if (cv?.Mat) {
-      const src = cv.imread(canvas)
-      const gray = new cv.Mat()
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
-      const blurred = new cv.Mat()
-      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
-      const edges = new cv.Mat()
-      cv.Canny(blurred, edges, 60, 140)
-      const contours = new cv.MatVector()
-      const hierarchy = new cv.Mat()
-      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-      let bestArea = 0
-      for (let i = 0; i < contours.size(); i += 1) {
-        const contour = contours.get(i)
-        const peri = cv.arcLength(contour, true)
-        const approx = new cv.Mat()
-        cv.approxPolyDP(contour, approx, 0.02 * peri, true)
-
-        if (approx.rows === 4) {
-          const area = Math.abs(cv.contourArea(contour))
-          const r = cv.boundingRect(contour)
-          const ratio = r.width / Math.max(r.height, 1)
-          const centered = Math.abs((r.x + r.width / 2) - canvas.width / 2) / canvas.width < 0.35
-
-          if (area > bestArea && area > 12000 && ratio > 0.45 && ratio < 1.7 && centered) {
-            rect = estimateCardRect({ x: r.x, y: r.y, width: r.width, height: r.height }, canvas.width, canvas.height)
-            bestArea = area
-          }
-        }
-
-        contour.delete()
-        approx.delete()
-      }
-
-      hierarchy.delete()
-      contours.delete()
-      edges.delete()
-      blurred.delete()
-      gray.delete()
-      src.delete()
-    }
-
-    if (!rect) {
-      const centerWidth = Math.floor(canvas.width * 0.9)
-      const centerHeight = Math.floor(canvas.height * 0.9)
-      const x = Math.floor((canvas.width - centerWidth) / 2)
-      const y = Math.floor((canvas.height - centerHeight) / 2)
-      rect = { x, y, width: centerWidth, height: centerHeight }
-    }
+    const centerWidth = Math.floor(canvas.width * 0.9)
+    const centerHeight = Math.floor(canvas.height * 0.9)
+    const x = Math.floor((canvas.width - centerWidth) / 2)
+    const y = Math.floor((canvas.height - centerHeight) / 2)
+    const rect = { x, y, width: centerWidth, height: centerHeight }
 
     setDetectedRect(rect)
     setRecognitionMessage('Analisi del frame in corso...')
@@ -637,14 +596,6 @@ export default function ScanPage() {
     preprocessedName.width = 720
     preprocessedName.height = 220
     preprocessForOcr(nameCropCanvas, preprocessedName)
-
-    const cropAreaRatio = rect.width * rect.height / (canvas.width * canvas.height)
-    const hasCardShape = cropAreaRatio > 0.12 && rect.width / Math.max(rect.height, 1) > 0.5 && rect.width / Math.max(rect.height, 1) < 1.7
-
-    if (!hasCardShape) {
-      setRecognitionMessage('Tieni la carta al centro e aspetta il riconoscimento.')
-      return
-    }
 
     if (!ocrReady) {
       setRecognitionMessage('Inizializzo il riconoscimento del testo...')
