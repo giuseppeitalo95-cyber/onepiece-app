@@ -87,6 +87,8 @@ export default function ScanPage() {
           setRecognitionMessage('Google Vision non configurato: aggiungi GOOGLE_VISION_API_KEY su Vercel.')
         } else if (!data?.serviceRoleConfigured) {
           setRecognitionMessage('Limite scansioni non configurato: aggiungi SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+        } else if (data?.error) {
+          setRecognitionMessage(`Limite scansioni non pronto: ${data.error}. Esegui google_vision_scan_limit.sql su Supabase.`)
         }
       } catch {
         setRecognitionMessage('Impossibile controllare la configurazione Google Vision.')
@@ -774,6 +776,11 @@ export default function ScanPage() {
 
     if (ocrStatus && !ocrStatus.serviceRoleConfigured) {
       setCameraError('Il blocco delle 1000 scansioni non e configurato. Devi aggiungere SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+      return
+    }
+
+    if (ocrStatus?.error) {
+      setCameraError(`Il blocco delle 1000 scansioni non e pronto: ${ocrStatus.error}. Devi eseguire google_vision_scan_limit.sql su Supabase.`)
       return
     }
 
