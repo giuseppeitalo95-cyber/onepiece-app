@@ -2,8 +2,22 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const MONTHLY_SCAN_LIMIT = 1000
+const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
+const getValidSupabaseUrl = () => {
+  const value = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
+
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'http:' || url.protocol === 'https:') return value
+  } catch {
+    return DEFAULT_SUPABASE_URL
+  }
+
+  return DEFAULT_SUPABASE_URL
+}
+
+const supabaseUrl = getValidSupabaseUrl()
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const googleVisionApiKey = process.env.GOOGLE_VISION_API_KEY
 
