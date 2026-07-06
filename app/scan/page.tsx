@@ -262,7 +262,8 @@ export default function ScanPage() {
           card.set_name,
           card.sub_types,
           card.card_type,
-          card.card_color
+          card.card_color,
+          card.image_url
         ].filter(Boolean).join(' ')
         const haystackText = normalizeText(haystack)
         const nameText = normalizeText(card.name || '')
@@ -633,12 +634,12 @@ export default function ScanPage() {
       return
     }
 
-    const fullCardCanvas = document.createElement('canvas')
-    fullCardCanvas.width = 720
-    fullCardCanvas.height = 1000
-    const fullCardCtx = fullCardCanvas.getContext('2d')
-    if (fullCardCtx) {
-      fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
+    const visionCanvas = document.createElement('canvas')
+    visionCanvas.width = 1280
+    visionCanvas.height = Math.max(720, Math.round(canvas.height * (1280 / canvas.width)))
+    const visionCtx = visionCanvas.getContext('2d')
+    if (visionCtx) {
+      visionCtx.drawImage(canvas, 0, 0, visionCanvas.width, visionCanvas.height)
     }
 
     const imageMatchCanvas = document.createElement('canvas')
@@ -649,7 +650,7 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    const ocrText = await runOcrOnCanvas(fullCardCanvas)
+    const ocrText = await runOcrOnCanvas(visionCanvas)
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
 
@@ -966,25 +967,17 @@ export default function ScanPage() {
               </div>
 
               <div className="mt-4 space-y-3">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-3">
+                {!cameraActive && (
+                  <div className="flex flex-col items-center gap-2">
                     <button
-                      onClick={cameraActive ? stopCamera : startCamera}
-                      className={`flex h-16 w-16 items-center justify-center rounded-full border text-white shadow-lg transition ${cameraActive ? 'border-red-500/40 bg-red-500/20 hover:bg-red-500/30' : 'border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 hover:shadow-amber-400/30'}`}
+                      onClick={startCamera}
+                      className="flex h-16 w-16 items-center justify-center rounded-full border border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 shadow-lg transition hover:shadow-amber-400/30"
                     >
                       <Camera size={24} />
                     </button>
-                    {cameraActive && cameraReady && (
-                      <button
-                        onClick={handleScanCard}
-                        className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
-                      >
-                        Scansiona ora
-                      </button>
-                    )}
+                    <p className="text-sm font-semibold text-slate-300">Avvia scan</p>
                   </div>
-                  <p className="text-sm font-semibold text-slate-300">{cameraActive ? 'Ferma scan' : 'Avvia scan'}</p>
-                </div>
+                )}
 
                 {cameraError && (
                   <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">

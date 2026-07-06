@@ -229,7 +229,7 @@ export default function FriendsPage() {
     : null
 
   return (
-    <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds">
+    <div className="min-h-screen overflow-x-hidden text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="amici" />
       <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
         <div>
@@ -238,22 +238,22 @@ export default function FriendsPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-[2rem] border border-teal-800/30 bg-slate-900/80 shadow-2xl shadow-slate-950/40 p-6 sm:p-8">
+      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
+        <div className="overflow-hidden rounded-2xl border border-teal-800/30 bg-slate-900/80 p-3 shadow-2xl shadow-slate-950/40 sm:rounded-[2rem] sm:p-8">
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="space-y-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-amber-300/70">Il tuo mondo</p>
-                  <h2 className="text-3xl font-extrabold text-white">Connetti con gli altri giocatori</h2>
+                  <h2 className="text-2xl font-extrabold text-white sm:text-3xl">Connetti con gli altri giocatori</h2>
                 </div>
-                <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 px-4 py-3 text-sm text-slate-300">
+                <div className="min-w-0 rounded-2xl border border-slate-800/70 bg-slate-950/70 px-3 py-3 text-sm text-slate-300 sm:rounded-3xl sm:px-4">
                   <span className="font-semibold text-amber-200">{username || 'Giocatore'}</span>
                   <span className="ml-2 text-slate-400">Puoi inviare richieste, gestire amicizie e aprire i profili.</span>
                 </div>
               </div>
 
-              <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5">
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Ricerca</p>
@@ -272,7 +272,7 @@ export default function FriendsPage() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5">
+                <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Amici</p>
@@ -315,7 +315,7 @@ export default function FriendsPage() {
                   )}
                 </div>
 
-                <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5">
+                <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Richieste</p>
@@ -336,8 +336,8 @@ export default function FriendsPage() {
                         const sender = allProfiles.find((profile) => profile.id === request.requester_id)
                         return (
                           <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4">
-                            <div className="flex items-center justify-between gap-4">
-                              <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                              <div className="flex min-w-0 items-center gap-3">
                                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                                   {sender?.avatar_url ? (
                                     <img src={sender.avatar_url} alt={sender.username || 'Avatar'} className="h-full w-full object-cover" />
@@ -345,12 +345,12 @@ export default function FriendsPage() {
                                     <span>{(sender?.username || 'U').charAt(0).toUpperCase()}</span>
                                   )}
                                 </div>
-                                <div>
-                                  <p className="font-semibold text-white">{sender?.username || 'Giocatore'}</p>
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-white">{sender?.username || 'Giocatore'}</p>
                                   <p className="text-xs text-slate-500">Ti ha inviato una richiesta di amicizia.</p>
                                 </div>
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex shrink-0 gap-2">
                                 <button
                                   onClick={() => updateRequest(request.id, 'accepted')}
                                   disabled={busy}
@@ -376,7 +376,7 @@ export default function FriendsPage() {
               </div>
             </section>
 
-            <aside className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5">
+            <aside className="min-w-0 space-y-5 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
               <div className="flex items-center gap-3 text-slate-300">
                 <div className="rounded-3xl bg-amber-500/10 p-3 text-amber-200">
                   <UserPlus size={20} />
@@ -391,10 +391,10 @@ export default function FriendsPage() {
                 {peopleToShow.slice(0, 6).map((profile) => {
                   const status = resolvedRequests.get(profile.id)
                   return (
-                    <div key={profile.id} className="flex items-center justify-between gap-3 rounded-3xl border border-slate-800/70 bg-slate-900/90 p-4">
+                    <div key={profile.id} className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-slate-800/70 bg-slate-900/90 p-3 sm:gap-3 sm:rounded-3xl sm:p-4">
                       <button
                         onClick={() => openProfile(profile)}
-                        className="flex min-w-0 items-center gap-3 text-left"
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       >
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                           {profile.avatar_url ? (
@@ -419,7 +419,7 @@ export default function FriendsPage() {
                       <button
                         onClick={() => sendFriendRequest(profile.id)}
                         disabled={busy || status === 'friend' || status === 'sent' || status === 'incoming'}
-                        className="rounded-2xl bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="shrink-0 rounded-2xl bg-amber-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
                       >
                         {status === 'friend'
                           ? 'Amico'
@@ -458,7 +458,7 @@ export default function FriendsPage() {
 
       {selectedProfile ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-2 backdrop-blur-sm sm:p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               closeModal()
@@ -467,7 +467,7 @@ export default function FriendsPage() {
           onTouchMove={(event) => event.preventDefault()}
         >
           <div
-            className="w-full max-w-5xl h-[88vh] overflow-hidden rounded-[2rem] border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 flex flex-col"
+            className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 sm:h-[88vh] sm:rounded-[2rem]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 p-5">
@@ -483,8 +483,8 @@ export default function FriendsPage() {
               </button>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[280px_1fr] p-5 flex-1 overflow-hidden">
-              <div className="space-y-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-900/90 p-4 h-fit">
+            <div className="grid flex-1 gap-4 overflow-y-auto p-3 sm:p-5 lg:grid-cols-[280px_1fr] lg:overflow-hidden">
+              <div className="h-fit space-y-5 rounded-2xl border border-slate-800/80 bg-slate-900/90 p-4 sm:rounded-[1.75rem]">
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-4xl text-amber-300">
                     {selectedProfile.avatar_url ? (
@@ -535,7 +535,7 @@ export default function FriendsPage() {
                 ) : null}
               </div>
 
-              <div className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-5 flex-1 overflow-y-auto">
+              <div className="min-h-[360px] flex-1 overflow-y-auto rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Carte</p>

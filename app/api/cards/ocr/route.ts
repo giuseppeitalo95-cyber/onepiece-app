@@ -110,6 +110,10 @@ export async function POST(req: NextRequest) {
               {
                 type: 'DOCUMENT_TEXT_DETECTION',
                 maxResults: 1
+              },
+              {
+                type: 'WEB_DETECTION',
+                maxResults: 10
               }
             ],
             imageContext: {
@@ -151,14 +155,60 @@ export async function POST(req: NextRequest) {
     }
 
     const text = result?.fullTextAnnotation?.text || result?.textAnnotations?.[0]?.description || ''
+    const webDetection = result?.webDetection || {}
+    const webTextParts = [
+      ...(webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
+      ...(webDetection?.webEntities || []).map((item: any) => item?.description),
+      ...(webDetection?.fullMatchingImages || []).map((item: any) => item?.url),
+      ...(webDetection?.partialMatchingImages || []).map((item: any) => item?.url),
+      ...(webDetection?.visuallySimilarImages || []).map((item: any) => item?.url),
+      ...(webDetection?.pagesWithMatchingImages || []).flatMap((item: any) => [
+        item?.url,
+        item?.pageTitle
+      ])
+    ].filter(Boolean)
 
     return Response.json({
-      text,
+      text: [text, ...webTextParts].join('\n'),
       scansUsed: usage.used,
       scansLimit: usage.limit
     })
   } catch (error) {
     console.error('Google Vision OCR proxy error:', error)
     return Response.json({ text: '', error: 'OCR proxy error' }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    if (!adminSupabase) {
+      return Response.json(
+        { scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: 'Missing SUPABASE_SERVICE_ROLE_KEY' },
+        { status: 503 }
+      )
+    }
+
+    const month = currentMonthKey()
+    const { data, error } = await adminSupabase
+      .from('scan_usage_global')
+      .select('scan_count')
+      .eq('month', month)
+      .maybeSingle()
+
+    if (error) {
+      return Response.json(
+        { scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: error.message },
+        { status: 503 }
+      )
+    }
+
+    return Response.json({
+      month,
+      scansUsed: Number(data?.scan_count || 0),
+      scansLimit: MONTHLY_SCAN_LIMIT
+    })
+  } catch (error) {
+    console.error('Scan usage read error:', error)
+    return Response.json({ scansUsed: 0, scansLimit: MONTHLY_SCAN_LIMIT, error: 'Scan usage read error' }, { status: 500 })
   }
 }

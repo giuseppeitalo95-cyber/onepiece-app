@@ -25,6 +25,13 @@ type MissingCardRequest = {
   created_at?: string
 }
 
+type ScanUsage = {
+  month?: string
+  scansUsed: number
+  scansLimit: number
+  error?: string
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -32,6 +39,7 @@ export default function AdminPage() {
   const [requests, setRequests] = useState<MissingCardRequest[]>([])
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [scanUsage, setScanUsage] = useState<ScanUsage | null>(null)
 
   const testDatabaseConnection = async () => {
     console.log('🧪 [ADMIN] Testing database connection...')
@@ -85,7 +93,26 @@ export default function AdminPage() {
   }
 
   const refreshData = async () => {
-    await Promise.all([fetchProfiles(), fetchRequests()])
+    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage()])
+  }
+
+  const fetchScanUsage = async () => {
+    try {
+      const res = await fetch('/api/cards/ocr')
+      const data = await res.json()
+      setScanUsage({
+        month: data?.month,
+        scansUsed: Number(data?.scansUsed || 0),
+        scansLimit: Number(data?.scansLimit || 1000),
+        error: data?.error
+      })
+    } catch {
+      setScanUsage({
+        scansUsed: 0,
+        scansLimit: 1000,
+        error: 'Impossibile leggere il contatore Google Vision.'
+      })
+    }
   }
 
   const fetchProfiles = async () => {
@@ -364,6 +391,44 @@ export default function AdminPage() {
             {actionMessage}
           </div>
         )}
+
+        <div className="mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-amber-300/80">Google Vision</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Scansioni mensili</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {scanUsage?.month ? `Mese ${scanUsage.month}` : 'Mese corrente'} · limite globale prima del blocco automatico.
+              </p>
+              {scanUsage?.error ? (
+                <p className="mt-2 text-sm text-red-300">{scanUsage.error}</p>
+              ) : null}
+            </div>
+            <div className="min-w-[220px] rounded-3xl border border-slate-800 bg-slate-950/80 p-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-3xl font-extrabold text-amber-300">{scanUsage?.scansUsed ?? 0}</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">usate</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-slate-200">{scanUsage?.scansLimit ?? 1000}</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">limite</p>
+                </div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-amber-400"
+                  style={{
+                    width: `${Math.min(100, ((scanUsage?.scansUsed ?? 0) / Math.max(scanUsage?.scansLimit ?? 1000, 1)) * 100)}%`
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Rimaste {Math.max((scanUsage?.scansLimit ?? 1000) - (scanUsage?.scansUsed ?? 0), 0)}
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
           <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
