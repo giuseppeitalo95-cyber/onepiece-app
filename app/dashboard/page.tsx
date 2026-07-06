@@ -6,6 +6,11 @@ import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import { useRouter } from 'next/navigation'
 
+const ADMIN_ACCOUNT = {
+  email: 'giuseppeitalo95@gmail.com',
+  username: 'peppitalo'
+}
+
 type UserCard = {
   card_id: string
   quantity: number
@@ -29,6 +34,7 @@ export default function Dashboard() {
   const router = useRouter()
   const [avatarUrl, setAvatarUrl] = useState('')
   const [username, setUsername] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const [userId, setUserId] = useState<string | null>(null)
@@ -69,6 +75,7 @@ export default function Dashboard() {
 
       setUsername(data?.username || 'Utente')
       setAvatarUrl(data?.avatar_url || '')
+      setIsAdmin(session.user.email === ADMIN_ACCOUNT.email && data?.username === ADMIN_ACCOUNT.username)
       setLoading(false)
     }
 
@@ -91,6 +98,7 @@ export default function Dashboard() {
 
             setUsername(data?.username || 'Utente')
             setAvatarUrl(data?.avatar_url || '')
+            setIsAdmin(session.user.email === ADMIN_ACCOUNT.email && data?.username === ADMIN_ACCOUNT.username)
           }
         }
         reloadProfile()
@@ -218,27 +226,37 @@ export default function Dashboard() {
           <div className="hidden sm:flex flex-1" />
 
           <div className="flex justify-end flex-shrink-0">
-            <button
-              onClick={() => router.push('/profile')}
-              className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
-            >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0 overflow-hidden border border-amber-400/30">
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-900 font-bold text-sm">
-                    {(username || 'U').charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
-                {loading ? '...' : username}
-              </span>
-            </button>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <button
+                  onClick={() => router.push('/admin')}
+                  className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-400/20"
+                >
+                  Admin
+                </button>
+              )}
+              <button
+                onClick={() => router.push('/profile')}
+                className="flex items-center gap-2 bg-slate-800/60 px-2 sm:px-3 py-1 rounded-full border border-slate-700 transition-all duration-200 hover:border-amber-400 hover:bg-slate-700/80 hover:scale-105 active:scale-95"
+              >
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 flex-shrink-0 overflow-hidden border border-amber-400/30">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt="Avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-900 font-bold text-sm">
+                      {(username || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[10px] sm:text-xs font-semibold text-amber-300 truncate max-w-[90px]">
+                  {loading ? '...' : username}
+                </span>
+              </button>
+            </div>
           </div>
 
         </div>

@@ -20,6 +20,11 @@ const navItems = [
   { label: 'Profilo', href: '/profile', key: 'profilo' },
 ]
 
+const ADMIN_ACCOUNT = {
+  email: 'giuseppeitalo95@gmail.com',
+  username: 'peppitalo'
+}
+
 const NavItem = ({ label, href, active, onClick }: NavItemProps) => {
   const router = useRouter()
 
@@ -41,6 +46,24 @@ const NavItem = ({ label, href, active, onClick }: NavItemProps) => {
 export default function Sidebar({ activePage }: { activePage: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user || session.user.email !== ADMIN_ACCOUNT.email) return
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      setIsAdmin(data?.username === ADMIN_ACCOUNT.username)
+    }
+
+    checkAdmin()
+  }, [])
 
   useEffect(() => {
     if (open) {
@@ -83,7 +106,7 @@ export default function Sidebar({ activePage }: { activePage: string }) {
         </div>
 
         <nav className="flex flex-col gap-2 p-4 text-sm flex-1">
-          {navItems.map((item) => (
+          {[...navItems, ...(isAdmin ? [{ label: 'Admin', href: '/admin', key: 'admin' }] : [])].map((item) => (
             <NavItem
               key={item.key}
               label={item.label}

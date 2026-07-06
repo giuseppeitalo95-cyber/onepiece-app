@@ -528,10 +528,36 @@ export default function ScanPage() {
 
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    setVideoSize({ width: video.videoWidth, height: video.videoHeight })
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.width = 1080
+    canvas.height = 1440
+    setVideoSize({ width: canvas.width, height: canvas.height })
+
+    const targetAspect = canvas.width / canvas.height
+    const sourceAspect = video.videoWidth / video.videoHeight
+    let sourceX = 0
+    let sourceY = 0
+    let sourceWidth = video.videoWidth
+    let sourceHeight = video.videoHeight
+
+    if (sourceAspect > targetAspect) {
+      sourceWidth = video.videoHeight * targetAspect
+      sourceX = (video.videoWidth - sourceWidth) / 2
+    } else {
+      sourceHeight = video.videoWidth / targetAspect
+      sourceY = (video.videoHeight - sourceHeight) / 2
+    }
+
+    ctx.drawImage(
+      video,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    )
 
     const centerWidth = Math.floor(canvas.width * 0.9)
     const centerHeight = Math.floor(canvas.height * 0.9)
@@ -665,27 +691,30 @@ export default function ScanPage() {
     }
 
     try {
-      const constraintsList = [
+      const constraintsList: MediaStreamConstraints[] = [
         {
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+            frameRate: { ideal: 30 }
           },
           audio: false
         },
         {
           video: {
-            facingMode: { ideal: 'user' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
           },
           audio: false
         },
         {
           video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
           },
           audio: false
         }

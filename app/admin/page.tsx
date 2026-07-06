@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation'
 import { ShieldCheck, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-const ADMIN_USER_ID = 'fcade84e-6413-4009-91df-a8c839a170cc'
+const ADMIN_ACCOUNT = {
+  id: 'fcade84e-6413-4009-91df-a8c839a170cc',
+  email: 'giuseppeitalo95@gmail.com',
+  username: 'peppitalo'
+}
 
 type ProfileItem = {
   id: string
@@ -214,7 +218,7 @@ export default function AdminPage() {
       const { data } = await supabase.auth.getSession()
       const user = data?.session?.user
 
-      console.log('🔐 [ADMIN] Current user:', user?.id, 'Expected admin:', ADMIN_USER_ID)
+      console.log('🔐 [ADMIN] Current user:', user?.id, 'Expected admin:', ADMIN_ACCOUNT.id)
 
       if (!user) {
         console.log('❌ [ADMIN] No user session, redirecting to /')
@@ -222,7 +226,17 @@ export default function AdminPage() {
         return
       }
 
-      if (user.id !== ADMIN_USER_ID) {
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (
+        user.id !== ADMIN_ACCOUNT.id ||
+        user.email !== ADMIN_ACCOUNT.email ||
+        adminProfile?.username !== ADMIN_ACCOUNT.username
+      ) {
         console.log('❌ [ADMIN] User is not admin, redirecting to /dashboard')
         router.replace('/dashboard')
         return
@@ -481,7 +495,7 @@ export default function AdminPage() {
                     </button>
                     <button
                       onClick={() => deleteUser(profile)}
-                      disabled={busy || profile.id === ADMIN_USER_ID}
+                      disabled={busy || profile.id === ADMIN_ACCOUNT.id}
                       className="rounded-2xl bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50"
                     >
                       Elimina
