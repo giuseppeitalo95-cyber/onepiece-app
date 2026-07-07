@@ -171,6 +171,8 @@ export async function POST(req: NextRequest) {
         {
           text: '',
           error: 'Google Vision request failed',
+          googleStatus: response.status,
+          googleMessage: message,
           scansUsed: usage.used,
           scansLimit: usage.limit
         },
