@@ -103,20 +103,21 @@ export async function POST(req: Request) {
         ].filter(Boolean).join(' '))
 
         let score = 0
-        if (id && compactText.includes(id)) score += 80
-        if (compactName && compactText.includes(compactName)) score += 35
-        if (name && normalizedText.includes(name)) score += 25
+        let identityScore = 0
+        if (id && compactText.includes(id)) identityScore += 80
+        if (compactName && compactText.includes(compactName)) identityScore += 35
+        if (name && normalizedText.includes(name)) identityScore += 25
 
         const nameTokens = name.split(' ').filter(Boolean)
         const nameTokenSet = new Set(nameTokens)
         for (const token of tokens) {
-          if (nameTokenSet.has(token)) score += 14
-          else if (name.includes(token)) score += 7
-          else if (nameTokens.some(nameToken => tokenSimilarity(token, nameToken) >= 0.78)) score += 6
-          else if (searchable.includes(token)) score += 3
+          if (nameTokenSet.has(token)) identityScore += 14
+          else if (name.includes(token)) identityScore += 7
+          else if (nameTokens.some(nameToken => tokenSimilarity(token, nameToken) >= 0.78)) identityScore += 6
+          else if (identityScore > 0 && searchable.includes(token)) score += 2
         }
 
-        return { card, score, index }
+        return { card, score: identityScore > 0 ? score + identityScore : 0, index }
       })
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score || a.index - b.index)

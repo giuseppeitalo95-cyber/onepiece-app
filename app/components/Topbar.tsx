@@ -40,13 +40,14 @@ export default function Topbar() {
       <div className="w-14 shrink-0" />
 
       <div className="flex min-w-0 flex-1 items-center justify-center">
-        <div className="relative flex flex-col items-center justify-center px-2">
+        <div className="relative flex h-12 min-w-[120px] items-center justify-center px-2">
+          <div className="absolute inset-x-2 top-1 h-10 rounded-full border border-cyan-300/10 bg-slate-950/35 blur-[0.2px]" />
           <img
             src="/luffyhatlogo.webp"
-            className="absolute -top-6 h-20 w-20 object-contain drop-shadow-lg onepiece-float sm:-top-8 sm:h-28 sm:w-28"
+            className="absolute -top-3 h-14 w-14 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.22)] onepiece-float sm:-top-4 sm:h-16 sm:w-16"
             alt="Logo Cap"
           />
-          <span className="whitespace-nowrap bg-gradient-to-r from-cyan-100 via-amber-200 to-cyan-300 bg-clip-text pt-8 text-base font-extrabold tracking-[0.25em] text-transparent sm:pt-10 sm:text-2xl">
+          <span className="relative whitespace-nowrap bg-gradient-to-r from-cyan-100 via-cyan-300 to-rose-200 bg-clip-text pt-7 text-sm font-black tracking-[0.34em] text-transparent sm:pt-8 sm:text-lg">
             OPV
           </span>
         </div>

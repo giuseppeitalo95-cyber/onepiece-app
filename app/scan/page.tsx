@@ -398,21 +398,22 @@ export default function ScanPage() {
         const effectTokens = meaningfulTokens(effectText)
 
         let score = 0
-        if (idText && compactOcr.includes(idText)) score += 28
-        if (compactName && compactOcr.includes(compactName)) score += 18
-        if (nameText && normalizedOcr.includes(nameText)) score += 12
+        let identityScore = 0
+        if (idText && compactOcr.includes(idText)) identityScore += 28
+        if (compactName && compactOcr.includes(compactName)) identityScore += 18
+        if (nameText && normalizedOcr.includes(nameText)) identityScore += 12
 
         const cardTokenSet = new Set(cardTokens)
         const effectTokenSet = new Set(effectTokens)
         for (const token of ocrTokens) {
-          if (cardTokenSet.has(token)) score += nameText.includes(token) ? 5 : 1.5
-          else if (effectTokenSet.has(token)) score += 0.25
+          if (cardTokenSet.has(token)) score += nameText.includes(token) ? 1 : 1.5
+          else if (identityScore > 0 && effectTokenSet.has(token)) score += 0.25
           for (const nameToken of nameTokens) {
-            if (tokenSimilarity(token, nameToken) >= 0.78) score += 3
+            if (tokenSimilarity(token, nameToken) >= 0.78) identityScore += 3
           }
         }
 
-        return { card, score }
+        return { card, score: identityScore > 0 ? score + identityScore : 0 }
       })
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -840,19 +841,6 @@ export default function ScanPage() {
     if (!fullCardCtx) return
     fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
 
-    const visionCanvas = document.createElement('canvas')
-    visionCanvas.width = 1000
-    visionCanvas.height = 3200
-    const visionCtx = visionCanvas.getContext('2d')
-    if (!visionCtx) return
-    visionCtx.fillStyle = '#ffffff'
-    visionCtx.fillRect(0, 0, visionCanvas.width, visionCanvas.height)
-    visionCtx.drawImage(fullCardCanvas, 50, 20, 900, 1250)
-    visionCtx.drawImage(nameCropCanvas, 50, 1290, 900, 540)
-    visionCtx.drawImage(codeCropCanvas, 50, 1860, 900, 360)
-    visionCtx.drawImage(preprocessedName, 50, 2240, 900, 540)
-    visionCtx.drawImage(preprocessedCode, 50, 2800, 900, 360)
-
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 256
     imageMatchCanvas.height = 256
@@ -861,7 +849,13 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
     }
 
-    const ocrText = await runOcrOnCanvases([visionCanvas])
+    const ocrText = await runOcrOnCanvases([
+      codeCropCanvas,
+      preprocessedCode,
+      nameCropCanvas,
+      preprocessedName,
+      fullCardCanvas
+    ])
     if (!isScanStillActive(generation)) return
 
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
