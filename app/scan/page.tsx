@@ -681,7 +681,7 @@ export default function ScanPage() {
     recognitionStreakRef.current = null
     setCarouselIndex(0)
     setPendingRecognition(null)
-    scanCooldownUntilRef.current = Date.now() + 1800
+    scanCooldownUntilRef.current = Date.now() + 950
     setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}. Prepara la prossima.`)
   }
 
@@ -1037,8 +1037,7 @@ export default function ScanPage() {
       window.clearTimeout(summarySwipeTimerRef.current)
     }
 
-    const exitOffset = direction === 'left' ? -420 : 420
-    const enterOffset = direction === 'left' ? 420 : -420
+    const exitOffset = direction === 'left' ? -220 : 220
 
     setSummaryDrag({ active: false, startX: 0, offset: exitOffset })
     summarySwipeTimerRef.current = window.setTimeout(() => {
@@ -1047,12 +1046,9 @@ export default function ScanPage() {
           ? (prev + 1) % scannedCards.length
           : (prev - 1 + scannedCards.length) % scannedCards.length
       ))
-      setSummaryDrag({ active: false, startX: 0, offset: enterOffset })
-
-      window.requestAnimationFrame(() => {
-        setSummaryDrag({ active: false, startX: 0, offset: 0 })
-      })
-    }, 230)
+      setSummaryDrag({ active: false, startX: 0, offset: 0 })
+      summarySwipeTimerRef.current = null
+    }, 210)
   }
 
   const beginSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1063,7 +1059,7 @@ export default function ScanPage() {
 
   const moveSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!summaryDrag.active) return
-    const offset = Math.max(-190, Math.min(190, event.clientX - summaryDrag.startX))
+    const offset = Math.max(-220, Math.min(220, event.clientX - summaryDrag.startX))
     setSummaryDrag(prev => ({ ...prev, offset }))
   }
 
@@ -1203,31 +1199,31 @@ export default function ScanPage() {
   const nextCard = scannedCards.length > 1 ? scannedCards[(carouselIndex + 1) % scannedCards.length] : null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
   const formatPrice = (value: number) => `$${value.toFixed(2)}`
-  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 150))
+  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 170))
   const dragAbs = Math.abs(dragProgress)
   const prevPull = Math.max(0, dragProgress)
   const nextPull = Math.max(0, -dragProgress)
-  const cardMotion = summaryDrag.active ? 'none' : 'transform 380ms cubic-bezier(0.2, 0.85, 0.2, 1), opacity 260ms ease'
+  const cardMotion = summaryDrag.active ? 'none' : 'transform 360ms cubic-bezier(0.2, 0.85, 0.2, 1), opacity 240ms ease'
   const centerCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${summaryDrag.offset}px, 0, ${90 - dragAbs * 45}px) rotateY(${-dragProgress * 26}deg) rotateZ(${dragProgress * 4}deg) scale(${1 - dragAbs * 0.06})`,
-    opacity: 1 - dragAbs * 0.16,
+    transform: `translate(-50%, -50%) translate3d(${summaryDrag.offset}px, 0, ${95 - dragAbs * 64}px) rotateY(${-dragProgress * 30}deg) rotateZ(${dragProgress * 5}deg) scale(${1 - dragAbs * 0.08})`,
+    opacity: 1 - dragAbs * 0.28,
     transition: cardMotion,
     willChange: 'transform, opacity',
-    zIndex: 30
+    zIndex: dragAbs > 0.56 ? 24 : 32
   }
   const prevCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${-150 + prevPull * 118}px, 0, ${-130 + prevPull * 118}px) rotateY(${34 - prevPull * 26}deg) rotateZ(${-10 + prevPull * 8}deg) scale(${0.78 + prevPull * 0.19})`,
-    opacity: 0.36 + prevPull * 0.54,
+    transform: `translate(-50%, -50%) translate3d(${-160 + prevPull * 160}px, 0, ${-122 + prevPull * 217}px) rotateY(${36 - prevPull * 36}deg) rotateZ(${-10 + prevPull * 10}deg) scale(${0.76 + prevPull * 0.24})`,
+    opacity: 0.38 + prevPull * 0.62,
     transition: cardMotion,
     willChange: 'transform, opacity',
-    zIndex: prevPull > 0.36 ? 28 : 12
+    zIndex: prevPull > 0.56 ? 34 : 12
   }
   const nextCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${150 - nextPull * 118}px, 0, ${-130 + nextPull * 118}px) rotateY(${-34 + nextPull * 26}deg) rotateZ(${10 - nextPull * 8}deg) scale(${0.78 + nextPull * 0.19})`,
-    opacity: 0.36 + nextPull * 0.54,
+    transform: `translate(-50%, -50%) translate3d(${160 - nextPull * 160}px, 0, ${-122 + nextPull * 217}px) rotateY(${-36 + nextPull * 36}deg) rotateZ(${10 - nextPull * 10}deg) scale(${0.76 + nextPull * 0.24})`,
+    opacity: 0.38 + nextPull * 0.62,
     transition: cardMotion,
     willChange: 'transform, opacity',
-    zIndex: nextPull > 0.36 ? 28 : 12
+    zIndex: nextPull > 0.56 ? 34 : 12
   }
   const imageKey = (card: ScannedCard) => `${card.id}:${card.image_url || ''}`
   const renderCardImage = (card: ScannedCard, className: string) => {
@@ -1316,7 +1312,7 @@ export default function ScanPage() {
                   <div className="flex flex-col items-center gap-2">
                     <button
                       onClick={startCamera}
-                      className="flex h-16 w-16 items-center justify-center rounded-full border border-amber-400/40 bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 shadow-lg transition hover:shadow-amber-400/30"
+                      className="op-solid-action flex h-16 w-16 items-center justify-center rounded-full border border-cyan-300/50 bg-gradient-to-br from-cyan-300 to-rose-300 text-slate-950 shadow-lg transition hover:shadow-cyan-300/30"
                     >
                       <Camera size={24} />
                     </button>
