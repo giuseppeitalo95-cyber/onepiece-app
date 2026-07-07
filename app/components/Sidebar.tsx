@@ -31,8 +31,8 @@ const NavItem = ({ label, href, active, onClick }: NavItemProps) => {
         onClick?.()
       }}
       className={`text-left px-3 py-2 rounded-lg transition w-full text-sm ${active
-        ? 'bg-amber-400/10 text-amber-300 font-semibold'
-        : 'text-gray-300 hover:text-amber-300 hover:bg-slate-800/40'}`}
+        ? 'bg-cyan-300/10 text-cyan-100 font-semibold ring-1 ring-cyan-300/20'
+        : 'text-slate-300 hover:text-cyan-100 hover:bg-slate-800/50'}`}
     >
       {label}
     </button>
@@ -83,7 +83,7 @@ export default function Sidebar({ activePage }: { activePage: string }) {
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="fixed left-3 top-3 z-50 rounded-2xl bg-slate-900/95 p-2 text-amber-300 shadow-lg shadow-black/40"
+        className="fixed left-3 top-3 z-50 rounded-2xl border border-cyan-300/20 bg-slate-900/95 p-2 text-cyan-100 shadow-lg shadow-black/40"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
       </button>
@@ -96,9 +96,9 @@ export default function Sidebar({ activePage }: { activePage: string }) {
         />
       )}
 
-      <aside className={`fixed left-0 top-0 h-screen w-60 bg-slate-900 border-r border-teal-800/30 flex flex-col z-50 transition-transform duration-300 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed left-0 top-0 h-screen w-60 bg-slate-900 border-r border-teal-800/30 flex flex-col z-50 transition-transform duration-300 shadow-2xl shadow-black/40 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-teal-800/20 text-center">
-          <div className="text-amber-300 font-bold tracking-[0.3em]">MENU</div>
+          <div className="text-cyan-100 font-bold tracking-[0.3em]">MENU</div>
         </div>
 
         <nav className="flex flex-col gap-2 p-4 text-sm flex-1">

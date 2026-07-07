@@ -1,29 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #071013;
+  --foreground: #edf7f8;
+  --op-bg: #071013;
+  --op-bg-deep: #03080b;
+  --op-panel: #0d1a1f;
+  --op-panel-strong: #101f26;
+  --op-panel-soft: rgba(16, 31, 38, 0.78);
+  --op-line: rgba(125, 211, 252, 0.18);
+  --op-line-strong: rgba(125, 211, 252, 0.34);
+  --op-text: #edf7f8;
+  --op-muted: #91a7b0;
+  --op-gold: #f3c45d;
+  --op-gold-soft: #f8d98a;
+  --op-cyan: #6ee7f9;
+  --op-cyan-soft: #b9f2fb;
+  --op-coral: #fb7185;
+  --op-green: #34d399;
 }
 
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #071013;
+    --foreground: #edf7f8;
   }
 }
 
 /* One Piece Theme Backgrounds */
 .onepiece-bg {
   background:
-    radial-gradient(circle at 15% 85%, rgba(59, 130, 246, 0.12) 0%, transparent 60%),
-    radial-gradient(circle at 85% 15%, rgba(251, 191, 36, 0.1) 0%, transparent 60%),
-    radial-gradient(circle at 45% 45%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
-    linear-gradient(135deg,
-      rgba(7, 10, 18, 0.9) 0%,
-      rgba(15, 23, 42, 0.95) 30%,
-      rgba(7, 10, 18, 0.9) 60%,
-      rgba(15, 23, 42, 0.95) 100%);
+    radial-gradient(circle at 15% 10%, rgba(110, 231, 249, 0.13) 0%, transparent 34%),
+    radial-gradient(circle at 88% 18%, rgba(251, 113, 133, 0.11) 0%, transparent 32%),
+    radial-gradient(circle at 50% 95%, rgba(243, 196, 93, 0.10) 0%, transparent 42%),
+    linear-gradient(135deg, #071013 0%, #0d1a1f 42%, #03080b 100%);
 }
 
 .onepiece-bg::before {
@@ -34,7 +45,8 @@
   right: 0;
   bottom: 0;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23fbbf24' fill-opacity='0.04'%3E%3Cpath d='M40 20c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zm20 20c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zM20 60c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10zm40 0c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    linear-gradient(rgba(125, 211, 252, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.045) 1px, transparent 1px);
   background-size: 80px 80px;
   pointer-events: none;
   z-index: -1;
@@ -42,13 +54,9 @@
 
 .onepiece-wave-bg {
   background:
-    radial-gradient(ellipse at top, rgba(59, 130, 246, 0.18) 0%, transparent 60%),
-    radial-gradient(ellipse at bottom, rgba(251, 191, 36, 0.12) 0%, transparent 60%),
-    linear-gradient(180deg,
-      rgba(7, 10, 18, 0.85) 0%,
-      rgba(15, 23, 42, 0.9) 35%,
-      rgba(7, 10, 18, 0.85) 70%,
-      rgba(15, 23, 42, 0.9) 100%);
+    radial-gradient(ellipse at top, rgba(110, 231, 249, 0.16) 0%, transparent 52%),
+    radial-gradient(ellipse at bottom, rgba(243, 196, 93, 0.09) 0%, transparent 48%),
+    linear-gradient(180deg, rgba(7, 16, 19, 0.94) 0%, rgba(13, 26, 31, 0.92) 48%, rgba(3, 8, 11, 0.96) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -61,9 +69,9 @@
   right: 0;
   bottom: 0;
   background-image:
-    url("data:image/svg+xml,%3Csvg width='120' height='25' viewBox='0 0 120 25' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 15 Q30 5 60 15 T120 15 Q90 20 60 15 Q30 10 0 15 Z' fill='%233b82f6' fill-opacity='0.08'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg width='120' height='20' viewBox='0 0 120 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 12 Q30 3 60 12 T120 12 Q90 16 60 12 Q30 8 0 12 Z' fill='%23fbbf24' fill-opacity='0.06'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg width='120' height='18' viewBox='0 0 120 18' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q30 2 60 10 T120 10 Q90 14 60 10 Q30 6 0 10 Z' fill='%2310b981' fill-opacity='0.05'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='120' height='25' viewBox='0 0 120 25' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 15 Q30 5 60 15 T120 15 Q90 20 60 15 Q30 10 0 15 Z' fill='%236ee7f9' fill-opacity='0.06'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='120' height='20' viewBox='0 0 120 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 12 Q30 3 60 12 T120 12 Q90 16 60 12 Q30 8 0 12 Z' fill='%23f3c45d' fill-opacity='0.045'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='120' height='18' viewBox='0 0 120 18' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q30 2 60 10 T120 10 Q90 14 60 10 Q30 6 0 10 Z' fill='%23fb7185' fill-opacity='0.035'/%3E%3C/svg%3E"),
     url("data:image/svg+xml,%3Csvg width='200' height='10' viewBox='0 0 200 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 5 Q50 2 100 5 T200 5 Q150 7 100 5 Q50 3 0 5 Z' stroke='%23ffffff' stroke-width='0.5' fill='none' stroke-opacity='0.03'/%3E%3C/svg%3E");
   background-size: 120px 25px, 120px 20px, 120px 18px, 200px 10px;
   background-position: 0 75%, 0 80%, 0 82%, 0 70%;
@@ -93,7 +101,7 @@
   left: -10%;
   width: 20%;
   height: 15%;
-  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  background: radial-gradient(ellipse, rgba(110, 231, 249, 0.06) 0%, transparent 70%);
   border-radius: 50%;
   animation: cloud-drift 20s linear infinite;
   pointer-events: none;
@@ -106,7 +114,7 @@
   right: -15%;
   width: 25%;
   height: 12%;
-  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.08) 0%, transparent 70%);
+  background: radial-gradient(ellipse, rgba(243, 196, 93, 0.055) 0%, transparent 70%);
   border-radius: 50%;
   animation: cloud-drift 25s linear infinite reverse;
   pointer-events: none;
@@ -119,47 +127,47 @@
 
 /* Miglioramenti colori per aspetto più cartoonesco */
 .onepiece-vibrant {
-  filter: saturate(1.1) brightness(1.05);
+  filter: saturate(1.02) brightness(1.02);
 }
 
 /* Bordi più morbidi e colorati */
 .onepiece-border-glow {
-  border: 1px solid rgba(251, 191, 36, 0.2);
-  box-shadow: inset 0 1px 0 rgba(251, 191, 36, 0.1);
+  border: 1px solid var(--op-line);
+  box-shadow: inset 0 1px 0 rgba(110, 231, 249, 0.08);
 }
 
 /* Miglioramenti per rendere tutto più luminoso */
 .onepiece-card-hover:hover {
   transform: translateY(-3px) scale(1.02);
-  box-shadow: 0 12px 30px rgba(251, 191, 36, 0.2);
+  box-shadow: 0 12px 30px rgba(110, 231, 249, 0.14);
 }
 
 /* Pattern più dettagliato per sfondi */
 .onepiece-pattern-bg {
   background-image:
     radial-gradient(circle at 25% 25%, rgba(251, 191, 36, 0.05) 2px, transparent 2px),
-    radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.04) 1px, transparent 1px);
+    radial-gradient(circle at 75% 75%, rgba(110, 231, 249, 0.04) 1px, transparent 1px);
   background-size: 40px 40px, 30px 30px;
   background-position: 0 0, 20px 20px;
 }
 
 /* Enhanced gradients for One Piece feel */
 .onepiece-gradient-primary {
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+  background: linear-gradient(135deg, #6ee7f9 0%, #38bdf8 48%, #f3c45d 100%);
 }
 
 .onepiece-gradient-secondary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #fb7185 0%, #f43f5e 50%, #be123c 100%);
 }
 
 .onepiece-gradient-accent {
-  background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+  background: linear-gradient(135deg, #34d399 0%, #0f766e 50%, #0f3f3d 100%);
 }
 
 /* Subtle animations */
 @keyframes gentle-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.1); }
-  50% { box-shadow: 0 0 30px rgba(251, 191, 36, 0.2); }
+  0%, 100% { box-shadow: 0 0 20px rgba(110, 231, 249, 0.08); }
+  50% { box-shadow: 0 0 30px rgba(243, 196, 93, 0.14); }
 }
 
 @keyframes card-hover {
@@ -182,7 +190,7 @@
 
 .onepiece-card-hover:hover {
   animation: card-hover 0.3s ease forwards;
-  box-shadow: 0 8px 25px rgba(251, 191, 36, 0.15);
+  box-shadow: 0 8px 25px rgba(110, 231, 249, 0.12);
 }
 
 /* Floating elements for One Piece atmosphere */
@@ -198,23 +206,23 @@
 
 /* Enhanced button styles */
 .onepiece-btn-primary {
-  @apply bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-semibold;
+  @apply bg-gradient-to-r from-cyan-300 to-amber-300 text-slate-950 font-semibold;
   transition: all 0.3s ease;
 }
 
 .onepiece-btn-primary:hover {
-  @apply from-amber-300 to-yellow-400;
-  box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+  @apply from-cyan-200 to-amber-200;
+  box-shadow: 0 0 20px rgba(110, 231, 249, 0.24);
 }
 
 .onepiece-btn-secondary {
-  @apply bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold;
+  @apply bg-gradient-to-r from-rose-400 to-cyan-400 text-slate-950 font-semibold;
   transition: all 0.3s ease;
 }
 
 .onepiece-btn-secondary:hover {
-  @apply from-blue-400 to-blue-500;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  @apply from-rose-300 to-cyan-300;
+  box-shadow: 0 0 20px rgba(251, 113, 133, 0.24);
 }
 
 body {
@@ -222,3 +230,42 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Premium app skin overrides for the existing Tailwind utility-heavy UI. */
+.bg-slate-950 { background-color: var(--op-bg-deep) !important; }
+.bg-slate-900 { background-color: var(--op-panel) !important; }
+.bg-slate-800 { background-color: var(--op-panel-strong) !important; }
+.bg-slate-700 { background-color: #172c35 !important; }
+.bg-slate-950\/95 { background-color: rgba(3, 8, 11, 0.95) !important; }
+.bg-slate-950\/90 { background-color: rgba(3, 8, 11, 0.9) !important; }
+.bg-slate-950\/80 { background-color: rgba(3, 8, 11, 0.8) !important; }
+.bg-slate-950\/70 { background-color: rgba(3, 8, 11, 0.72) !important; }
+.bg-slate-900\/95 { background-color: rgba(13, 26, 31, 0.95) !important; }
+.bg-slate-900\/90 { background-color: rgba(13, 26, 31, 0.9) !important; }
+.bg-slate-900\/85 { background-color: rgba(13, 26, 31, 0.86) !important; }
+.bg-slate-900\/80 { background-color: rgba(13, 26, 31, 0.82) !important; }
+.bg-slate-900\/75 { background-color: rgba(13, 26, 31, 0.76) !important; }
+.bg-slate-800\/80 { background-color: rgba(16, 31, 38, 0.82) !important; }
+.bg-slate-800\/70 { background-color: rgba(16, 31, 38, 0.72) !important; }
+.bg-slate-800\/60 { background-color: rgba(16, 31, 38, 0.64) !important; }
+.bg-slate-800\/50 { background-color: rgba(16, 31, 38, 0.52) !important; }
+.bg-slate-700\/80 { background-color: rgba(23, 44, 53, 0.82) !important; }
+.border-slate-800 { border-color: rgba(125, 211, 252, 0.12) !important; }
+.border-slate-700 { border-color: var(--op-line) !important; }
+.border-slate-600 { border-color: var(--op-line-strong) !important; }
+.border-teal-800\/30, .border-teal-800\/20 { border-color: var(--op-line) !important; }
+.text-slate-500, .text-gray-500 { color: #6f858f !important; }
+.text-slate-400, .text-gray-400 { color: var(--op-muted) !important; }
+.text-slate-300, .text-gray-300 { color: #bdd2d8 !important; }
+.text-slate-200, .text-gray-200 { color: #d9e9ec !important; }
+.text-amber-200 { color: var(--op-gold-soft) !important; }
+.text-amber-300, .text-yellow-300 { color: var(--op-gold) !important; }
+.text-amber-400, .text-yellow-400 { color: var(--op-cyan) !important; }
+.bg-amber-400 { background-color: var(--op-gold) !important; }
+.bg-yellow-500 { background-color: var(--op-gold) !important; }
+.bg-amber-400\/25 { background-color: rgba(243, 196, 93, 0.18) !important; }
+.bg-amber-400\/20 { background-color: rgba(243, 196, 93, 0.14) !important; }
+.bg-amber-400\/15 { background-color: rgba(243, 196, 93, 0.12) !important; }
+.bg-amber-400\/10 { background-color: rgba(243, 196, 93, 0.09) !important; }
+.border-amber-300\/40, .border-amber-400\/50, .border-amber-400\/40, .border-amber-400\/35, .border-amber-400\/30, .border-amber-400\/25, .border-amber-400\/20 { border-color: rgba(243, 196, 93, 0.28) !important; }
+.shadow-amber-400\/30 { --tw-shadow-color: rgba(110, 231, 249, 0.22) !important; }
