@@ -17,8 +17,12 @@ type ScannedCard = {
   card_type?: string | null
   card_cost?: number | null
   card_power?: number | null
+  set_name?: string | null
   market_price?: number | null
   inventory_price?: number | null
+  price_source?: string | null
+  price_url?: string | null
+  price_updated_at?: string | null
 }
 
 type ReferenceCard = ScannedCard & {
@@ -291,6 +295,7 @@ export default function ScanPage() {
     card_type: candidate.card_type ?? null,
     card_cost: candidate.card_cost ?? null,
     card_power: candidate.card_power ?? null,
+    set_name: candidate.set_name ?? null,
     market_price: candidate.market_price ?? null,
     inventory_price: candidate.inventory_price ?? null,
   })
@@ -441,6 +446,31 @@ export default function ScanPage() {
       return data?.card ? toScannedCard(data.card) : null
     } catch {
       return null
+    }
+  }
+
+  const enrichCardWithLivePrice = async (card: ScannedCard) => {
+    try {
+      const params = new URLSearchParams()
+      if (card.card_id) params.set('cardId', card.card_id)
+      if (card.name) params.set('name', card.name)
+      if (card.set_name) params.set('setName', card.set_name)
+
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      const price = data?.price
+      if (!price) return card
+
+      return {
+        ...card,
+        market_price: price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
+        inventory_price: price.lowPrice ?? card.inventory_price ?? null,
+        price_source: price.source || 'TCGplayer',
+        price_url: price.productUrl || null,
+        price_updated_at: price.modifiedOn || null
+      }
+    } catch {
+      return card
     }
   }
 
@@ -754,8 +784,10 @@ export default function ScanPage() {
     const searchMatch = serverMatch || await searchCardByText(codeQuery || allOcrText, imageMatchCanvas)
     const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
-      setPendingRecognition(cardMatch)
-      setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Conferma o scarta.`)
+      setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Recupero prezzo live...`)
+      const pricedCard = await enrichCardWithLivePrice(cardMatch)
+      setPendingRecognition(pricedCard)
+      setRecognitionMessage(`Carta trovata: ${pricedCard.name}. Conferma o scarta.`)
     } else {
       const previewText = allOcrText.replace(/\s+/g, ' ').trim().slice(0, 90)
       setRecognitionMessage(previewText ? `Testo letto ma nessun match: ${previewText}` : 'Google Vision non ha letto testo utile. Avvicina la carta e aumenta la luce.')
@@ -1196,8 +1228,19 @@ export default function ScanPage() {
               <div className="w-full max-w-[420px] rounded-[28px] border border-amber-400/30 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                 <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
                 <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
+                <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{pendingRecognition.card_id}</p>
                 <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-700 bg-slate-800/80 p-2">
                   <img src={pendingRecognition.image_url || ''} alt={pendingRecognition.name || 'Carta'} className="h-[320px] w-full rounded-[18px] object-contain" />
+                </div>
+                <div className="mt-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo live</p>
+                  <p className="mt-1 text-xl font-extrabold text-amber-300">
+                    ${((pendingRecognition.market_price || pendingRecognition.inventory_price || 0)).toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {pendingRecognition.price_source || 'Prezzo non disponibile'}
+                    {pendingRecognition.inventory_price != null ? ` - low $${pendingRecognition.inventory_price.toFixed(2)}` : ''}
+                  </p>
                 </div>
                 <p className="mt-3 text-center text-sm text-slate-300">Questa è la carta che hai appena scansionato?</p>
                 <div className="mt-4 flex gap-2">

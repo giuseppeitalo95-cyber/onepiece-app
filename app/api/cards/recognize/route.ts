@@ -47,6 +47,7 @@ const toResponseCard = (card: any) => ({
   card_type: card.card_type ?? null,
   card_cost: card.card_cost ? Number(card.card_cost) : null,
   card_power: card.card_power ? Number(card.card_power) : null,
+  set_name: card.set_name || null,
   market_price: card.market_price ? Number(card.market_price) : null,
   inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
 })
