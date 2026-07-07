@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
@@ -65,6 +66,7 @@ export default function ScanPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null)
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
+  const [summaryDrag, setSummaryDrag] = useState({ active: false, startX: 0, offset: 0 })
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
   const detectionInProgressRef = useRef(false)
@@ -171,11 +173,15 @@ export default function ScanPage() {
   useEffect(() => {
     if (!cameraActive || !cameraReady || !scanSessionActive) return
 
+    if (!detectionInProgressRef.current && !pendingRecognition) {
+      void detectCardFromFrame()
+    }
+
     detectionLoopRef.current = window.setInterval(() => {
       if (!detectionInProgressRef.current && !pendingRecognition) {
         void detectCardFromFrame()
       }
-    }, 2000)
+    }, 1600)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -262,7 +268,7 @@ export default function ScanPage() {
 
     return normalizeText(value)
       .split(' ')
-      .filter(token => token.length >= 4 && !stopWords.has(token))
+      .filter(token => token.length >= 3 && !stopWords.has(token))
   }
 
   const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -275,7 +281,7 @@ export default function ScanPage() {
 
   const tokenSimilarity = (a: string, b: string) => {
     if (a === b) return 1
-    if (a.length < 4 || b.length < 4) return 0
+    if (a.length < 3 || b.length < 3) return 0
     if (a.includes(b) || b.includes(a)) return 0.85
 
     const maxLength = Math.max(a.length, b.length)
@@ -359,8 +365,18 @@ export default function ScanPage() {
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
 
+    const bestText = scored[0]
+    const secondText = scored[1]
+    const textGap = bestText ? bestText.score - (secondText?.score || 0) : 0
+
+    if (!bestText || bestText.score < 2.5) return null
+
+    if (bestText.score >= 12 || (bestText.score >= 6 && textGap >= 1.2)) {
+      return toScannedCard(bestText.card)
+    }
+
     const imageCandidates = await Promise.all(
-      scored.slice(0, 12).map(async item => {
+      scored.slice(0, 4).map(async item => {
         const imageUrl = item.card.image_url || item.card.card_image
         if (!imageUrl) return item
 
@@ -379,13 +395,13 @@ export default function ScanPage() {
 
     const finalScored = [
       ...imageCandidates,
-      ...scored.slice(12)
+      ...scored.slice(4)
     ].sort((a, b) => b.score - a.score)
 
     const best = finalScored[0]
     const second = finalScored[1]
-    if (!best || best.score < 2.5) return null
-    if (second && best.score < 6 && best.score - second.score < 0.5) return null
+    if (!best || best.score < 3.5) return null
+    if (second && best.score < 6 && best.score - second.score < 0.7) return null
 
     return toScannedCard(best.card)
   }
@@ -472,7 +488,7 @@ export default function ScanPage() {
         ...card,
         market_price: price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
         inventory_price: price.lowPrice ?? card.inventory_price ?? null,
-        image_url: price.productImageUrl || card.image_url || null,
+        image_url: card.image_url || price.productImageUrl || null,
         price_source: price.source || 'TCGplayer',
         price_url: price.productUrl || null,
         price_updated_at: price.modifiedOn || null
@@ -532,7 +548,7 @@ export default function ScanPage() {
       let bestMatch: { card: ScannedCard; score: number } | null = null
 
       // La foto serve solo a scegliere tra candidati gia filtrati dal testo.
-      const poolForImageCompare = candidatePool.length > 12 ? candidatePool.slice(0, 12) : candidatePool
+      const poolForImageCompare = candidatePool.length > 4 ? candidatePool.slice(0, 4) : candidatePool
 
       for (const candidate of poolForImageCompare) {
         const name = String(candidate.card_name || candidate.name || '')
@@ -579,6 +595,11 @@ export default function ScanPage() {
               name,
               image_url: candidate.card_image || candidate.image_url || null,
               rarity: candidate.rarity || '—',
+              card_color: candidate.card_color ?? null,
+              card_type: candidate.card_type ?? null,
+              card_cost: candidate.card_cost ? Number(candidate.card_cost) : null,
+              card_power: candidate.card_power ? Number(candidate.card_power) : null,
+              set_name: candidate.set_name ?? null,
               market_price: candidate.market_price ? Number(candidate.market_price) : null,
               inventory_price: candidate.inventory_price ? Number(candidate.inventory_price) : null,
             },
@@ -789,8 +810,8 @@ export default function ScanPage() {
     const localMatch = referenceCards.length > 0
       ? await findBestReferenceMatch(allOcrText, imageMatchCanvas)
       : null
-    const serverMatch = localMatch || await recognizeCardByText(allOcrText)
-    const searchMatch = serverMatch || await searchCardByText(codeQuery || allOcrText, imageMatchCanvas)
+    const serverMatch = localMatch || (referenceCards.length === 0 ? await recognizeCardByText(allOcrText) : null)
+    const searchMatch = localMatch || serverMatch ? null : await searchCardByText(codeQuery || allOcrText, imageMatchCanvas)
     const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Recupero prezzo live...`)
@@ -922,6 +943,30 @@ export default function ScanPage() {
       setCarouselIndex(prev => (prev + 1) % scannedCards.length)
     } else {
       setCarouselIndex(prev => (prev - 1 + scannedCards.length) % scannedCards.length)
+    }
+  }
+
+  const beginSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (scannedCards.length <= 1) return
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setSummaryDrag({ active: true, startX: event.clientX, offset: 0 })
+  }
+
+  const moveSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!summaryDrag.active) return
+    const offset = Math.max(-190, Math.min(190, event.clientX - summaryDrag.startX))
+    setSummaryDrag(prev => ({ ...prev, offset }))
+  }
+
+  const endSummaryDrag = () => {
+    if (!summaryDrag.active) return
+    const offset = summaryDrag.offset
+    setSummaryDrag({ active: false, startX: 0, offset: 0 })
+
+    if (offset < -70) {
+      handleSummarySwipe('left')
+    } else if (offset > 70) {
+      handleSummarySwipe('right')
     }
   }
 
@@ -1066,6 +1111,26 @@ export default function ScanPage() {
   const nextCard = scannedCards.length > 1 ? scannedCards[(carouselIndex + 1) % scannedCards.length] : null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
   const formatPrice = (value: number) => `$${value.toFixed(2)}`
+  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 170))
+  const dragAbs = Math.abs(dragProgress)
+  const cardMotion = summaryDrag.active ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease'
+  const centerCardStyle = {
+    transform: `translate3d(${summaryDrag.offset}px, 0, 60px) rotateY(${-dragProgress * 24}deg) rotateZ(${dragProgress * 4}deg) scale(${1 - dragAbs * 0.045})`,
+    transition: cardMotion,
+    willChange: 'transform'
+  }
+  const prevCardStyle = {
+    transform: `translate3d(${-72 + Math.max(0, summaryDrag.offset) * 0.7}px, 0, ${-90 + Math.max(0, summaryDrag.offset) * 0.35}px) rotateY(${32 - Math.max(0, dragProgress) * 24}deg) rotateZ(${-12 + Math.max(0, dragProgress) * 8}deg) scale(${0.82 + Math.max(0, dragProgress) * 0.16})`,
+    opacity: 0.42 + Math.max(0, dragProgress) * 0.45,
+    transition: cardMotion,
+    willChange: 'transform, opacity'
+  }
+  const nextCardStyle = {
+    transform: `translate3d(${72 + Math.min(0, summaryDrag.offset) * 0.7}px, 0, ${-90 - Math.min(0, summaryDrag.offset) * 0.35}px) rotateY(${-32 - Math.min(0, dragProgress) * 24}deg) rotateZ(${12 + Math.min(0, dragProgress) * 8}deg) scale(${0.82 + Math.max(0, -dragProgress) * 0.16})`,
+    opacity: 0.42 + Math.max(0, -dragProgress) * 0.45,
+    transition: cardMotion,
+    willChange: 'transform, opacity'
+  }
   const imageKey = (card: ScannedCard) => `${card.id}:${card.image_url || ''}`
   const renderCardImage = (card: ScannedCard, className: string) => {
     const key = imageKey(card)
@@ -1197,7 +1262,13 @@ export default function ScanPage() {
           </div>
 
           {showSummary && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/95 px-3 py-5 sm:px-6">
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/95 px-3 py-5 sm:px-6"
+              style={{
+                backgroundImage: 'linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)), linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px)',
+                backgroundSize: '100% 100%, 26px 26px, 26px 26px'
+              }}
+            >
               <div className="flex h-full w-full max-w-[540px] flex-col">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1217,14 +1288,18 @@ export default function ScanPage() {
                 ) : (
                   <>
                     <div
-                      className="relative mt-5 flex min-h-0 flex-1 items-center justify-center overflow-hidden"
-                      onTouchStart={handleTouchStart}
-                      onTouchEnd={handleTouchEnd}
+                      className={`relative mt-5 flex min-h-0 flex-1 touch-pan-y select-none items-center justify-center overflow-hidden ${summaryDrag.active ? 'cursor-grabbing' : 'cursor-grab'}`}
+                      style={{ perspective: '1100px', touchAction: 'pan-y' }}
+                      onPointerDown={beginSummaryDrag}
+                      onPointerMove={moveSummaryDrag}
+                      onPointerUp={endSummaryDrag}
+                      onPointerCancel={endSummaryDrag}
                     >
                       {prevCard && (
                         <button
                           onClick={() => handleSummarySwipe('right')}
-                          className="absolute left-[-3%] top-1/2 z-0 w-[46%] -translate-y-1/2 -rotate-10 opacity-45 blur-[0.2px] transition duration-300 active:scale-95"
+                          className="absolute left-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
+                          style={prevCardStyle}
                           aria-label="Carta precedente"
                         >
                           {renderCardImage(prevCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
@@ -1234,7 +1309,8 @@ export default function ScanPage() {
                       {nextCard && (
                         <button
                           onClick={() => handleSummarySwipe('left')}
-                          className="absolute right-[-3%] top-1/2 z-0 w-[46%] -translate-y-1/2 rotate-10 opacity-45 blur-[0.2px] transition duration-300 active:scale-95"
+                          className="absolute right-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
+                          style={nextCardStyle}
                           aria-label="Carta successiva"
                         >
                           {renderCardImage(nextCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
@@ -1242,8 +1318,9 @@ export default function ScanPage() {
                       )}
 
                       {currentCard && (
-                        <div className="relative z-10 w-[74%] max-w-[340px] transition-all duration-300 ease-out">
-                          <div className="rounded-[30px] border border-amber-300/35 bg-slate-900/80 p-2 shadow-[0_28px_75px_rgba(0,0,0,0.55)]">
+                        <div className="relative z-10 w-[74%] max-w-[340px]" style={centerCardStyle}>
+                          <div className="relative rounded-[30px] border border-amber-300/40 bg-slate-900/80 p-2 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+                            <div className="pointer-events-none absolute inset-2 rounded-[24px] border border-white/10" />
                             {renderCardImage(currentCard, 'aspect-[3/4] w-full rounded-[24px]')}
                           </div>
                         </div>
@@ -1286,6 +1363,17 @@ export default function ScanPage() {
                         </div>
                       </div>
                     )}
+
+                    <div className="mt-3 flex h-2 items-center justify-center gap-1 overflow-hidden">
+                      {scannedCards.slice(0, 14).map((card, index) => (
+                        <button
+                          key={`${card.id}-dot`}
+                          onClick={() => setCarouselIndex(index)}
+                          className={`h-1.5 rounded-full transition-all ${index === carouselIndex ? 'w-6 bg-amber-300' : 'w-1.5 bg-slate-600'}`}
+                          aria-label={`Vai alla carta ${index + 1}`}
+                        />
+                      ))}
+                    </div>
                   </>
                 )}
 

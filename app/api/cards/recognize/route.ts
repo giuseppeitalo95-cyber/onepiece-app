@@ -5,6 +5,20 @@ const normalize = (value: string) =>
 
 const compact = (value: string) => normalize(value).replace(/\s/g, '')
 
+const tokenSimilarity = (a: string, b: string) => {
+  if (a === b) return 1
+  if (a.length < 3 || b.length < 3) return 0
+  if (a.includes(b) || b.includes(a)) return 0.85
+
+  const maxLength = Math.max(a.length, b.length)
+  let same = 0
+  const minLength = Math.min(a.length, b.length)
+  for (let i = 0; i < minLength; i += 1) {
+    if (a[i] === b[i]) same += 1
+  }
+  return same / maxLength
+}
+
 const normalizeOcrNumber = (value: string) =>
   value
     .toUpperCase()
@@ -93,10 +107,12 @@ export async function POST(req: Request) {
         if (compactName && compactText.includes(compactName)) score += 35
         if (name && normalizedText.includes(name)) score += 25
 
-        const nameTokens = new Set(name.split(' ').filter(Boolean))
+        const nameTokens = name.split(' ').filter(Boolean)
+        const nameTokenSet = new Set(nameTokens)
         for (const token of tokens) {
-          if (nameTokens.has(token)) score += 12
+          if (nameTokenSet.has(token)) score += 14
           else if (name.includes(token)) score += 7
+          else if (nameTokens.some(nameToken => tokenSimilarity(token, nameToken) >= 0.78)) score += 6
           else if (searchable.includes(token)) score += 3
         }
 
@@ -107,7 +123,7 @@ export async function POST(req: Request) {
 
     const best = scored[0]
     const second = scored[1]
-    const confident = best && (best.score >= 10 || best.score - (second?.score || 0) >= 5)
+    const confident = best && (best.score >= 8 || best.score - (second?.score || 0) >= 4)
 
     return Response.json({
       card: confident ? toResponseCard(best.card) : null,
