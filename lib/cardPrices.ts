@@ -178,6 +178,7 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
     provider: 'TCGCSV',
     productId: best.product.productId,
     productUrl: best.product.url || null,
+    productImageUrl: best.product.imageUrl || null,
     productName: best.product.name,
     groupName: best.group.name,
     marketPrice: price?.marketPrice ?? null,

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type ScannedCard = {
   id: string
@@ -64,6 +64,7 @@ export default function ScanPage() {
   const [scanSessionActive, setScanSessionActive] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null)
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
   const detectionInProgressRef = useRef(false)
@@ -266,6 +267,12 @@ export default function ScanPage() {
 
   const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
 
+  const cardImageSrc = (url?: string | null) => {
+    if (!url) return ''
+    if (url.startsWith('/')) return url
+    return `/api/cards/recognition-image?url=${encodeURIComponent(url)}`
+  }
+
   const tokenSimilarity = (a: string, b: string) => {
     if (a === b) return 1
     if (a.length < 4 || b.length < 4) return 0
@@ -465,6 +472,7 @@ export default function ScanPage() {
         ...card,
         market_price: price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
         inventory_price: price.lowPrice ?? card.inventory_price ?? null,
+        image_url: price.productImageUrl || card.image_url || null,
         price_source: price.source || 'TCGplayer',
         price_url: price.productUrl || null,
         price_updated_at: price.modifiedOn || null
@@ -587,14 +595,15 @@ export default function ScanPage() {
 
   const confirmRecognizedCard = (card: ScannedCard) => {
     setScannedCards(prev => {
-      const alreadyExists = prev.some(item => item.card_id === card.card_id || item.name === card.name)
-      if (alreadyExists) return prev
-      return [card, ...prev]
+      const copy = {
+        ...card,
+        id: `${card.card_id || card.name || 'card'}-${Date.now()}-${Math.random()}`
+      }
+      return [copy, ...prev]
     })
     setCarouselIndex(0)
-    setShowSummary(true)
     setPendingRecognition(null)
-    setRecognitionMessage(`Carta confermata: ${card.name}`)
+    setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}`)
   }
 
   const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
@@ -973,61 +982,78 @@ export default function ScanPage() {
     setSearching(false)
   }
 
-  const removeCard = (id: string) => {
-    setScannedCards(prev => prev.filter(c => c.id !== id))
-  }
+  const saveCardToCollection = async (card: ScannedCard) => {
+    if (!userId) return
 
-  const addToCollection = async (card: ScannedCard) => {
-    if (!userId || adding) return
+    const { data: existing, error: lookupError } = await supabase
+      .from('user_cards')
+      .select('id, quantity')
+      .eq('user_id', userId)
+      .eq('card_id', card.card_id)
+      .maybeSingle()
 
-    setAdding(card.id)
+    if (lookupError) throw lookupError
 
-    try {
-      const { data: existing } = await supabase
-        .from('user_cards')
-        .select('id, quantity')
-        .eq('user_id', userId)
-        .eq('card_id', card.card_id)
-        .maybeSingle()
-
-      const payload = {
-        user_id: userId,
-        card_id: card.card_id,
-        name: card.name,
-        image_url: card.image_url,
-        rarity: card.rarity,
-        card_color: card.card_color ?? null,
-        card_type: card.card_type ?? null,
-        card_cost: card.card_cost ?? null,
-        card_power: card.card_power ?? null,
-        market_price: card.market_price ?? null,
-        inventory_price: card.inventory_price ?? null,
-      }
-
-      if (existing) {
-        await supabase
-          .from('user_cards')
-          .update({
-            quantity: existing.quantity + 1,
-            ...payload
-          })
-          .eq('id', existing.id)
-      } else {
-        await supabase
-          .from('user_cards')
-          .insert({
-            ...payload,
-            quantity: 1
-          })
-      }
-
-      removeCard(card.id)
-    } catch (err) {
-      console.error('Add error:', err)
-      alert('Errore aggiunta carta')
+    const payload = {
+      user_id: userId,
+      card_id: card.card_id,
+      name: card.name,
+      image_url: card.image_url,
+      rarity: card.rarity,
+      card_color: card.card_color ?? null,
+      card_type: card.card_type ?? null,
+      card_cost: card.card_cost ?? null,
+      card_power: card.card_power ?? null,
+      market_price: card.market_price ?? null,
+      inventory_price: card.inventory_price ?? null,
     }
 
+    if (existing) {
+      const { error } = await supabase
+        .from('user_cards')
+        .update({
+          quantity: existing.quantity + 1,
+          ...payload
+        })
+        .eq('id', existing.id)
+
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('user_cards')
+        .insert({
+          ...payload,
+          quantity: 1
+        })
+
+      if (error) throw error
+    }
+  }
+
+  const addAllToCollection = async () => {
+    if (!userId || adding || scannedCards.length === 0) return
+
+    setAdding('all')
+    try {
+      for (const card of scannedCards) {
+        await saveCardToCollection(card)
+      }
+      setScannedCards([])
+      setCarouselIndex(0)
+      setShowSummary(false)
+      setRecognitionMessage('Pescata aggiunta alla collezione.')
+    } catch (err) {
+      console.error('Add all error:', err)
+      alert('Errore aggiunta pescata')
+    }
     setAdding(null)
+  }
+
+  const discardScanResults = () => {
+    setScannedCards([])
+    setCarouselIndex(0)
+    setShowSummary(false)
+    setRecognitionMessage('Pescata chiusa senza salvare.')
   }
 
   const totalValue = scannedCards.reduce((sum, card) => {
@@ -1036,8 +1062,34 @@ export default function ScanPage() {
   }, 0)
 
   const currentCard = scannedCards[carouselIndex] ?? null
-  const prevCard = scannedCards[carouselIndex - 1] ?? null
-  const nextCard = scannedCards[carouselIndex + 1] ?? null
+  const prevCard = scannedCards.length > 1 ? scannedCards[(carouselIndex - 1 + scannedCards.length) % scannedCards.length] : null
+  const nextCard = scannedCards.length > 1 ? scannedCards[(carouselIndex + 1) % scannedCards.length] : null
+  const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
+  const formatPrice = (value: number) => `$${value.toFixed(2)}`
+  const imageKey = (card: ScannedCard) => `${card.id}:${card.image_url || ''}`
+  const renderCardImage = (card: ScannedCard, className: string) => {
+    const key = imageKey(card)
+    const hasImage = Boolean(card.image_url && !failedImages[key])
+
+    return (
+      <div className={`relative overflow-hidden bg-slate-950 ${className}`}>
+        {hasImage ? (
+          <img
+            src={cardImageSrc(card.image_url)}
+            alt={card.name || 'Carta'}
+            draggable={false}
+            onError={() => setFailedImages(prev => ({ ...prev, [key]: true }))}
+            className="h-full w-full object-contain"
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-900 px-4 text-center text-slate-500">
+            <span className="text-4xl font-black">?</span>
+            <span className="text-[10px] uppercase tracking-[0.24em]">Foto non disponibile</span>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="h-dvh overflow-hidden text-white onepiece-wave-bg onepiece-clouds flex">
@@ -1109,6 +1161,15 @@ export default function ScanPage() {
                   </div>
                 )}
 
+                {cameraActive && (
+                  <button
+                    onClick={stopCamera}
+                    className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
+                  >
+                    Vai ai risultati
+                  </button>
+                )}
+
                 {cameraError && (
                   <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
                     {cameraError}
@@ -1127,7 +1188,7 @@ export default function ScanPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
-                      <p className="text-lg font-bold text-emerald-400">{totalValue.toFixed(2)}€</p>
+                      <p className="text-lg font-bold text-emerald-400">{formatPrice(totalValue)}</p>
                     </div>
                   </div>
                 )}
@@ -1136,89 +1197,113 @@ export default function ScanPage() {
           </div>
 
           {showSummary && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 px-3 py-4 sm:px-6">
-              <div className="w-full max-w-[460px] rounded-[30px] border border-amber-400/30 bg-slate-900/95 p-3 shadow-[0_25px_70px_rgba(0,0,0,0.45)]">
-                <div className="mb-3 flex items-center justify-between">
+            <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/95 px-3 py-5 sm:px-6">
+              <div className="flex h-full w-full max-w-[540px] flex-col">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Riepilogo</p>
-                    <h3 className="text-sm font-bold text-amber-300">{scannedCards.length > 0 ? 'Carte confermate' : 'Nessuna carta confermata'}</h3>
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-amber-300">Risultati scan</p>
+                    <h3 className="text-xl font-extrabold text-white">{scannedCards.length > 0 ? `${scannedCards.length} carte pescate` : 'Nessuna carta'}</h3>
                   </div>
-                  <button
-                    onClick={() => setShowSummary(false)}
-                    className="rounded-full border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200"
-                  >
-                    Chiudi
-                  </button>
+                  <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-right">
+                    <p className="text-[9px] uppercase tracking-[0.25em] text-slate-400">Totale</p>
+                    <p className="text-base font-bold text-emerald-300">{formatPrice(totalValue)}</p>
+                  </div>
                 </div>
 
                 {scannedCards.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-slate-700 bg-slate-800/50 p-5 text-center text-sm text-slate-400">
-                    Nessuna carta è stata confermata. Tieni la carta al centro e conferma il popup quando appare.
+                  <div className="mt-5 flex flex-1 items-center justify-center rounded-[28px] border border-dashed border-slate-700 bg-slate-900/75 p-6 text-center text-sm text-slate-400">
+                    Nessuna carta confermata. Torna allo scan e conferma il popup quando trova una carta.
                   </div>
                 ) : (
-                  <div
-                    className="space-y-3"
-                    onTouchStart={handleTouchStart}
-                    onTouchEnd={handleTouchEnd}
-                  >
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>{carouselIndex + 1} / {scannedCards.length}</span>
-                      <span>Trascina a sinistra o destra</span>
-                    </div>
+                  <>
+                    <div
+                      className="relative mt-5 flex min-h-0 flex-1 items-center justify-center overflow-hidden"
+                      onTouchStart={handleTouchStart}
+                      onTouchEnd={handleTouchEnd}
+                    >
+                      {prevCard && (
+                        <button
+                          onClick={() => handleSummarySwipe('right')}
+                          className="absolute left-[-3%] top-1/2 z-0 w-[46%] -translate-y-1/2 -rotate-10 opacity-45 blur-[0.2px] transition duration-300 active:scale-95"
+                          aria-label="Carta precedente"
+                        >
+                          {renderCardImage(prevCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
+                        </button>
+                      )}
 
-                    {currentCard && (
-                      <div className="rounded-[24px] border border-amber-400/20 bg-slate-800/70 p-3 shadow-[0_20px_45px_rgba(0,0,0,0.25)]">
-                        <img
-                          src={currentCard.image_url || ''}
-                          alt={currentCard.name || 'Carta'}
-                          className="aspect-[3/4] w-full rounded-[18px] object-contain"
-                        />
-                        <div className="mt-3 space-y-2 text-center">
-                          <p className="text-lg font-bold text-white">{currentCard.name}</p>
-                          <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">{currentCard.card_id}</p>
-                          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
-                            <p className="text-base font-bold text-amber-300">{((currentCard.market_price || currentCard.inventory_price || 0)).toFixed(2)}€</p>
-                          </div>
-                          <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                            <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.rarity || '—'}</span>
-                            <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.card_type || '—'}</span>
+                      {nextCard && (
+                        <button
+                          onClick={() => handleSummarySwipe('left')}
+                          className="absolute right-[-3%] top-1/2 z-0 w-[46%] -translate-y-1/2 rotate-10 opacity-45 blur-[0.2px] transition duration-300 active:scale-95"
+                          aria-label="Carta successiva"
+                        >
+                          {renderCardImage(nextCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
+                        </button>
+                      )}
+
+                      {currentCard && (
+                        <div className="relative z-10 w-[74%] max-w-[340px] transition-all duration-300 ease-out">
+                          <div className="rounded-[30px] border border-amber-300/35 bg-slate-900/80 p-2 shadow-[0_28px_75px_rgba(0,0,0,0.55)]">
+                            {renderCardImage(currentCard, 'aspect-[3/4] w-full rounded-[24px]')}
                           </div>
                         </div>
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            onClick={() => addToCollection(currentCard)}
-                            disabled={adding === currentCard.id}
-                            className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
-                          >
-                            {adding === currentCard.id ? '...' : 'Aggiungi'}
-                          </button>
-                          <button
-                            onClick={() => removeCard(currentCard.id)}
-                            className="flex-1 rounded-2xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/25"
-                          >
-                            <span className="flex items-center justify-center gap-1"><Trash2 size={12} /> Elimina</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => handleSummarySwipe('right')}
-                        className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200"
+                        className="absolute left-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/70 text-slate-100 backdrop-blur"
+                        aria-label="Precedente"
                       >
-                        <ChevronLeft size={16} />
+                        <ChevronLeft size={18} />
                       </button>
                       <button
                         onClick={() => handleSummarySwipe('left')}
-                        className="rounded-full border border-slate-700 bg-slate-800/80 p-2 text-slate-200"
+                        className="absolute right-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/70 text-slate-100 backdrop-blur"
+                        aria-label="Successiva"
                       >
-                        <ChevronRight size={16} />
+                        <ChevronRight size={18} />
                       </button>
                     </div>
-                  </div>
+
+                    {currentCard && (
+                      <div className="mt-4 rounded-[24px] border border-slate-700 bg-slate-900/85 px-4 py-3 text-center shadow-lg">
+                        <p className="text-lg font-extrabold text-white">{currentCard.name}</p>
+                        <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-slate-400">{currentCard.card_id}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-2xl border border-amber-400/25 bg-amber-400/10 px-3 py-2">
+                            <p className="text-[9px] uppercase tracking-[0.24em] text-slate-400">Valore carta</p>
+                            <p className="mt-1 text-xl font-black text-amber-300">{formatPrice(currentCardValue)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-700 bg-slate-800/70 px-3 py-2">
+                            <p className="text-[9px] uppercase tracking-[0.24em] text-slate-400">Fonte</p>
+                            <p className="mt-1 truncate text-sm font-bold text-slate-200">{currentCard.price_source || 'API carte'}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
+                          <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.rarity || '-'}</span>
+                          <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.card_type || '-'}</span>
+                          <span className="rounded-full border border-slate-700 px-2 py-1">{carouselIndex + 1} / {scannedCards.length}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    onClick={discardScanResults}
+                    className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-slate-400"
+                  >
+                    Chiudi
+                  </button>
+                  <button
+                    onClick={addAllToCollection}
+                    disabled={adding === 'all' || scannedCards.length === 0}
+                    className="rounded-2xl border border-emerald-400/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {adding === 'all' ? 'Salvo...' : 'Aggiungi alla collezione'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1229,20 +1314,20 @@ export default function ScanPage() {
                 <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
                 <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
                 <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{pendingRecognition.card_id}</p>
-                <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-700 bg-slate-800/80 p-2">
-                  <img src={pendingRecognition.image_url || ''} alt={pendingRecognition.name || 'Carta'} className="h-[320px] w-full rounded-[18px] object-contain" />
+                <div className="mt-4">
+                  {renderCardImage(pendingRecognition, 'h-[320px] w-full rounded-[24px] border border-slate-700')}
                 </div>
                 <div className="mt-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-center">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo live</p>
                   <p className="mt-1 text-xl font-extrabold text-amber-300">
-                    ${((pendingRecognition.market_price || pendingRecognition.inventory_price || 0)).toFixed(2)}
+                    {formatPrice(pendingRecognition.market_price ?? pendingRecognition.inventory_price ?? 0)}
                   </p>
                   <p className="mt-1 text-[11px] text-slate-400">
                     {pendingRecognition.price_source || 'Prezzo non disponibile'}
-                    {pendingRecognition.inventory_price != null ? ` - low $${pendingRecognition.inventory_price.toFixed(2)}` : ''}
+                    {pendingRecognition.inventory_price != null ? ` - low ${formatPrice(pendingRecognition.inventory_price)}` : ''}
                   </p>
                 </div>
-                <p className="mt-3 text-center text-sm text-slate-300">Questa è la carta che hai appena scansionato?</p>
+                <p className="mt-3 text-center text-sm text-slate-300">Questa e la carta che hai appena scansionato?</p>
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => setPendingRecognition(null)}
