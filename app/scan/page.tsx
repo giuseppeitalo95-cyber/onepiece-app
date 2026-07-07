@@ -73,6 +73,7 @@ export default function ScanPage() {
   const recognitionStreakRef = useRef<{ cardId: string; count: number } | null>(null)
   const summarySwipeTimerRef = useRef<number | null>(null)
   const scanGenerationRef = useRef(0)
+  const scanCooldownUntilRef = useRef(0)
   const scanSessionRef = useRef(false)
   const showSummaryRef = useRef(false)
 
@@ -187,12 +188,12 @@ export default function ScanPage() {
   useEffect(() => {
     if (!cameraActive || !cameraReady || !scanSessionActive || showSummary) return
 
-    if (!detectionInProgressRef.current && !pendingRecognition) {
+    if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
       void detectCardFromFrame()
     }
 
     detectionLoopRef.current = window.setInterval(() => {
-      if (!detectionInProgressRef.current && !pendingRecognition) {
+      if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
     }, 1600)
@@ -680,7 +681,8 @@ export default function ScanPage() {
     recognitionStreakRef.current = null
     setCarouselIndex(0)
     setPendingRecognition(null)
-    setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}`)
+    scanCooldownUntilRef.current = Date.now() + 1800
+    setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}. Prepara la prossima.`)
   }
 
   const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
@@ -702,6 +704,7 @@ export default function ScanPage() {
 
   const detectCardFromFrame = async () => {
     if (detectionInProgressRef.current) return
+    if (Date.now() < scanCooldownUntilRef.current) return
     if (!scanSessionRef.current || showSummaryRef.current) return
     const generation = scanGenerationRef.current
     detectionInProgressRef.current = true
@@ -924,6 +927,7 @@ export default function ScanPage() {
     if (streamRef.current) {
       await attachStream(streamRef.current)
       scanGenerationRef.current += 1
+      scanCooldownUntilRef.current = 0
       scanSessionRef.current = true
       showSummaryRef.current = false
       setCameraActive(true)
@@ -983,6 +987,7 @@ export default function ScanPage() {
       streamRef.current = stream
       await attachStream(stream)
       scanGenerationRef.current += 1
+      scanCooldownUntilRef.current = 0
       scanSessionRef.current = true
       showSummaryRef.current = false
       setCameraActive(true)
@@ -1005,6 +1010,7 @@ export default function ScanPage() {
 
   const stopCamera = () => {
     scanGenerationRef.current += 1
+    scanCooldownUntilRef.current = 0
     scanSessionRef.current = false
     showSummaryRef.current = true
     if (streamRef.current) {
@@ -1064,12 +1070,13 @@ export default function ScanPage() {
   const endSummaryDrag = () => {
     if (!summaryDrag.active) return
     const offset = summaryDrag.offset
-    setSummaryDrag({ active: false, startX: 0, offset: 0 })
 
     if (offset < -70) {
       animateSummarySwipe('left')
     } else if (offset > 70) {
       animateSummarySwipe('right')
+    } else {
+      setSummaryDrag({ active: false, startX: 0, offset: 0 })
     }
   }
 
@@ -1196,25 +1203,31 @@ export default function ScanPage() {
   const nextCard = scannedCards.length > 1 ? scannedCards[(carouselIndex + 1) % scannedCards.length] : null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
   const formatPrice = (value: number) => `$${value.toFixed(2)}`
-  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 170))
+  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 150))
   const dragAbs = Math.abs(dragProgress)
-  const cardMotion = summaryDrag.active ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease'
+  const prevPull = Math.max(0, dragProgress)
+  const nextPull = Math.max(0, -dragProgress)
+  const cardMotion = summaryDrag.active ? 'none' : 'transform 380ms cubic-bezier(0.2, 0.85, 0.2, 1), opacity 260ms ease'
   const centerCardStyle = {
-    transform: `translate3d(${summaryDrag.offset}px, 0, 60px) rotateY(${-dragProgress * 24}deg) rotateZ(${dragProgress * 4}deg) scale(${1 - dragAbs * 0.045})`,
+    transform: `translate(-50%, -50%) translate3d(${summaryDrag.offset}px, 0, ${90 - dragAbs * 45}px) rotateY(${-dragProgress * 26}deg) rotateZ(${dragProgress * 4}deg) scale(${1 - dragAbs * 0.06})`,
+    opacity: 1 - dragAbs * 0.16,
     transition: cardMotion,
-    willChange: 'transform'
+    willChange: 'transform, opacity',
+    zIndex: 30
   }
   const prevCardStyle = {
-    transform: `translate3d(${-72 + Math.max(0, summaryDrag.offset) * 0.7}px, 0, ${-90 + Math.max(0, summaryDrag.offset) * 0.35}px) rotateY(${32 - Math.max(0, dragProgress) * 24}deg) rotateZ(${-12 + Math.max(0, dragProgress) * 8}deg) scale(${0.82 + Math.max(0, dragProgress) * 0.16})`,
-    opacity: 0.42 + Math.max(0, dragProgress) * 0.45,
+    transform: `translate(-50%, -50%) translate3d(${-150 + prevPull * 118}px, 0, ${-130 + prevPull * 118}px) rotateY(${34 - prevPull * 26}deg) rotateZ(${-10 + prevPull * 8}deg) scale(${0.78 + prevPull * 0.19})`,
+    opacity: 0.36 + prevPull * 0.54,
     transition: cardMotion,
-    willChange: 'transform, opacity'
+    willChange: 'transform, opacity',
+    zIndex: prevPull > 0.36 ? 28 : 12
   }
   const nextCardStyle = {
-    transform: `translate3d(${72 + Math.min(0, summaryDrag.offset) * 0.7}px, 0, ${-90 - Math.min(0, summaryDrag.offset) * 0.35}px) rotateY(${-32 - Math.min(0, dragProgress) * 24}deg) rotateZ(${12 + Math.min(0, dragProgress) * 8}deg) scale(${0.82 + Math.max(0, -dragProgress) * 0.16})`,
-    opacity: 0.42 + Math.max(0, -dragProgress) * 0.45,
+    transform: `translate(-50%, -50%) translate3d(${150 - nextPull * 118}px, 0, ${-130 + nextPull * 118}px) rotateY(${-34 + nextPull * 26}deg) rotateZ(${10 - nextPull * 8}deg) scale(${0.78 + nextPull * 0.19})`,
+    opacity: 0.36 + nextPull * 0.54,
     transition: cardMotion,
-    willChange: 'transform, opacity'
+    willChange: 'transform, opacity',
+    zIndex: nextPull > 0.36 ? 28 : 12
   }
   const imageKey = (card: ScannedCard) => `${card.id}:${card.image_url || ''}`
   const renderCardImage = (card: ScannedCard, className: string) => {
@@ -1373,8 +1386,8 @@ export default function ScanPage() {
                 ) : (
                   <>
                     <div
-                      className={`relative mt-5 flex min-h-0 flex-1 touch-pan-y select-none items-center justify-center overflow-hidden ${summaryDrag.active ? 'cursor-grabbing' : 'cursor-grab'}`}
-                      style={{ perspective: '1100px', touchAction: 'pan-y' }}
+                      className={`relative mt-5 min-h-[330px] flex-1 touch-pan-y select-none overflow-visible sm:min-h-[460px] ${summaryDrag.active ? 'cursor-grabbing' : 'cursor-grab'}`}
+                      style={{ perspective: '1200px', transformStyle: 'preserve-3d', touchAction: 'pan-y' }}
                       onPointerDown={beginSummaryDrag}
                       onPointerMove={moveSummaryDrag}
                       onPointerUp={endSummaryDrag}
@@ -1383,7 +1396,7 @@ export default function ScanPage() {
                       {prevCard && (
                         <button
                           onClick={() => animateSummarySwipe('right')}
-                          className="absolute left-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
+                          className="absolute left-1/2 top-1/2 w-[58%] max-w-[285px] blur-[0.2px] active:scale-95"
                           style={prevCardStyle}
                           aria-label="Carta precedente"
                         >
@@ -1394,7 +1407,7 @@ export default function ScanPage() {
                       {nextCard && (
                         <button
                           onClick={() => animateSummarySwipe('left')}
-                          className="absolute right-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
+                          className="absolute left-1/2 top-1/2 w-[58%] max-w-[285px] blur-[0.2px] active:scale-95"
                           style={nextCardStyle}
                           aria-label="Carta successiva"
                         >
@@ -1403,7 +1416,7 @@ export default function ScanPage() {
                       )}
 
                       {currentCard && (
-                        <div className="relative z-10 w-[74%] max-w-[340px]" style={centerCardStyle}>
+                        <div className="absolute left-1/2 top-1/2 w-[74%] max-w-[340px]" style={centerCardStyle}>
                           <div className="relative rounded-[30px] border border-amber-300/40 bg-slate-900/80 p-2 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
                             <div className="pointer-events-none absolute inset-2 rounded-[24px] border border-white/10" />
                             {renderCardImage(currentCard, 'aspect-[3/4] w-full rounded-[24px]')}

@@ -281,3 +281,32 @@ body {
 .to-amber-200, .to-amber-300, .to-amber-500, .to-yellow-400, .to-yellow-500 {
   --tw-gradient-to: var(--op-coral) var(--tw-gradient-to-position) !important;
 }
+
+button.bg-amber-400,
+button[class*="bg-amber-400"],
+a.bg-amber-400,
+a[class*="bg-amber-400"] {
+  background: linear-gradient(135deg, var(--op-cyan), var(--op-coral)) !important;
+  border-color: rgba(110, 231, 249, 0.45) !important;
+  color: #031013 !important;
+  box-shadow: 0 14px 30px rgba(110, 231, 249, 0.16) !important;
+}
+
+button[class*="bg-emerald-500"] {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.94), rgba(110, 231, 249, 0.9)) !important;
+  border-color: rgba(110, 231, 249, 0.46) !important;
+  color: #031013 !important;
+  box-shadow: 0 14px 28px rgba(52, 211, 153, 0.14) !important;
+}
+
+button[class*="bg-red-500"] {
+  background: linear-gradient(135deg, rgba(251, 113, 133, 0.95), rgba(225, 29, 72, 0.95)) !important;
+  border-color: rgba(251, 113, 133, 0.5) !important;
+  color: #fff7f8 !important;
+  box-shadow: 0 14px 28px rgba(251, 113, 133, 0.16) !important;
+}
+
+button[class*="bg-slate-800"],
+button[class*="bg-slate-900"] {
+  background: linear-gradient(135deg, rgba(16, 31, 38, 0.96), rgba(3, 8, 11, 0.94)) !important;
+}
