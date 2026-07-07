@@ -70,6 +70,11 @@ export default function ScanPage() {
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
   const detectionInProgressRef = useRef(false)
+  const recognitionStreakRef = useRef<{ cardId: string; count: number } | null>(null)
+  const summarySwipeTimerRef = useRef<number | null>(null)
+  const scanGenerationRef = useRef(0)
+  const scanSessionRef = useRef(false)
+  const showSummaryRef = useRef(false)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -159,6 +164,10 @@ export default function ScanPage() {
         window.clearInterval(detectionLoopRef.current)
         detectionLoopRef.current = null
       }
+      if (summarySwipeTimerRef.current) {
+        window.clearTimeout(summarySwipeTimerRef.current)
+        summarySwipeTimerRef.current = null
+      }
     }
   }, [])
 
@@ -171,7 +180,12 @@ export default function ScanPage() {
   }, [scannedCards.length])
 
   useEffect(() => {
-    if (!cameraActive || !cameraReady || !scanSessionActive) return
+    scanSessionRef.current = scanSessionActive
+    showSummaryRef.current = showSummary
+  }, [scanSessionActive, showSummary])
+
+  useEffect(() => {
+    if (!cameraActive || !cameraReady || !scanSessionActive || showSummary) return
 
     if (!detectionInProgressRef.current && !pendingRecognition) {
       void detectCardFromFrame()
@@ -189,7 +203,7 @@ export default function ScanPage() {
         detectionLoopRef.current = null
       }
     }
-  }, [cameraActive, cameraReady, ocrReady, scanSessionActive, pendingRecognition])
+  }, [cameraActive, cameraReady, ocrReady, scanSessionActive, showSummary, pendingRecognition])
 
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
@@ -296,7 +310,43 @@ export default function ScanPage() {
   const splitNameParts = (value: string) =>
     meaningfulTokens(value)
       .flatMap(token => token.split(/\d+/))
-      .filter(token => token.length >= 4)
+      .filter(token => token.length >= 3)
+
+  const hasExactCodeMatch = (ocrText: string, card: ScannedCard) => {
+    const cardCode = extractCardCode(ocrText)
+    return Boolean(cardCode && compactText(cardCode) === compactText(card.card_id || ''))
+  }
+
+  const hasStrongNameMatch = (ocrText: string, card: ScannedCard) => {
+    const name = normalizeText(card.name || '')
+    if (!name) return false
+
+    const normalizedOcr = normalizeText(ocrText)
+    if (name.length >= 5 && normalizedOcr.includes(name)) return true
+
+    const nameTokens = meaningfulTokens(card.name || '')
+    if (nameTokens.length < 2) return false
+
+    const ocrTokenSet = new Set(meaningfulTokens(ocrText))
+    return nameTokens.every(token => ocrTokenSet.has(token))
+  }
+
+  const shouldShowRecognizedCard = (card: ScannedCard, ocrText: string) => {
+    if (hasExactCodeMatch(ocrText, card) || hasStrongNameMatch(ocrText, card)) {
+      recognitionStreakRef.current = null
+      return true
+    }
+
+    const cardKey = compactText(card.card_id || card.name || '')
+    const previous = recognitionStreakRef.current
+    const nextCount = previous?.cardId === cardKey ? previous.count + 1 : 1
+    recognitionStreakRef.current = { cardId: cardKey, count: nextCount }
+
+    return nextCount >= 2
+  }
+
+  const isScanStillActive = (generation: number) =>
+    scanGenerationRef.current === generation && scanSessionRef.current && !showSummaryRef.current
 
   const toScannedCard = (candidate: ReferenceCard): ScannedCard => ({
     id: `${candidate.card_id || candidate.id || Date.now()}-${Date.now()}`,
@@ -327,36 +377,38 @@ export default function ScanPage() {
 
     const scored = referenceCards
       .map(card => {
-        const haystack = [
+        const strongHaystack = [
           card.name,
           card.card_id,
           card.rarity,
           card.card_cost,
           card.card_power,
-          card.card_text,
           card.set_name,
           card.sub_types,
           card.card_type,
-          card.card_color,
-          card.image_url
+          card.card_color
         ].filter(Boolean).join(' ')
+        const effectText = card.card_text || ''
         const nameText = normalizeText(card.name || '')
         const compactName = compactText(card.name || '')
         const idText = compactText(card.card_id || card.id || '')
         const compactOcr = compactText(ocrText)
         const nameTokens = splitNameParts(card.name || '')
-        const cardTokens = meaningfulTokens(haystack)
+        const cardTokens = meaningfulTokens(strongHaystack)
+        const effectTokens = meaningfulTokens(effectText)
 
         let score = 0
-        if (idText && compactOcr.includes(idText)) score += 20
-        if (compactName && compactOcr.includes(compactName)) score += 14
-        if (nameText && normalizedOcr.includes(nameText)) score += 8
+        if (idText && compactOcr.includes(idText)) score += 28
+        if (compactName && compactOcr.includes(compactName)) score += 18
+        if (nameText && normalizedOcr.includes(nameText)) score += 12
 
         const cardTokenSet = new Set(cardTokens)
+        const effectTokenSet = new Set(effectTokens)
         for (const token of ocrTokens) {
-          if (cardTokenSet.has(token)) score += nameText.includes(token) ? 4 : 1.2
+          if (cardTokenSet.has(token)) score += nameText.includes(token) ? 5 : 1.5
+          else if (effectTokenSet.has(token)) score += 0.25
           for (const nameToken of nameTokens) {
-            if (tokenSimilarity(token, nameToken) >= 0.78) score += 2.5
+            if (tokenSimilarity(token, nameToken) >= 0.78) score += 3
           }
         }
 
@@ -369,9 +421,9 @@ export default function ScanPage() {
     const secondText = scored[1]
     const textGap = bestText ? bestText.score - (secondText?.score || 0) : 0
 
-    if (!bestText || bestText.score < 2.5) return null
+    if (!bestText || bestText.score < 4) return null
 
-    if (bestText.score >= 12 || (bestText.score >= 6 && textGap >= 1.2)) {
+    if (bestText.score >= 16 || (bestText.score >= 9 && textGap >= 2.5)) {
       return toScannedCard(bestText.card)
     }
 
@@ -400,8 +452,8 @@ export default function ScanPage() {
 
     const best = finalScored[0]
     const second = finalScored[1]
-    if (!best || best.score < 3.5) return null
-    if (second && best.score < 6 && best.score - second.score < 0.7) return null
+    if (!best || best.score < 5) return null
+    if (second && best.score < 8 && best.score - second.score < 1.2) return null
 
     return toScannedCard(best.card)
   }
@@ -451,7 +503,9 @@ export default function ScanPage() {
 
       return typeof data?.text === 'string' ? data.text : null
     } catch {
-      setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
+      if (scanSessionRef.current && !showSummaryRef.current) {
+        setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
+      }
       return null
     }
   }
@@ -622,6 +676,7 @@ export default function ScanPage() {
       }
       return [copy, ...prev]
     })
+    recognitionStreakRef.current = null
     setCarouselIndex(0)
     setPendingRecognition(null)
     setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}`)
@@ -646,16 +701,19 @@ export default function ScanPage() {
 
   const detectCardFromFrame = async () => {
     if (detectionInProgressRef.current) return
+    if (!scanSessionRef.current || showSummaryRef.current) return
+    const generation = scanGenerationRef.current
     detectionInProgressRef.current = true
 
     try {
-      await detectCardFromFrameUnsafe()
+      await detectCardFromFrameUnsafe(generation)
     } finally {
       detectionInProgressRef.current = false
     }
   }
 
-  const detectCardFromFrameUnsafe = async () => {
+  const detectCardFromFrameUnsafe = async (generation: number) => {
+    if (!isScanStillActive(generation)) return
     if (!videoRef.current || !processingCanvasRef.current) return
 
     const video = videoRef.current
@@ -700,6 +758,8 @@ export default function ScanPage() {
     const x = Math.floor((canvas.width - centerWidth) / 2)
     const y = Math.floor((canvas.height - centerHeight) / 2)
     const rect = { x, y, width: centerWidth, height: centerHeight }
+
+    if (!isScanStillActive(generation)) return
 
     setDetectedRect(rect)
     setRecognitionMessage('Analisi del frame in corso...')
@@ -802,6 +862,8 @@ export default function ScanPage() {
     }
 
     const ocrText = await runOcrOnCanvases([visionCanvas])
+    if (!isScanStillActive(generation)) return
+
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
 
@@ -810,15 +872,29 @@ export default function ScanPage() {
     const localMatch = referenceCards.length > 0
       ? await findBestReferenceMatch(allOcrText, imageMatchCanvas)
       : null
+    if (!isScanStillActive(generation)) return
+
     const serverMatch = localMatch || (referenceCards.length === 0 ? await recognizeCardByText(allOcrText) : null)
+    if (!isScanStillActive(generation)) return
+
     const searchMatch = localMatch || serverMatch ? null : await searchCardByText(codeQuery || allOcrText, imageMatchCanvas)
+    if (!isScanStillActive(generation)) return
+
     const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
+      if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
+        setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Tienila ferma per confermare.`)
+        return
+      }
+
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Recupero prezzo live...`)
       const pricedCard = await enrichCardWithLivePrice(cardMatch)
+      if (!isScanStillActive(generation)) return
+
       setPendingRecognition(pricedCard)
       setRecognitionMessage(`Carta trovata: ${pricedCard.name}. Conferma o scarta.`)
     } else {
+      recognitionStreakRef.current = null
       const previewText = allOcrText.replace(/\s+/g, ' ').trim().slice(0, 90)
       setRecognitionMessage(previewText ? `Testo letto ma nessun match: ${previewText}` : 'Google Vision non ha letto testo utile. Avvicina la carta e aumenta la luce.')
     }
@@ -853,9 +929,16 @@ export default function ScanPage() {
 
     if (streamRef.current) {
       await attachStream(streamRef.current)
+      scanGenerationRef.current += 1
+      scanSessionRef.current = true
+      showSummaryRef.current = false
       setCameraActive(true)
       setCameraReady(true)
       setCameraError(null)
+      setScanSessionActive(true)
+      setShowSummary(false)
+      setPendingRecognition(null)
+      recognitionStreakRef.current = null
       return
     }
 
@@ -905,15 +988,21 @@ export default function ScanPage() {
 
       streamRef.current = stream
       await attachStream(stream)
+      scanGenerationRef.current += 1
+      scanSessionRef.current = true
+      showSummaryRef.current = false
       setCameraActive(true)
       setCameraReady(true)
       setCameraError(null)
       setScanSessionActive(true)
       setShowSummary(false)
       setPendingRecognition(null)
+      recognitionStreakRef.current = null
       setRecognitionMessage('Scanner attivo. Tieni la carta al centro.')
     } catch (err) {
       console.error('Camera error:', err)
+      scanGenerationRef.current += 1
+      scanSessionRef.current = false
       setCameraActive(false)
       setCameraReady(false)
       setCameraError('Non è stato possibile avviare la camera. Prova a ricaricare la pagina e a consentire l’accesso dalla richiesta del browser.')
@@ -921,6 +1010,9 @@ export default function ScanPage() {
   }
 
   const stopCamera = () => {
+    scanGenerationRef.current += 1
+    scanSessionRef.current = false
+    showSummaryRef.current = true
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
@@ -934,16 +1026,33 @@ export default function ScanPage() {
     setScanSessionActive(false)
     setShowSummary(true)
     setPendingRecognition(null)
+    recognitionStreakRef.current = null
     setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')
   }
 
-  const handleSummarySwipe = (direction: 'left' | 'right') => {
+  const animateSummarySwipe = (direction: 'left' | 'right') => {
     if (scannedCards.length <= 1) return
-    if (direction === 'left') {
-      setCarouselIndex(prev => (prev + 1) % scannedCards.length)
-    } else {
-      setCarouselIndex(prev => (prev - 1 + scannedCards.length) % scannedCards.length)
+
+    if (summarySwipeTimerRef.current) {
+      window.clearTimeout(summarySwipeTimerRef.current)
     }
+
+    const exitOffset = direction === 'left' ? -420 : 420
+    const enterOffset = direction === 'left' ? 420 : -420
+
+    setSummaryDrag({ active: false, startX: 0, offset: exitOffset })
+    summarySwipeTimerRef.current = window.setTimeout(() => {
+      setCarouselIndex(prev => (
+        direction === 'left'
+          ? (prev + 1) % scannedCards.length
+          : (prev - 1 + scannedCards.length) % scannedCards.length
+      ))
+      setSummaryDrag({ active: false, startX: 0, offset: enterOffset })
+
+      window.requestAnimationFrame(() => {
+        setSummaryDrag({ active: false, startX: 0, offset: 0 })
+      })
+    }, 230)
   }
 
   const beginSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -964,27 +1073,9 @@ export default function ScanPage() {
     setSummaryDrag({ active: false, startX: 0, offset: 0 })
 
     if (offset < -70) {
-      handleSummarySwipe('left')
+      animateSummarySwipe('left')
     } else if (offset > 70) {
-      handleSummarySwipe('right')
-    }
-  }
-
-  const handleTouchStart = (event: any) => {
-    if (event.touches?.length) {
-      const touch = event.touches[0]
-      ;(event.currentTarget as HTMLDivElement).dataset.touchStart = String(touch.clientX)
-    }
-  }
-
-  const handleTouchEnd = (event: any) => {
-    const start = Number((event.currentTarget as HTMLDivElement).dataset.touchStart || '0')
-    const end = event.changedTouches?.[0]?.clientX ?? 0
-    const delta = end - start
-    if (delta < -60) {
-      handleSummarySwipe('left')
-    } else if (delta > 60) {
-      handleSummarySwipe('right')
+      animateSummarySwipe('right')
     }
   }
 
@@ -1297,7 +1388,7 @@ export default function ScanPage() {
                     >
                       {prevCard && (
                         <button
-                          onClick={() => handleSummarySwipe('right')}
+                          onClick={() => animateSummarySwipe('right')}
                           className="absolute left-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
                           style={prevCardStyle}
                           aria-label="Carta precedente"
@@ -1308,7 +1399,7 @@ export default function ScanPage() {
 
                       {nextCard && (
                         <button
-                          onClick={() => handleSummarySwipe('left')}
+                          onClick={() => animateSummarySwipe('left')}
                           className="absolute right-[2%] top-1/2 z-0 w-[43%] -translate-y-1/2 blur-[0.2px] active:scale-95"
                           style={nextCardStyle}
                           aria-label="Carta successiva"
@@ -1327,14 +1418,14 @@ export default function ScanPage() {
                       )}
 
                       <button
-                        onClick={() => handleSummarySwipe('right')}
+                        onClick={() => animateSummarySwipe('right')}
                         className="absolute left-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/70 text-slate-100 backdrop-blur"
                         aria-label="Precedente"
                       >
                         <ChevronLeft size={18} />
                       </button>
                       <button
-                        onClick={() => handleSummarySwipe('left')}
+                        onClick={() => animateSummarySwipe('left')}
                         className="absolute right-1 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-600 bg-slate-950/70 text-slate-100 backdrop-blur"
                         aria-label="Successiva"
                       >
@@ -1396,7 +1487,7 @@ export default function ScanPage() {
             </div>
           )}
 
-          {pendingRecognition && (
+          {pendingRecognition && !showSummary && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6">
               <div className="w-full max-w-[420px] rounded-[28px] border border-amber-400/30 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                 <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
