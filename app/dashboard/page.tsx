@@ -5,7 +5,9 @@ import { BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, 
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
+import CardImage from '@/app/components/CardImage'
 import { useRouter } from 'next/navigation'
+import { evaluateProgress } from '@/lib/progression'
 
 type UserCard = {
   card_id: string
@@ -110,7 +112,9 @@ export default function Dashboard() {
       return
     }
 
-    setCards(data || [])
+    const loadedCards = data || []
+    setCards(loadedCards)
+    evaluateProgress(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
   }
 
@@ -180,6 +184,28 @@ export default function Dashboard() {
       ? '—'
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
 
+  const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.card_id || card.id || '')
+      if (card.name) params.set('name', card.name)
+      if (card.set_name) params.set('setName', card.set_name)
+
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      const price = data?.price
+      return price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
+    } catch {
+      return null
+    }
+  }
+
+  const isPriceAnomaly = (saved?: number | null, live?: number | null) => {
+    if (saved == null || live == null) return false
+    if (saved <= 0 || live <= 0) return false
+    return saved >= 20 && (saved / live >= 8 || saved - live >= 50)
+  }
+
   const loadLivePrice = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
     setLivePriceLoading(true)
     setLivePrice(null)
@@ -224,7 +250,9 @@ export default function Dashboard() {
       .eq('card_id', card.id)
       .maybeSingle()
 
-    const currentCardLivePrice = catalogSelectedCard?.id === card.id ? livePrice : null
+    const currentCardLivePrice = catalogSelectedCard?.id === card.id
+      ? livePrice
+      : await fetchLivePriceForCard(card)
     const payload = {
       user_id: userId,
       card_id: card.id,
@@ -235,8 +263,8 @@ export default function Dashboard() {
       card_type: card.card_type ?? null,
       card_cost: card.card_cost ?? null,
       card_power: card.card_power ?? null,
-      market_price: currentCardLivePrice ?? card.market_price ?? null,
-      inventory_price: card.inventory_price ?? null,
+      market_price: currentCardLivePrice ?? null,
+      inventory_price: null,
     }
 
     if (existing) {
@@ -268,28 +296,38 @@ export default function Dashboard() {
     setAnalyticsLoading(true)
 
     const candidates = [...cards]
-      .filter(card => getSavedPrice(card) != null)
       .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
-      .slice(0, 12)
+      .slice(0, 80)
 
     const entries = await Promise.all(
       candidates.map(async (card) => {
-        try {
-          const params = new URLSearchParams()
-          params.set('cardId', card.card_id)
-          if (card.name) params.set('name', card.name)
-
-          const res = await fetch(`/api/cards/price?${params.toString()}`)
-          const data = await res.json()
-          const price = data?.price
-          return [card.card_id, price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null] as const
-        } catch {
-          return [card.card_id, null] as const
-        }
+        const price = await fetchLivePriceForCard({ card_id: card.card_id, name: card.name })
+        return [card.card_id, price] as const
       })
     )
 
-    setAnalyticsLivePrices(Object.fromEntries(entries))
+    const liveMap = Object.fromEntries(entries)
+    const repairs = candidates.filter(card => isPriceAnomaly(getSavedPrice(card), liveMap[card.card_id]))
+
+    if (userId && repairs.length > 0) {
+      await Promise.all(
+        repairs.map(card =>
+          supabase
+            .from('user_cards')
+            .update({ market_price: liveMap[card.card_id], inventory_price: null })
+            .eq('user_id', userId)
+            .eq('card_id', card.card_id)
+        )
+      )
+
+      setCards(prev => prev.map(card =>
+        isPriceAnomaly(getSavedPrice(card), liveMap[card.card_id])
+          ? { ...card, market_price: liveMap[card.card_id], inventory_price: null }
+          : card
+      ))
+    }
+
+    setAnalyticsLivePrices(liveMap)
     setAnalyticsLoading(false)
   }
 
@@ -353,9 +391,10 @@ export default function Dashboard() {
     return matchesSearch && matchesColor && matchesRarity && matchesCost
   })
 
-  const selectedSavedPrice = selectedCard
+  const selectedStoredPrice = selectedCard
     ? selectedCard.market_price ?? selectedCard.inventory_price ?? null
     : null
+  const selectedSavedPrice = isPriceAnomaly(selectedStoredPrice, livePrice) ? null : selectedStoredPrice
   const selectedPriceDelta = livePrice != null && selectedSavedPrice != null
     ? livePrice - selectedSavedPrice
     : null
@@ -364,10 +403,16 @@ export default function Dashboard() {
     return `${sign}${formatPrice(value)}`
   }
   const totalQuantity = cards.reduce((sum, card) => sum + card.quantity, 0)
-  const savedCollectionValue = cards.reduce((sum, card) => sum + ((getSavedPrice(card) || 0) * card.quantity), 0)
+  const getAnalyticsPrice = (card: UserCard) => {
+    const saved = getSavedPrice(card)
+    const live = analyticsLivePrices[card.card_id]
+    if (isPriceAnomaly(saved, live)) return live
+    return live ?? saved
+  }
+  const savedCollectionValue = cards.reduce((sum, card) => sum + ((getAnalyticsPrice(card) || 0) * card.quantity), 0)
   const topSavedCard = [...cards]
-    .filter(card => getSavedPrice(card) != null)
-    .sort((a, b) => (getSavedPrice(b) || 0) - (getSavedPrice(a) || 0))[0] || null
+    .filter(card => getAnalyticsPrice(card) != null)
+    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
@@ -379,13 +424,14 @@ export default function Dashboard() {
   const rarityStats = groupByQuantity('rarity').slice(0, 5)
   const colorStats = groupByQuantity('card_color').slice(0, 5)
   const analyticsCandidates = [...cards]
-    .filter(card => getSavedPrice(card) != null)
-    .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
+    .filter(card => getAnalyticsPrice(card) != null)
+    .sort((a, b) => ((getAnalyticsPrice(b) || 0) * b.quantity) - ((getAnalyticsPrice(a) || 0) * a.quantity))
     .slice(0, 12)
   const analyticsDeltas = analyticsCandidates
     .map(card => {
-      const saved = getSavedPrice(card)
+      const stored = getSavedPrice(card)
       const live = analyticsLivePrices[card.card_id]
+      const saved = isPriceAnomaly(stored, live) ? null : stored
       return {
         card,
         saved,
@@ -398,9 +444,7 @@ export default function Dashboard() {
   const topRiser = analyticsDeltas[0] || null
   const topDrop = [...analyticsDeltas].sort((a, b) => (a.delta || 0) - (b.delta || 0))[0] || null
   const liveSampleValue = analyticsCandidates.reduce((sum, card) => {
-    const live = analyticsLivePrices[card.card_id]
-    const saved = getSavedPrice(card)
-    return sum + ((live ?? saved ?? 0) * card.quantity)
+    return sum + ((getAnalyticsPrice(card) ?? 0) * card.quantity)
   }, 0)
 
   return (
@@ -661,15 +705,14 @@ export default function Dashboard() {
   )}
 </div>
 
-                <div className="w-full aspect-[3/4] overflow-hidden rounded-md bg-black">
-                  {item.image_url ? (
-                    <img src={item.image_url} className="w-full h-full object-contain" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">
-                      NO IMAGE
-                    </div>
-                  )}
-                </div>
+                <CardImage
+                  src={item.image_url}
+                  cardId={item.card_id}
+                  alt={item.name || item.card_id}
+                  className="w-full aspect-[3/4] overflow-hidden rounded-md bg-black"
+                  imgClassName="h-full w-full object-contain"
+                  fallbackClassName="flex h-full w-full items-center justify-center text-[10px] text-gray-400"
+                />
 
                 <p className="font-bold mt-1 sm:mt-2 text-[10px] sm:text-xs line-clamp-2">{item.name || 'Unknown'}</p>
                 <p className="text-[8px] sm:text-[10px] text-gray-400">{item.rarity || '?'}</p>
@@ -712,7 +755,7 @@ export default function Dashboard() {
     }}
   >
     <div
-      className="flex h-[88dvh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50 sm:h-[84vh]"
+      className="flex h-[88dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50 sm:h-[84vh] sm:w-full"
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-center gap-2 border-b border-slate-800 p-3">
@@ -748,14 +791,13 @@ export default function Dashboard() {
       <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1fr_340px]">
         <div className="min-h-0 overflow-y-auto p-3">
           {catalogSelectedCard && (
-            <div className="mb-3 grid grid-cols-[92px_1fr] gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3 lg:hidden">
-              <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950">
-                {catalogSelectedCard.image_url ? (
-                  <img src={catalogSelectedCard.image_url} alt={catalogSelectedCard.name} className="h-full w-full object-contain" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
-                )}
-              </div>
+            <div className="mb-3 grid grid-cols-[92px_minmax(0,1fr)] gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3 lg:hidden">
+              <CardImage
+                src={catalogSelectedCard.image_url}
+                cardId={catalogSelectedCard.id}
+                alt={catalogSelectedCard.name}
+                className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950"
+              />
               <div className="min-w-0">
                 <p className="line-clamp-2 text-sm font-black text-white">{catalogSelectedCard.name}</p>
                 <p className="mt-1 truncate text-[10px] uppercase tracking-[0.18em] text-slate-500">{catalogSelectedCard.id}</p>
@@ -787,13 +829,12 @@ export default function Dashboard() {
                     onClick={() => openCatalogCard(card)}
                     className="block w-full text-left"
                   >
-                    <div className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950">
-                      {card.image_url ? (
-                        <img src={card.image_url} alt={card.name} className="h-full w-full object-contain" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
-                      )}
-                    </div>
+                    <CardImage
+                      src={card.image_url}
+                      cardId={card.id}
+                      alt={card.name}
+                      className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                    />
                     <p className="mt-2 line-clamp-2 text-[11px] font-bold text-white">{card.name}</p>
                     <p className="mt-1 truncate text-[9px] text-slate-500">{card.id}</p>
                   </button>
@@ -814,13 +855,12 @@ export default function Dashboard() {
           {catalogSelectedCard ? (
             <div className="flex h-full flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950">
-                  {catalogSelectedCard.image_url ? (
-                    <img src={catalogSelectedCard.image_url} alt={catalogSelectedCard.name} className="h-full w-full object-contain" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-slate-500">NO IMAGE</div>
-                  )}
-                </div>
+                <CardImage
+                  src={catalogSelectedCard.image_url}
+                  cardId={catalogSelectedCard.id}
+                  alt={catalogSelectedCard.name}
+                  className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950"
+                />
                 <p className="mt-3 text-xl font-black text-white">{catalogSelectedCard.name}</p>
                 <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">{catalogSelectedCard.id}</p>
                 <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
@@ -878,7 +918,7 @@ export default function Dashboard() {
           {[
             ['Carte totali', totalQuantity.toString()],
             ['Uniche', cards.length.toString()],
-            ['Valore salvato', formatPrice(savedCollectionValue)],
+            ['Valore stimato', formatPrice(savedCollectionValue)],
             ['Doppioni', duplicateCards.length.toString()],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-3">
@@ -896,17 +936,16 @@ export default function Dashboard() {
             </div>
             {topSavedCard ? (
               <div className="mt-3 grid grid-cols-[76px_1fr] gap-3">
-                <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950">
-                  {topSavedCard.image_url ? (
-                    <img src={topSavedCard.image_url} alt={topSavedCard.name || 'Carta'} className="h-full w-full object-contain" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
-                  )}
-                </div>
+                <CardImage
+                  src={topSavedCard.image_url}
+                  cardId={topSavedCard.card_id}
+                  alt={topSavedCard.name || 'Carta'}
+                  className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950"
+                />
                 <div className="min-w-0">
                   <p className="line-clamp-2 text-sm font-bold text-white">{topSavedCard.name}</p>
                   <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{topSavedCard.card_id}</p>
-                  <p className="mt-2 text-2xl font-black text-cyan-200">{formatPrice(getSavedPrice(topSavedCard))}</p>
+                  <p className="mt-2 text-2xl font-black text-cyan-200">{formatPrice(getAnalyticsPrice(topSavedCard))}</p>
                 </div>
               </div>
             ) : (
@@ -1006,12 +1045,13 @@ export default function Dashboard() {
       </button>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="rounded-3xl overflow-hidden bg-slate-800 border border-slate-700 p-3">
-          <img
-            src={selectedCard.image_url || ''}
-            className="w-full aspect-[3/4] object-contain"
-          />
-        </div>
+        <CardImage
+          src={selectedCard.image_url}
+          cardId={selectedCard.card_id}
+          alt={selectedCard.name || 'Carta'}
+          className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3"
+          imgClassName="h-full w-full object-contain"
+        />
 
         <div className="space-y-4">
           <div>

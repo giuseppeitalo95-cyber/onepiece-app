@@ -168,25 +168,38 @@ const fetchOfficialCards = async () => {
   return results.flat()
 }
 
-const normalizeOldCard = (card: RawCard) => ({
-  id: String(card.card_set_id || card.card_id || card.id || `${card.card_name || card.name}`),
-  card_id: String(card.card_set_id || card.card_id || card.id || ''),
-  name: card.card_name || card.name || 'Carta',
-  card_name: card.card_name || card.name || 'Carta',
-  image_url: card.card_image || card.image_url || null,
-  card_image: card.card_image || card.image_url || null,
-  rarity: card.rarity || '-',
-  market_price: card.market_price ? Number(card.market_price) : null,
-  inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
-  card_color: card.card_color ?? null,
-  card_type: card.card_type ?? null,
-  card_cost: card.card_cost ? Number(card.card_cost) : null,
-  card_power: card.card_power ? Number(card.card_power) : null,
-  card_text: card.card_text || '',
-  set_name: card.set_name || '',
-  sub_types: card.sub_types || '',
-  source: card.source || 'optcgapi'
-})
+const getCardIdFromImage = (imageUrl?: string | null) => {
+  const imageName = imageUrl?.split('/').pop()?.split('?')[0] || ''
+  return imageName.match(/([A-Z]{1,4}\d{2}-\d{3}(?:_p\d+)?)/i)?.[1] || null
+}
+
+const normalizeOldCard = (card: RawCard) => {
+  const rawId = String(card.card_set_id || card.card_id || card.id || '')
+  const imageUrl = card.card_image || card.image_url || null
+  const imageId = getCardIdFromImage(imageUrl)
+  const id = imageId || rawId || `${card.card_name || card.name}`
+
+  return {
+    id,
+    card_id: id,
+    base_card_id: rawId || id,
+    name: card.card_name || card.name || 'Carta',
+    card_name: card.card_name || card.name || 'Carta',
+    image_url: imageUrl,
+    card_image: imageUrl,
+    rarity: card.rarity || '-',
+    market_price: null,
+    inventory_price: null,
+    card_color: card.card_color ?? null,
+    card_type: card.card_type ?? null,
+    card_cost: card.card_cost ? Number(card.card_cost) : null,
+    card_power: card.card_power ? Number(card.card_power) : null,
+    card_text: card.card_text || '',
+    set_name: card.set_name || '',
+    sub_types: card.sub_types || '',
+    source: card.source || 'optcgapi'
+  }
+}
 
 export const getAllCards = async () => {
   if (cardCache && cardCache.expiresAt > Date.now()) {

@@ -32,7 +32,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
 
   return (
     <nav
-      className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-1rem),560px)] items-center justify-between rounded-[1.55rem] border border-white/14 bg-[#102932]/88 p-1.5 shadow-[0_18px_42px_rgba(0,0,0,0.32)] backdrop-blur-2xl"
+      className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-1rem),560px)] items-center justify-between rounded-[1.55rem] border border-white/16 bg-[#1a414b]/90 p-1.5 shadow-[0_18px_38px_rgba(0,0,0,0.24)] backdrop-blur-2xl"
       style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
     >
       {navItems.map(({ label, href, key, Icon }) => {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import CardImage from '@/app/components/CardImage'
 
 type Card = {
   id: string
@@ -262,16 +263,14 @@ useEffect(() => {
             className="flex items-center gap-3 bg-slate-900 rounded-xl p-3"
           >
 
-            {card.image_url ? (
-              <img
-                src={card.image_url}
-                className="w-12 h-16 object-cover rounded"
-              />
-            ) : (
-              <div className="w-12 h-16 bg-gray-700 rounded flex items-center justify-center text-xs">
-                NO IMG
-              </div>
-            )}
+            <CardImage
+              src={card.image_url}
+              cardId={card.id}
+              alt={card.name}
+              className="h-16 w-12 overflow-hidden rounded bg-gray-700"
+              imgClassName="h-full w-full object-cover"
+              fallbackClassName="flex h-full w-full items-center justify-center text-xs"
+            />
 
             <div className="flex-1">
               <p className="font-bold">{card.name}</p>
