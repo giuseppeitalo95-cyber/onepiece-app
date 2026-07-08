@@ -9,9 +9,7 @@ export default function Callback() {
 
   useEffect(() => {
     const handle = async () => {
-
       const { data, error } = await supabase.auth.getUser()
-
       const user = data?.user
 
       if (error || !user) {
@@ -19,7 +17,10 @@ export default function Callback() {
         return
       }
 
-      // 🔥 CREA SOLO IL PROFILO BASE (NO GOOGLE NAME)
+      const metadataUsername = typeof user.user_metadata?.username === 'string'
+        ? user.user_metadata.username.trim()
+        : ''
+
       const { data: profileData } = await supabase
         .from('profiles')
         .select('username')
@@ -31,21 +32,29 @@ export default function Callback() {
           .from('profiles')
           .insert({
             id: user.id,
-            username: null,
-            username_locked: false
+            username: metadataUsername || null,
+            username_locked: Boolean(metadataUsername)
           })
 
         if (insertError) {
           console.log('PROFILE ERROR:', insertError.message)
         }
+      } else if (!profileData.username && metadataUsername) {
+        await supabase
+          .from('profiles')
+          .update({
+            username: metadataUsername,
+            username_locked: true
+          })
+          .eq('id', user.id)
       }
 
-      const firstAccess = !profileData?.username
-      router.replace(firstAccess ? '/profile' : '/scan')
+      const firstAccess = !(profileData?.username || metadataUsername)
+      router.replace(firstAccess ? '/complete-profile' : '/scan')
     }
 
     handle()
-  }, [])
+  }, [router])
 
   return (
     <div className="text-white flex items-center justify-center min-h-screen onepiece-bg onepiece-clouds">

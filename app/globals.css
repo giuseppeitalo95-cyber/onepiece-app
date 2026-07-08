@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #071013;
+  --background: #0b1b20;
   --foreground: #edf7f8;
-  --op-bg: #071013;
-  --op-bg-deep: #03080b;
-  --op-panel: #0d1a1f;
-  --op-panel-strong: #101f26;
-  --op-panel-soft: rgba(16, 31, 38, 0.78);
-  --op-line: rgba(125, 211, 252, 0.18);
-  --op-line-strong: rgba(125, 211, 252, 0.34);
+  --op-bg: #0b1b20;
+  --op-bg-deep: #071318;
+  --op-panel: #132930;
+  --op-panel-strong: #18333c;
+  --op-panel-soft: rgba(24, 51, 60, 0.78);
+  --op-line: rgba(125, 211, 252, 0.22);
+  --op-line-strong: rgba(125, 211, 252, 0.38);
   --op-text: #edf7f8;
   --op-muted: #91a7b0;
   --op-gold: #f3c45d;
@@ -23,7 +23,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #071013;
+    --background: #0b1b20;
     --foreground: #edf7f8;
   }
 }
@@ -31,10 +31,10 @@
 /* One Piece Theme Backgrounds */
 .onepiece-bg {
   background:
-    radial-gradient(circle at 15% 10%, rgba(110, 231, 249, 0.13) 0%, transparent 34%),
-    radial-gradient(circle at 88% 18%, rgba(251, 113, 133, 0.11) 0%, transparent 32%),
-    radial-gradient(circle at 50% 95%, rgba(243, 196, 93, 0.10) 0%, transparent 42%),
-    linear-gradient(135deg, #071013 0%, #0d1a1f 42%, #03080b 100%);
+    radial-gradient(circle at 15% 10%, rgba(110, 231, 249, 0.18) 0%, transparent 34%),
+    radial-gradient(circle at 88% 18%, rgba(251, 113, 133, 0.13) 0%, transparent 32%),
+    radial-gradient(circle at 50% 95%, rgba(243, 196, 93, 0.12) 0%, transparent 42%),
+    linear-gradient(135deg, #0b1b20 0%, #123039 46%, #071318 100%);
 }
 
 .onepiece-bg::before {
@@ -54,9 +54,9 @@
 
 .onepiece-wave-bg {
   background:
-    radial-gradient(ellipse at top, rgba(110, 231, 249, 0.16) 0%, transparent 52%),
-    radial-gradient(ellipse at bottom, rgba(243, 196, 93, 0.09) 0%, transparent 48%),
-    linear-gradient(180deg, rgba(7, 16, 19, 0.94) 0%, rgba(13, 26, 31, 0.92) 48%, rgba(3, 8, 11, 0.96) 100%);
+    radial-gradient(ellipse at top, rgba(110, 231, 249, 0.20) 0%, transparent 52%),
+    radial-gradient(ellipse at bottom, rgba(243, 196, 93, 0.12) 0%, transparent 48%),
+    linear-gradient(180deg, rgba(11, 27, 32, 0.95) 0%, rgba(18, 48, 57, 0.93) 48%, rgba(7, 19, 24, 0.96) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -127,7 +127,7 @@
 
 /* Miglioramenti colori per aspetto più cartoonesco */
 .onepiece-vibrant {
-  filter: saturate(1.02) brightness(1.02);
+  color-scheme: dark;
 }
 
 /* Bordi più morbidi e colorati */
@@ -204,6 +204,25 @@
   66% { transform: translateY(2px) rotate(-1deg); }
 }
 
+@keyframes nav-active-pop {
+  0% { transform: translateY(5px) scale(0.88); opacity: 0.65; }
+  65% { transform: translateY(-2px) scale(1.08); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes nav-active-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(110, 231, 249, 0); }
+  50% { box-shadow: 0 0 24px rgba(110, 231, 249, 0.34); }
+}
+
+.op-nav-active {
+  animation: nav-active-glow 900ms ease both;
+}
+
+.op-nav-icon {
+  animation: nav-active-pop 320ms cubic-bezier(0.2, 0.85, 0.25, 1.25) both;
+}
+
 /* Enhanced button styles */
 .onepiece-btn-primary {
   @apply bg-gradient-to-r from-cyan-300 to-rose-300 text-slate-950 font-semibold;
@@ -235,21 +254,21 @@ body {
 .bg-slate-950 { background-color: var(--op-bg-deep) !important; }
 .bg-slate-900 { background-color: var(--op-panel) !important; }
 .bg-slate-800 { background-color: var(--op-panel-strong) !important; }
-.bg-slate-700 { background-color: #172c35 !important; }
-.bg-slate-950\/95 { background-color: rgba(3, 8, 11, 0.95) !important; }
-.bg-slate-950\/90 { background-color: rgba(3, 8, 11, 0.9) !important; }
-.bg-slate-950\/80 { background-color: rgba(3, 8, 11, 0.8) !important; }
-.bg-slate-950\/70 { background-color: rgba(3, 8, 11, 0.72) !important; }
-.bg-slate-900\/95 { background-color: rgba(13, 26, 31, 0.95) !important; }
-.bg-slate-900\/90 { background-color: rgba(13, 26, 31, 0.9) !important; }
-.bg-slate-900\/85 { background-color: rgba(13, 26, 31, 0.86) !important; }
-.bg-slate-900\/80 { background-color: rgba(13, 26, 31, 0.82) !important; }
-.bg-slate-900\/75 { background-color: rgba(13, 26, 31, 0.76) !important; }
-.bg-slate-800\/80 { background-color: rgba(16, 31, 38, 0.82) !important; }
-.bg-slate-800\/70 { background-color: rgba(16, 31, 38, 0.72) !important; }
-.bg-slate-800\/60 { background-color: rgba(16, 31, 38, 0.64) !important; }
-.bg-slate-800\/50 { background-color: rgba(16, 31, 38, 0.52) !important; }
-.bg-slate-700\/80 { background-color: rgba(23, 44, 53, 0.82) !important; }
+.bg-slate-700 { background-color: #21424c !important; }
+.bg-slate-950\/95 { background-color: rgba(7, 19, 24, 0.95) !important; }
+.bg-slate-950\/90 { background-color: rgba(7, 19, 24, 0.9) !important; }
+.bg-slate-950\/80 { background-color: rgba(7, 19, 24, 0.8) !important; }
+.bg-slate-950\/70 { background-color: rgba(7, 19, 24, 0.72) !important; }
+.bg-slate-900\/95 { background-color: rgba(19, 41, 48, 0.95) !important; }
+.bg-slate-900\/90 { background-color: rgba(19, 41, 48, 0.9) !important; }
+.bg-slate-900\/85 { background-color: rgba(19, 41, 48, 0.86) !important; }
+.bg-slate-900\/80 { background-color: rgba(19, 41, 48, 0.82) !important; }
+.bg-slate-900\/75 { background-color: rgba(19, 41, 48, 0.76) !important; }
+.bg-slate-800\/80 { background-color: rgba(24, 51, 60, 0.82) !important; }
+.bg-slate-800\/70 { background-color: rgba(24, 51, 60, 0.72) !important; }
+.bg-slate-800\/60 { background-color: rgba(24, 51, 60, 0.64) !important; }
+.bg-slate-800\/50 { background-color: rgba(24, 51, 60, 0.52) !important; }
+.bg-slate-700\/80 { background-color: rgba(33, 66, 76, 0.82) !important; }
 .border-slate-800 { border-color: rgba(125, 211, 252, 0.12) !important; }
 .border-slate-700 { border-color: var(--op-line) !important; }
 .border-slate-600 { border-color: var(--op-line-strong) !important; }

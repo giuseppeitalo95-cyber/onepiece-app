@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
@@ -62,16 +62,19 @@ export default function Dashboard() {
   const [catalogMessage, setCatalogMessage] = useState('')
   const [livePrice, setLivePrice] = useState<number | null>(null)
   const [livePriceLoading, setLivePriceLoading] = useState(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsLivePrices, setAnalyticsLivePrices] = useState<Record<string, number | null>>({})
 
  useEffect(() => {
-  if (addOpen || selectedCard || catalogOpen) {
+  if (addOpen || selectedCard || catalogOpen || analyticsOpen) {
     document.body.style.overflow = 'hidden'
     document.documentElement.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = 'auto'
     document.documentElement.style.overflow = 'auto'
   }
-}, [addOpen, selectedCard, catalogOpen])
+}, [addOpen, selectedCard, catalogOpen, analyticsOpen])
 
   useEffect(() => {
     const load = async () => {
@@ -258,6 +261,38 @@ export default function Dashboard() {
     setCatalogAddingId(null)
   }
 
+  const getSavedPrice = (card: UserCard) => card.market_price ?? card.inventory_price ?? null
+
+  const openAnalytics = async () => {
+    setAnalyticsOpen(true)
+    setAnalyticsLoading(true)
+
+    const candidates = [...cards]
+      .filter(card => getSavedPrice(card) != null)
+      .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
+      .slice(0, 12)
+
+    const entries = await Promise.all(
+      candidates.map(async (card) => {
+        try {
+          const params = new URLSearchParams()
+          params.set('cardId', card.card_id)
+          if (card.name) params.set('name', card.name)
+
+          const res = await fetch(`/api/cards/price?${params.toString()}`)
+          const data = await res.json()
+          const price = data?.price
+          return [card.card_id, price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null] as const
+        } catch {
+          return [card.card_id, null] as const
+        }
+      })
+    )
+
+    setAnalyticsLivePrices(Object.fromEntries(entries))
+    setAnalyticsLoading(false)
+  }
+
   // 🔥 DELETE FIX DEFINITIVO
   const removeCard = async (cardId: string, qty: number) => {
     if (!userId) return
@@ -318,6 +353,56 @@ export default function Dashboard() {
     return matchesSearch && matchesColor && matchesRarity && matchesCost
   })
 
+  const selectedSavedPrice = selectedCard
+    ? selectedCard.market_price ?? selectedCard.inventory_price ?? null
+    : null
+  const selectedPriceDelta = livePrice != null && selectedSavedPrice != null
+    ? livePrice - selectedSavedPrice
+    : null
+  const formatDelta = (value: number) => {
+    const sign = value > 0 ? '+' : ''
+    return `${sign}${formatPrice(value)}`
+  }
+  const totalQuantity = cards.reduce((sum, card) => sum + card.quantity, 0)
+  const savedCollectionValue = cards.reduce((sum, card) => sum + ((getSavedPrice(card) || 0) * card.quantity), 0)
+  const topSavedCard = [...cards]
+    .filter(card => getSavedPrice(card) != null)
+    .sort((a, b) => (getSavedPrice(b) || 0) - (getSavedPrice(a) || 0))[0] || null
+  const duplicateCards = cards.filter(card => card.quantity > 1)
+  const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
+    cards.reduce<Record<string, number>>((acc, card) => {
+      const key = String(card[field] || 'Unknown')
+      acc[key] = (acc[key] || 0) + card.quantity
+      return acc
+    }, {})
+  ).sort((a, b) => b[1] - a[1])
+  const rarityStats = groupByQuantity('rarity').slice(0, 5)
+  const colorStats = groupByQuantity('card_color').slice(0, 5)
+  const analyticsCandidates = [...cards]
+    .filter(card => getSavedPrice(card) != null)
+    .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
+    .slice(0, 12)
+  const analyticsDeltas = analyticsCandidates
+    .map(card => {
+      const saved = getSavedPrice(card)
+      const live = analyticsLivePrices[card.card_id]
+      return {
+        card,
+        saved,
+        live,
+        delta: saved != null && live != null ? live - saved : null
+      }
+    })
+    .filter(item => item.delta != null)
+    .sort((a, b) => (b.delta || 0) - (a.delta || 0))
+  const topRiser = analyticsDeltas[0] || null
+  const topDrop = [...analyticsDeltas].sort((a, b) => (a.delta || 0) - (b.delta || 0))[0] || null
+  const liveSampleValue = analyticsCandidates.reduce((sum, card) => {
+    const live = analyticsLivePrices[card.card_id]
+    const saved = getSavedPrice(card)
+    return sum + ((live ?? saved ?? 0) * card.quantity)
+  }, 0)
+
   return (
     <div className="h-dvh overflow-y-auto text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="collezione" />
@@ -343,6 +428,13 @@ export default function Dashboard() {
                     aria-label="Apri filtri"
                   >
                     <SlidersHorizontal size={18} />
+                  </button>
+                  <button
+                    onClick={openAnalytics}
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-600 bg-slate-800 text-cyan-100"
+                    aria-label="Analytics collezione"
+                  >
+                    <BarChart3 size={18} />
                   </button>
                   <button
                     onClick={() => {
@@ -487,7 +579,7 @@ export default function Dashboard() {
             <p className="text-gray-400 text-sm">Caricamento collezione...</p>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-2 sm:gap-2 mt-4">
+          <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-1.5 sm:gap-2 mt-4">
 
             {[...filteredCards]
   .sort((a, b) => {
@@ -754,6 +846,138 @@ export default function Dashboard() {
     </div>
   </div>
 )}
+{analyticsOpen && (
+  <div
+    className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4"
+    onClick={(event) => {
+      if (event.target === event.currentTarget) {
+        setAnalyticsOpen(false)
+      }
+    }}
+  >
+    <div
+      className="flex max-h-[88dvh] w-full max-w-4xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 p-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Analytics</p>
+          <h3 className="text-lg font-black text-white">Collezione</h3>
+        </div>
+        <button
+          onClick={() => setAnalyticsOpen(false)}
+          className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200"
+          aria-label="Chiudi analytics"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="min-h-0 overflow-y-auto p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ['Carte totali', totalQuantity.toString()],
+            ['Uniche', cards.length.toString()],
+            ['Valore salvato', formatPrice(savedCollectionValue)],
+            ['Doppioni', duplicateCards.length.toString()],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-3">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">{label}</p>
+              <p className="mt-2 text-lg font-black text-white">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-2 grid gap-2 lg:grid-cols-2">
+          <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
+            <div className="flex items-center gap-2">
+              <Crown className="text-cyan-200" size={18} />
+              <p className="text-sm font-black text-white">Carta più alta</p>
+            </div>
+            {topSavedCard ? (
+              <div className="mt-3 grid grid-cols-[76px_1fr] gap-3">
+                <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950">
+                  {topSavedCard.image_url ? (
+                    <img src={topSavedCard.image_url} alt={topSavedCard.name || 'Carta'} className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-sm font-bold text-white">{topSavedCard.name}</p>
+                  <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{topSavedCard.card_id}</p>
+                  <p className="mt-2 text-2xl font-black text-cyan-200">{formatPrice(getSavedPrice(topSavedCard))}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">Nessun prezzo salvato.</p>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="text-emerald-200" size={18} />
+                <p className="text-sm font-black text-white">Trend live</p>
+              </div>
+              <button
+                onClick={openAnalytics}
+                className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-100"
+              >
+                Aggiorna
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              {analyticsLoading ? 'Aggiorno i prezzi live...' : `Campione live: ${analyticsCandidates.length} carte principali`}
+            </p>
+            <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Valore campione live</p>
+              <p className="mt-1 text-xl font-black text-cyan-200">{formatPrice(liveSampleValue)}</p>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+                <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Migliorata</p>
+                <p className="mt-1 line-clamp-1 text-sm font-bold text-white">{topRiser?.card.name || '—'}</p>
+                <p className="mt-1 text-lg font-black text-emerald-200">{topRiser?.delta != null ? formatDelta(topRiser.delta) : '—'}</p>
+              </div>
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3">
+                <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Da controllare</p>
+                <p className="mt-1 line-clamp-1 text-sm font-bold text-white">{topDrop?.card.name || '—'}</p>
+                <p className="mt-1 text-lg font-black text-rose-200">{topDrop?.delta != null ? formatDelta(topDrop.delta) : '—'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 grid gap-2 lg:grid-cols-2">
+          <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
+            <p className="text-sm font-black text-white">Rarità più presenti</p>
+            <div className="mt-3 space-y-2">
+              {rarityStats.map(([label, count]) => (
+                <div key={label} className="flex items-center justify-between rounded-2xl bg-slate-950/70 px-3 py-2 text-sm">
+                  <span className="truncate text-slate-300">{label}</span>
+                  <span className="font-black text-cyan-200">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
+            <p className="text-sm font-black text-white">Colori collezione</p>
+            <div className="mt-3 space-y-2">
+              {colorStats.map(([label, count]) => (
+                <div key={label} className="flex items-center justify-between rounded-2xl bg-slate-950/70 px-3 py-2 text-sm">
+                  <span className="truncate text-slate-300">{label}</span>
+                  <span className="font-black text-cyan-200">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 {selectedCard && (
   <div
     className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
@@ -797,13 +1021,37 @@ export default function Dashboard() {
             <p className="text-xs uppercase tracking-[0.25em] text-gray-400 mb-3">
               {selectedCard.card_id}
             </p>
-            <div className="mb-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500">Valore live</p>
-              <p className="mt-1 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+            <div className="mb-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live EUR</p>
+                <p className="mt-1 text-xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Aggiunta</p>
+                <p className="mt-1 text-xl font-black text-white">{formatPrice(selectedSavedPrice)}</p>
+              </div>
+              <div className={`rounded-2xl border p-3 ${
+                selectedPriceDelta == null
+                  ? 'border-white/10 bg-white/[0.05]'
+                  : selectedPriceDelta >= 0
+                  ? 'border-emerald-400/25 bg-emerald-400/10'
+                  : 'border-rose-400/25 bg-rose-400/10'
+              }`}>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Differenza</p>
+                <p className={`mt-1 text-xl font-black ${
+                  selectedPriceDelta == null
+                    ? 'text-slate-300'
+                    : selectedPriceDelta >= 0
+                    ? 'text-emerald-200'
+                    : 'text-rose-200'
+                }`}>
+                  {selectedPriceDelta == null ? '-' : formatDelta(selectedPriceDelta)}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="hidden">
             <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
               <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Generale</p>
               <p className="text-sm text-gray-200"><span className="text-amber-300">Rarità:</span> {selectedCard.rarity || '—'}</p>
@@ -817,6 +1065,22 @@ export default function Dashboard() {
               <p className="text-sm text-gray-200"><span className="text-amber-300">Power:</span> {selectedCard.card_power ?? '—'}</p>
               <p className="text-sm text-gray-200"><span className="text-amber-300">Quantità:</span> {selectedCard.quantity}</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {[
+              ['Rarita', selectedCard.rarity || '-'],
+              ['Colore', selectedCard.card_color || '-'],
+              ['Tipo', selectedCard.card_type || '-'],
+              ['Costo', selectedCard.card_cost ?? '-'],
+              ['Power', selectedCard.card_power ?? '-'],
+              ['Qta', selectedCard.quantity],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-slate-700 bg-slate-900/90 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">{label}</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-100">{value}</p>
+              </div>
+            ))}
           </div>
 
         </div>

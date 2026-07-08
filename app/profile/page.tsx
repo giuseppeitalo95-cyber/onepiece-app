@@ -144,6 +144,7 @@ export default function Profile() {
     }
 
     setSavingUsername(true)
+    const shouldOpenScanner = firstAccess
 
     const { error } = await supabase
       .from('profiles')
@@ -163,6 +164,9 @@ export default function Profile() {
     setCanEdit(false)
     setFirstAccess(false)
     setSavingUsername(false)
+    if (shouldOpenScanner) {
+      router.replace('/scan')
+    }
   }
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,10 +263,10 @@ export default function Profile() {
     .join('') || 'OP'
 
   return (
-    <div className="min-h-screen pb-32 pt-14 text-white onepiece-wave-bg onepiece-clouds sm:pb-36">
-      <Sidebar activePage="profilo" />
-      <Topbar />
-      <div className="flex items-center justify-between gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
+    <div className={`min-h-screen pb-32 text-white onepiece-wave-bg onepiece-clouds sm:pb-36 ${firstAccess ? 'pt-4' : 'pt-14'}`}>
+      {!firstAccess && <Sidebar activePage="profilo" />}
+      {!firstAccess && <Topbar />}
+      <div className={`mx-3 flex items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-4 backdrop-blur-xl ${firstAccess ? 'mt-0' : 'mt-3'}`}>
         <div className="flex items-center gap-3">
           {!firstAccess && (
             <button
@@ -298,12 +302,12 @@ export default function Profile() {
         )}
       </div>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-[2rem] border border-teal-800/30 bg-slate-900/80 shadow-2xl shadow-slate-950/40 px-6 pb-8 pt-32 sm:px-10 sm:pt-36">
-          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-amber-400/15 to-transparent" />
+      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
+        <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/74 px-4 pb-5 pt-28 shadow-2xl shadow-slate-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:px-7 sm:pb-7 sm:pt-32">
+          <div className="absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_50%_0%,rgba(110,231,249,0.22),transparent_58%),linear-gradient(180deg,rgba(251,113,133,0.08),transparent)]" />
           <div className="absolute inset-x-0 top-0 flex justify-center">
             <div className="relative mt-6">
-              <div className="h-40 w-40 rounded-full bg-gradient-to-br from-amber-400/30 via-fuchsia-500/20 to-sky-400/20 p-1 shadow-[0_25px_60px_-30px_rgba(250,204,21,0.8)]">
+              <div className="h-28 w-28 rounded-full bg-gradient-to-br from-cyan-300/35 via-rose-300/20 to-sky-400/20 p-1 shadow-[0_22px_56px_-32px_rgba(110,231,249,0.9)] sm:h-32 sm:w-32">
                 <div className="h-full w-full overflow-hidden rounded-full border border-slate-700 bg-slate-950">
                   {avatarUrl ? (
                     <img
@@ -312,13 +316,13 @@ export default function Profile() {
                       className="h-full w-full object-cover object-center"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-900 text-3xl font-black text-amber-300">
+                    <div className="flex h-full w-full items-center justify-center bg-slate-900 text-3xl font-black text-cyan-200">
                       {avatarInitials}
                     </div>
                   )}
                 </div>
               </div>
-              <label className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-300/30 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-200 shadow-lg shadow-black/40 backdrop-blur-sm transition hover:bg-slate-900/95 cursor-pointer">
+              <label className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full border border-cyan-300/30 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100 shadow-lg shadow-black/40 backdrop-blur-sm transition hover:bg-slate-900/95">
                 <Camera size={14} />
                 Scegli immagine
                 <input
@@ -331,18 +335,18 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className="mt-16 text-center">
-            <p className="text-sm uppercase tracking-[0.3em] text-amber-300/70">Benvenuto</p>
-            <h2 className="mt-3 text-3xl font-extrabold text-white sm:text-4xl">{username || 'Utente'}.</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+          <div className="mt-10 text-center sm:mt-12">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200">Profilo vault</p>
+            <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">{username || 'Utente'}</h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
               {firstAccess
-                ? 'Benvenuto nel tuo One Piece Vault: il tuo raccoglitore digitale di carte. Qui puoi aggiungere la tua collezione e mostrare le tue carte agli amici. Puoi aggiungere amici, vedere le loro collezioni, richiedere scambi o vendite e tanto altro. Aiuta i tuoi compagni di gioco aggiungendo le tue carte e consigliando il sito. PS: alcune carte potrebbero ancora mancare e alcune funzionalità sono in fase di testing.'
-                : 'Qui puoi gestire il tuo account e aggiornare la foto profilo.'}
+                ? 'Scegli il nickname: lo userai nel profilo e nella pagina amici. Dopo il salvataggio resta bloccato.'
+                : 'Gestisci identita, foto profilo e accesso.'}
             </p>
           </div>
 
-          <div className="mt-10 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-            <section className="rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-6 shadow-inner shadow-black/10">
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
+            <section className="rounded-[1.5rem] border border-white/10 bg-slate-950/72 p-4 shadow-inner shadow-black/10 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Informazioni</p>
@@ -352,12 +356,12 @@ export default function Profile() {
               </div>
 
               <div className="mt-6 space-y-5">
-                <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+                <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Email</p>
                   <p className="mt-2 text-sm text-slate-100 break-all">{email}</p>
                 </div>
 
-                <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+                <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Username</p>
@@ -390,7 +394,7 @@ export default function Profile() {
                 </div>
               </div>
 
-              <div className="mt-7 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
+              <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.045] p-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Foto profilo</p>
                 <p className="mt-2 text-sm leading-6 text-slate-300">
                   Seleziona una nuova immagine e premi Salva foto per aggiornare il profilo
@@ -410,8 +414,8 @@ export default function Profile() {
               </div>
             </section>
 
-            <aside className="space-y-6 rounded-[1.75rem] border border-slate-800/80 bg-slate-950/90 p-6">
-              <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+            <aside className="space-y-4 rounded-[1.5rem] border border-white/10 bg-slate-950/72 p-4 sm:p-5">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Consigli</p>
                 <ul className="mt-4 space-y-3 text-sm text-slate-300">
                   <li className="flex items-start gap-3">
@@ -422,7 +426,7 @@ export default function Profile() {
                 </ul>
               </div>
 
-              <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Azioni rapide</p>
                 <button
                   onClick={logout}

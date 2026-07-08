@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function Topbar() {
   const router = useRouter()
+  const pathname = usePathname()
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [loading, setLoading] = useState(true)
@@ -24,13 +25,18 @@ export default function Topbar() {
         .eq('id', session.user.id)
         .maybeSingle()
 
+      if (!data?.username && pathname !== '/complete-profile') {
+        router.replace('/complete-profile')
+        return
+      }
+
       setUsername(data?.username || 'Utente')
       setAvatarUrl(data?.avatar_url || '')
       setLoading(false)
     }
 
     loadProfile()
-  }, [])
+  }, [pathname, router])
 
   return (
     <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/10 bg-[#061116]/86 px-3 shadow-[0_14px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:px-5">

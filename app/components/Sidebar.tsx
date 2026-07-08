@@ -1,6 +1,7 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Layers3, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -18,26 +19,41 @@ const navItems: NavItem[] = [
   { label: 'Profilo', href: '/profile', key: 'profilo', Icon: User },
 ]
 
-export default function Sidebar({ activePage }: { activePage: string }) {
-  const router = useRouter()
+const getPageKey = (pathname: string) => {
+  if (pathname.startsWith('/dashboard')) return 'collezione'
+  if (pathname.startsWith('/friends')) return 'amici'
+  if (pathname.startsWith('/profile')) return 'profilo'
+  return 'scan'
+}
+
+export default function Sidebar({ activePage }: { activePage?: string }) {
+  const pathname = usePathname()
+  const currentPage = getPageKey(pathname || '/scan') || activePage || 'scan'
 
   return (
-    <nav className="fixed inset-x-0 bottom-2 z-40 mx-auto flex w-[min(calc(100%-1rem),560px)] items-center justify-between rounded-[1.6rem] border border-white/10 bg-[#061116]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:bottom-4">
+    <nav
+      className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-1rem),560px)] items-center justify-between rounded-[1.55rem] border border-white/14 bg-[#102932]/88 p-1.5 shadow-[0_18px_42px_rgba(0,0,0,0.32)] backdrop-blur-2xl"
+      style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+    >
       {navItems.map(({ label, href, key, Icon }) => {
-        const active = activePage === key
+        const active = currentPage === key
 
         return (
-          <button
+          <Link
             key={key}
-            onClick={() => router.push(href)}
-            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.2rem] px-2 py-2 text-[10px] font-black transition sm:flex-row sm:gap-2 sm:text-xs ${active
-              ? 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/30'
-              : 'text-slate-400 hover:bg-white/[0.06] hover:text-cyan-100'}`}
+            href={href}
+            prefetch
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-2 py-2 text-[10px] font-black transition sm:flex-row sm:gap-2 sm:text-xs ${active
+              ? 'op-nav-active text-slate-950'
+              : 'text-slate-300 hover:bg-white/[0.08] hover:text-cyan-50'}`}
             aria-label={label}
           >
-            <Icon size={active ? 19 : 18} strokeWidth={active ? 2.8 : 2.2} />
-            <span className="truncate">{label}</span>
-          </button>
+            {active && <span className="pointer-events-none absolute inset-0 rounded-[1.15rem] bg-gradient-to-r from-cyan-300 to-rose-300" />}
+            <span className={`relative flex h-6 w-6 items-center justify-center rounded-full ${active ? 'op-nav-icon bg-white/30' : ''}`}>
+              <Icon size={active ? 19 : 18} strokeWidth={active ? 2.9 : 2.2} />
+            </span>
+            <span className="relative truncate">{label}</span>
+          </Link>
         )
       })}
     </nav>

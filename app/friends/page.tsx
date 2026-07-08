@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, UserPlus, Check, X, Search, Heart } from 'lucide-react'
+import { Check, Heart, Inbox, Search, UserPlus, Users, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 
@@ -233,15 +233,32 @@ export default function FriendsPage() {
     <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
       <Sidebar activePage="amici" />
       <Topbar />
-      <div className="flex items-center gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Area sociale</p>
-          <h1 className="text-2xl font-extrabold text-white">Amici</h1>
+      <div className="mx-3 mt-3 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-3 shadow-lg shadow-black/20 backdrop-blur-xl sm:mx-6 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">Area sociale</p>
+            <h1 className="mt-1 text-2xl font-black text-white">Amici</h1>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Amici', value: friendProfiles.length, Icon: Users },
+              { label: 'In arrivo', value: incomingRequests.length, Icon: Inbox },
+              { label: 'Inviate', value: outgoingRequests.length, Icon: UserPlus },
+            ].map(({ label, value, Icon }) => (
+              <div key={label} className="min-w-[78px] rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
+                <div className="flex items-center gap-1.5 text-cyan-200">
+                  <Icon size={13} />
+                  <span className="text-[9px] font-black uppercase tracking-[0.16em]">{label}</span>
+                </div>
+                <p className="mt-1 text-lg font-black text-white">{value}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       <main className="mx-auto max-w-6xl px-3 pb-32 pt-4 sm:px-6 sm:pb-36 sm:pt-8 lg:px-8">
-        <div className="overflow-hidden rounded-2xl border border-teal-800/30 bg-slate-900/80 p-3 shadow-2xl shadow-slate-950/40 sm:rounded-[2rem] sm:p-8">
+        <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/72 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="space-y-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
