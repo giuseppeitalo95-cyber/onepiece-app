@@ -196,7 +196,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 1600)
+    }, 1300)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -681,7 +681,7 @@ export default function ScanPage() {
     recognitionStreakRef.current = null
     setCarouselIndex(0)
     setPendingRecognition(null)
-    scanCooldownUntilRef.current = Date.now() + 950
+    scanCooldownUntilRef.current = Date.now() + 700
     setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}. Prepara la prossima.`)
   }
 
@@ -1196,7 +1196,8 @@ export default function ScanPage() {
 
   const currentCard = scannedCards[carouselIndex] ?? null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
-  const formatPrice = (value: number) => `$${value.toFixed(2)}`
+  const formatPrice = (value: number) =>
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const carouselSwipeWidth = 190
   const carouselProgress = Math.max(-1, Math.min(1, -summaryDrag.offset / carouselSwipeWidth))
   const cardMotion = summaryDrag.active ? 'none' : 'transform 260ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 220ms ease'
@@ -1267,7 +1268,7 @@ export default function ScanPage() {
       <div className="flex-1 flex flex-col overflow-hidden pt-14">
         <Topbar />
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col pb-20">
           <div className="flex-1 flex items-center justify-center px-3 py-4 sm:px-6">
             <div className="w-full max-w-[480px]">
               <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
@@ -1392,7 +1393,7 @@ export default function ScanPage() {
                 ) : (
                   <>
                     <div
-                      className={`relative mt-5 min-h-[330px] flex-1 touch-pan-y select-none overflow-visible sm:min-h-[460px] ${summaryDrag.active ? 'cursor-grabbing' : 'cursor-grab'}`}
+                      className={`relative mt-3 min-h-[390px] flex-1 touch-pan-y select-none overflow-visible sm:min-h-[540px] ${summaryDrag.active ? 'cursor-grabbing' : 'cursor-grab'}`}
                       style={{ perspective: '1200px', transformStyle: 'preserve-3d', touchAction: 'pan-y' }}
                       onPointerDown={beginSummaryDrag}
                       onPointerMove={moveSummaryDrag}
@@ -1410,7 +1411,7 @@ export default function ScanPage() {
                             onClick={() => {
                               if (!isCenter) animateSummarySwipe(direction)
                             }}
-                            className={`${isCenter ? 'w-[74%] max-w-[340px]' : 'w-[58%] max-w-[285px]'} absolute left-1/2 top-1/2 active:scale-[0.99]`}
+                            className={`${isCenter ? 'w-[84%] max-w-[410px]' : 'w-[62%] max-w-[310px]'} absolute left-1/2 top-1/2 active:scale-[0.99]`}
                             style={getSummaryCardStyle(relative)}
                             aria-label={isCenter ? `Carta ${index + 1}` : relative > 0 ? 'Carta successiva' : 'Carta precedente'}
                           >
@@ -1439,22 +1440,11 @@ export default function ScanPage() {
                     </div>
 
                     {currentCard && (
-                      <div className="mt-4 rounded-[24px] border border-slate-700 bg-slate-900/85 px-4 py-3 text-center shadow-lg">
-                        <p className="text-lg font-extrabold text-white">{currentCard.name}</p>
-                        <p className="mt-1 text-[11px] uppercase tracking-[0.24em] text-slate-400">{currentCard.card_id}</p>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="rounded-2xl border border-amber-400/25 bg-amber-400/10 px-3 py-2">
-                            <p className="text-[9px] uppercase tracking-[0.24em] text-slate-400">Valore carta</p>
-                            <p className="mt-1 text-xl font-black text-amber-300">{formatPrice(currentCardValue)}</p>
-                          </div>
-                          <div className="rounded-2xl border border-slate-700 bg-slate-800/70 px-3 py-2">
-                            <p className="text-[9px] uppercase tracking-[0.24em] text-slate-400">Fonte</p>
-                            <p className="mt-1 truncate text-sm font-bold text-slate-200">{currentCard.price_source || 'API carte'}</p>
-                          </div>
-                        </div>
-                        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                          <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.rarity || '-'}</span>
-                          <span className="rounded-full border border-slate-700 px-2 py-1">{currentCard.card_type || '-'}</span>
+                      <div className="mt-2 rounded-[24px] border border-slate-700 bg-slate-900/88 px-4 py-3 text-center shadow-lg">
+                        <p className="text-2xl font-black text-cyan-200">{formatPrice(currentCardValue)}</p>
+                        <p className="mt-2 text-base font-extrabold text-white">{currentCard.name}</p>
+                        <div className="mt-1 flex items-center justify-center gap-2 text-[11px] text-slate-400">
+                          <span>{currentCard.card_id}</span>
                           <span className="rounded-full border border-slate-700 px-2 py-1">{carouselIndex + 1} / {scannedCards.length}</span>
                         </div>
                       </div>
@@ -1502,16 +1492,12 @@ export default function ScanPage() {
                 <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
                 <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{pendingRecognition.card_id}</p>
                 <div className="mt-4">
-                  {renderCardImage(pendingRecognition, 'h-[320px] w-full rounded-[24px] border border-slate-700')}
+                  {renderCardImage(pendingRecognition, 'h-[52vh] min-h-[300px] max-h-[430px] w-full rounded-[24px] border border-slate-700')}
                 </div>
-                <div className="mt-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-center">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo live</p>
-                  <p className="mt-1 text-xl font-extrabold text-amber-300">
+                <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore live</p>
+                  <p className="mt-1 text-2xl font-black text-cyan-200">
                     {formatPrice(pendingRecognition.market_price ?? pendingRecognition.inventory_price ?? 0)}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {pendingRecognition.price_source || 'Prezzo non disponibile'}
-                    {pendingRecognition.inventory_price != null ? ` - low ${formatPrice(pendingRecognition.inventory_price)}` : ''}
                   </p>
                 </div>
                 <p className="mt-3 text-center text-sm text-slate-300">Questa e la carta che hai appena scansionato?</p>

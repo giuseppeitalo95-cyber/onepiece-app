@@ -1,16 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { useRouter } from 'next/navigation'
-
-const ADMIN_ACCOUNT = {
-  email: 'giuseppeitalo95@gmail.com',
-  username: 'peppitalo'
-}
 
 type UserCard = {
   card_id: string
@@ -28,15 +23,27 @@ type UserCard = {
   inventory_price?: number | null
 }
 
+type CatalogCard = {
+  id: string
+  name: string
+  image_url: string | null
+  rarity: string | null
+  card_color?: string | null
+  card_type?: string | null
+  card_cost?: number | null
+  card_power?: number | null
+  market_price?: number | null
+  inventory_price?: number | null
+  set_name?: string | null
+  card_text?: string | null
+  sub_types?: string | null
+}
+
 export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const router = useRouter()
-  const [avatarUrl, setAvatarUrl] = useState('')
-  const [username, setUsername] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [loading, setLoading] = useState(true)
 
   const [userId, setUserId] = useState<string | null>(null)
   const [cards, setCards] = useState<UserCard[]>([])
@@ -45,16 +52,26 @@ export default function Dashboard() {
   const [filterColor, setFilterColor] = useState('all')
   const [filterRarity, setFilterRarity] = useState('all')
   const [filterCost, setFilterCost] = useState('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [catalogCards, setCatalogCards] = useState<CatalogCard[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogSelectedCard, setCatalogSelectedCard] = useState<CatalogCard | null>(null)
+  const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null)
+  const [catalogMessage, setCatalogMessage] = useState('')
+  const [livePrice, setLivePrice] = useState<number | null>(null)
+  const [livePriceLoading, setLivePriceLoading] = useState(false)
 
  useEffect(() => {
-  if (addOpen || selectedCard) {
+  if (addOpen || selectedCard || catalogOpen) {
     document.body.style.overflow = 'hidden'
     document.documentElement.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = 'auto'
     document.documentElement.style.overflow = 'auto'
   }
-}, [addOpen, selectedCard])
+}, [addOpen, selectedCard, catalogOpen])
 
   useEffect(() => {
     const load = async () => {
@@ -68,46 +85,9 @@ export default function Dashboard() {
       const id = session.user.id
       setUserId(id)
 
-      const { data } = await supabase
-        .from('profiles')
-        .select('username, avatar_url')
-        .eq('id', id)
-        .single()
-
-      setUsername(data?.username || 'Utente')
-      setAvatarUrl(data?.avatar_url || '')
-      setIsAdmin(session.user.email === ADMIN_ACCOUNT.email && data?.username === ADMIN_ACCOUNT.username)
-      setLoading(false)
     }
 
     load()
-  }, [])
-
-  // Ricarica i dati del profilo quando la pagina diventa visibile
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        // Ricarica i dati del profilo quando la pagina diventa visibile
-        const reloadProfile = async () => {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session?.user) {
-            const { data } = await supabase
-              .from('profiles')
-              .select('username, avatar_url')
-              .eq('id', session.user.id)
-              .single()
-
-            setUsername(data?.username || 'Utente')
-            setAvatarUrl(data?.avatar_url || '')
-            setIsAdmin(session.user.email === ADMIN_ACCOUNT.email && data?.username === ADMIN_ACCOUNT.username)
-          }
-        }
-        reloadProfile()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   const loadCards = async (uid: string) => {
@@ -136,9 +116,146 @@ export default function Dashboard() {
     loadCards(userId)
   }, [userId])
 
+  useEffect(() => {
+    if (!catalogOpen) return
+
+    const search = async () => {
+      const q = catalogQuery.trim()
+
+      if (q.length < 2) {
+        setCatalogCards([])
+        setCatalogLoading(false)
+        return
+      }
+
+      setCatalogLoading(true)
+      try {
+        const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
+        const data = await res.json()
+        const seen = new Set<string>()
+        const clean: CatalogCard[] = (Array.isArray(data) ? data : [])
+          .map((card: any) => ({
+            id: String(card.card_set_id ?? card.card_id ?? card.id),
+            name: card.card_name || card.name || 'Carta',
+            image_url: card.card_image || card.image_url || null,
+            rarity: card.rarity || '-',
+            card_color: card.card_color ?? null,
+            card_type: card.card_type ?? null,
+            card_cost: card.card_cost ? Number(card.card_cost) : null,
+            card_power: card.card_power ? Number(card.card_power) : null,
+            market_price: card.market_price ? Number(card.market_price) : null,
+            inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
+            set_name: card.set_name ?? null,
+            card_text: card.card_text ?? null,
+            sub_types: card.sub_types ?? null,
+          }))
+          .filter((card: CatalogCard) => {
+            if (seen.has(card.id)) return false
+            seen.add(card.id)
+            return true
+          })
+          .slice(0, 40)
+
+        setCatalogCards(clean)
+      } catch {
+        setCatalogCards([])
+      }
+      setCatalogLoading(false)
+    }
+
+    const timeout = setTimeout(search, 250)
+    return () => clearTimeout(timeout)
+  }, [catalogOpen, catalogQuery])
+
   const refreshAfterAdd = async () => {
     setAddOpen(false)
     if (userId) await loadCards(userId)
+  }
+
+  const formatPrice = (value?: number | null) =>
+    value == null
+      ? '—'
+      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+
+  const loadLivePrice = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
+    setLivePriceLoading(true)
+    setLivePrice(null)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.card_id || card.id || '')
+      if (card.name) params.set('name', card.name)
+      if (card.set_name) params.set('setName', card.set_name)
+
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      const price = data?.price
+      setLivePrice(price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null)
+    } catch {
+      setLivePrice(null)
+    }
+
+    setLivePriceLoading(false)
+  }
+
+  const openCollectionCard = (card: UserCard) => {
+    setSelectedCard(card)
+    void loadLivePrice({ card_id: card.card_id, name: card.name })
+  }
+
+  const openCatalogCard = (card: CatalogCard) => {
+    setCatalogSelectedCard(card)
+    void loadLivePrice(card)
+  }
+
+  const addCatalogCard = async (card: CatalogCard) => {
+    if (!userId || catalogAddingId) return
+
+    setCatalogAddingId(card.id)
+    setCatalogMessage('')
+
+    const { data: existing } = await supabase
+      .from('user_cards')
+      .select('id, quantity')
+      .eq('user_id', userId)
+      .eq('card_id', card.id)
+      .maybeSingle()
+
+    const currentCardLivePrice = catalogSelectedCard?.id === card.id ? livePrice : null
+    const payload = {
+      user_id: userId,
+      card_id: card.id,
+      name: card.name,
+      image_url: card.image_url,
+      rarity: card.rarity,
+      card_color: card.card_color ?? null,
+      card_type: card.card_type ?? null,
+      card_cost: card.card_cost ?? null,
+      card_power: card.card_power ?? null,
+      market_price: currentCardLivePrice ?? card.market_price ?? null,
+      inventory_price: card.inventory_price ?? null,
+    }
+
+    if (existing) {
+      await supabase
+        .from('user_cards')
+        .update({
+          quantity: existing.quantity + 1,
+          ...payload
+        })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('user_cards')
+        .insert({
+          ...payload,
+          quantity: 1
+        })
+    }
+
+    if (userId) await loadCards(userId)
+    setCatalogMessage(`${card.name} aggiunta alla collezione.`)
+    setCatalogAddingId(null)
   }
 
   // 🔥 DELETE FIX DEFINITIVO
@@ -209,10 +326,108 @@ export default function Dashboard() {
         <Topbar />
 
         {/* CONTENT */}
-        <div className="h-[calc(100dvh-56px)] overflow-y-auto pt-20 px-3 sm:px-6">
+        <div className="h-[calc(100dvh-56px)] overflow-y-auto px-3 pb-36 pt-20 sm:px-6">
 
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative space-y-3">
+            <div className="rounded-[1.75rem] border border-slate-700 bg-slate-900/82 p-3 shadow-lg shadow-black/20 sm:p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-white">Collezione</p>
+                  <p className="text-xs text-gray-400">{filteredCards.length} carte visibili</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFiltersOpen(prev => !prev)}
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-600 bg-slate-800 text-cyan-100"
+                    aria-label="Apri filtri"
+                  >
+                    <SlidersHorizontal size={18} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCatalogOpen(true)
+                      setCatalogMessage('')
+                    }}
+                    className="flex h-11 items-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 sm:px-4"
+                  >
+                    <Search size={17} />
+                    <span className="hidden sm:inline">Catalogo carte</span>
+                    <span className="sm:hidden">Catalogo</span>
+                  </button>
+                </div>
+              </div>
+
+              <label className="relative mt-3 block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Cerca carta nella collezione"
+                  className="min-w-0 w-full rounded-2xl border border-slate-700 bg-slate-950/80 py-3 pl-10 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/15"
+                />
+              </label>
+            </div>
+
+            {filtersOpen && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-full rounded-[1.75rem] border border-slate-700 bg-slate-950/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl sm:w-[380px]">
+                <div className="grid gap-3">
+                  <select
+                    value={filterColor}
+                    onChange={(e) => setFilterColor(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-sm text-white focus:border-cyan-300 focus:outline-none"
+                  >
+                    <option value="all">Tutti i colori</option>
+                    {availableColors.map((color) => (
+                      <option key={color} value={color.toLowerCase()}>{color}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterRarity}
+                    onChange={(e) => setFilterRarity(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-sm text-white focus:border-cyan-300 focus:outline-none"
+                  >
+                    <option value="all">Tutte le rarita</option>
+                    {availableRarities.map((rarity) => (
+                      <option key={rarity} value={rarity.toLowerCase()}>{rarity}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterCost}
+                    onChange={(e) => setFilterCost(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-sm text-white focus:border-cyan-300 focus:outline-none"
+                  >
+                    <option value="all">Tutti i costi</option>
+                    <option value="0-2">Costo 0-2</option>
+                    <option value="3-5">Costo 3-5</option>
+                    <option value="6+">Costo 6+</option>
+                  </select>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setFilterColor('all')
+                      setFilterRarity('all')
+                      setFilterCost('all')
+                    }}
+                    className="rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={() => setFiltersOpen(false)}
+                    className="rounded-2xl border border-cyan-300/40 bg-cyan-300 px-3 py-2 text-sm font-black text-slate-950"
+                  >
+                    Applica
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="hidden">
               <div>
                 <p className="text-sm font-semibold text-white">Cerca nella collezione</p>
                 <p className="text-xs text-gray-400">Usa testo, colore, rarità o costo per trovare le carte che possiedi.</p>
@@ -342,7 +557,7 @@ export default function Dashboard() {
         </button>
         <button
           onClick={() => {
-            setSelectedCard(item)
+            openCollectionCard(item)
             setOpenMenuId(null)
           }}
           className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-white hover:bg-slate-700 text-xs w-full whitespace-nowrap"
@@ -379,7 +594,7 @@ export default function Dashboard() {
       </div>
 
       {/* ADD BUTTON */}
-      <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 pointer-events-none sm:bottom-6">
+      <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 pointer-events-none sm:bottom-28">
         <button
           onClick={() => setAddOpen(true)}
           className="pointer-events-auto group flex items-center gap-3 rounded-full border border-cyan-200/50 bg-gradient-to-r from-cyan-300 to-rose-300 px-4 py-2.5 text-slate-950 shadow-[0_18px_44px_rgba(0,0,0,0.45)] transition hover:scale-[1.03] hover:shadow-cyan-950/40 sm:px-5 sm:py-3"
@@ -393,12 +608,159 @@ export default function Dashboard() {
           </span>
         </button>
       </div>
+{catalogOpen && (
+  <div
+    className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4"
+    onClick={(event) => {
+      if (event.target === event.currentTarget) {
+        setCatalogOpen(false)
+        setCatalogSelectedCard(null)
+        setLivePrice(null)
+      }
+    }}
+  >
+    <div
+      className="flex h-[88dvh] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50 sm:h-[84vh]"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center gap-2 border-b border-slate-800 p-3">
+        <label className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            value={catalogQuery}
+            onChange={(event) => setCatalogQuery(event.target.value)}
+            placeholder="Cerca una carta qualsiasi"
+            className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 py-3 pl-10 pr-3 text-sm text-white outline-none focus:border-cyan-300"
+            autoFocus
+          />
+        </label>
+        <button
+          onClick={() => {
+            setCatalogOpen(false)
+            setCatalogSelectedCard(null)
+            setLivePrice(null)
+          }}
+          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200"
+          aria-label="Chiudi catalogo"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {catalogMessage && (
+        <div className="border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
+          {catalogMessage}
+        </div>
+      )}
+
+      <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1fr_340px]">
+        <div className="min-h-0 overflow-y-auto p-3">
+          {catalogSelectedCard && (
+            <div className="mb-3 grid grid-cols-[92px_1fr] gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3 lg:hidden">
+              <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950">
+                {catalogSelectedCard.image_url ? (
+                  <img src={catalogSelectedCard.image_url} alt={catalogSelectedCard.name} className="h-full w-full object-contain" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="line-clamp-2 text-sm font-black text-white">{catalogSelectedCard.name}</p>
+                <p className="mt-1 truncate text-[10px] uppercase tracking-[0.18em] text-slate-500">{catalogSelectedCard.id}</p>
+                <p className="mt-2 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+                <button
+                  onClick={() => addCatalogCard(catalogSelectedCard)}
+                  disabled={catalogAddingId === catalogSelectedCard.id}
+                  className="mt-2 rounded-xl bg-cyan-300 px-3 py-2 text-[11px] font-black text-slate-950 disabled:opacity-60"
+                >
+                  {catalogAddingId === catalogSelectedCard.id ? 'Aggiungo...' : 'Aggiungi'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {catalogQuery.trim().length < 2 ? (
+            <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">
+              Cerca per nome o codice carta.
+            </div>
+          ) : catalogLoading ? (
+            <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-400">Ricerca in corso...</div>
+          ) : catalogCards.length === 0 ? (
+            <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-400">Nessuna carta trovata.</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {catalogCards.map((card) => (
+                <div key={card.id} className="rounded-2xl border border-slate-800 bg-slate-900/86 p-2">
+                  <button
+                    onClick={() => openCatalogCard(card)}
+                    className="block w-full text-left"
+                  >
+                    <div className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950">
+                      {card.image_url ? (
+                        <img src={card.image_url} alt={card.name} className="h-full w-full object-contain" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[10px] text-slate-500">NO IMAGE</div>
+                      )}
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-[11px] font-bold text-white">{card.name}</p>
+                    <p className="mt-1 truncate text-[9px] text-slate-500">{card.id}</p>
+                  </button>
+                  <button
+                    onClick={() => addCatalogCard(card)}
+                    disabled={catalogAddingId === card.id}
+                    className="mt-2 w-full rounded-xl bg-cyan-300 px-2 py-2 text-[11px] font-black text-slate-950 disabled:opacity-60"
+                  >
+                    {catalogAddingId === card.id ? '...' : 'Aggiungi'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <aside className="hidden min-h-0 border-l border-slate-800 bg-slate-900/60 p-3 lg:block">
+          {catalogSelectedCard ? (
+            <div className="flex h-full flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950">
+                  {catalogSelectedCard.image_url ? (
+                    <img src={catalogSelectedCard.image_url} alt={catalogSelectedCard.name} className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-slate-500">NO IMAGE</div>
+                  )}
+                </div>
+                <p className="mt-3 text-xl font-black text-white">{catalogSelectedCard.name}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">{catalogSelectedCard.id}</p>
+                <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Valore live</p>
+                  <p className="mt-1 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => addCatalogCard(catalogSelectedCard)}
+                disabled={catalogAddingId === catalogSelectedCard.id}
+                className="mt-3 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+              >
+                {catalogAddingId === catalogSelectedCard.id ? 'Aggiungo...' : 'Aggiungi alla collezione'}
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-slate-700 p-5 text-center text-sm text-slate-400">
+              Tocca una carta per vedere prezzo live e dettagli.
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  </div>
+)}
 {selectedCard && (
   <div
     className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
     onClick={(event) => {
       if (event.target === event.currentTarget) {
         setSelectedCard(null)
+        setLivePrice(null)
       }
     }}
     onTouchMove={(event) => event.preventDefault()}
@@ -410,7 +772,10 @@ export default function Dashboard() {
     >
 
       <button
-        onClick={() => setSelectedCard(null)}
+        onClick={() => {
+          setSelectedCard(null)
+          setLivePrice(null)
+        }}
         className="absolute top-2 right-2 sm:top-3 sm:right-3 text-white hover:text-gray-300"
       >
         ✕
@@ -432,6 +797,10 @@ export default function Dashboard() {
             <p className="text-xs uppercase tracking-[0.25em] text-gray-400 mb-3">
               {selectedCard.card_id}
             </p>
+            <div className="mb-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500">Valore live</p>
+              <p className="mt-1 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

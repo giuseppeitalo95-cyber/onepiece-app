@@ -330,3 +330,33 @@ button[class*="bg-slate-900"] {
   background-color: rgb(16, 31, 38) !important;
   background-image: linear-gradient(135deg, rgba(16, 31, 38, 0.96), rgba(3, 8, 11, 0.94)) !important;
 }
+
+button,
+a[href],
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  a[href],
+  [role="button"] {
+    transition-property: scale, filter, box-shadow, background-color, border-color, color, opacity, transform;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  button:not(:disabled):active,
+  a[href]:active,
+  [role="button"]:active {
+    scale: 0.97;
+    filter: brightness(1.14) saturate(1.08);
+  }
+
+  button:not(:disabled):focus-visible,
+  a[href]:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid rgba(110, 231, 249, 0.72);
+    outline-offset: 3px;
+  }
+}

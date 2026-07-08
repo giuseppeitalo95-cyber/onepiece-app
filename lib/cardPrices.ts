@@ -35,6 +35,7 @@ const CATEGORY_ID = 68
 const PRICE_CACHE_MS = 5 * 60 * 1000
 
 let groupsCache: { expiresAt: number; groups: TcgGroup[] } | null = null
+let usdEurCache: { expiresAt: number; rate: number } | null = null
 const groupDataCache = new Map<number, { expiresAt: number; products: TcgProduct[]; prices: TcgPrice[] }>()
 
 const normalize = (value?: string | null) =>
@@ -94,6 +95,28 @@ const getGroupData = async (groupId: number) => {
 
 const getExtendedValue = (product: TcgProduct, key: string) =>
   product.extendedData?.find(item => item.name.toLowerCase() === key.toLowerCase())?.value || ''
+
+const getUsdToEurRate = async () => {
+  if (usdEurCache && usdEurCache.expiresAt > Date.now()) return usdEurCache.rate
+
+  try {
+    const data = await fetchJson('https://api.frankfurter.app/latest?from=USD&to=EUR')
+    const rate = Number(data?.rates?.EUR)
+    if (Number.isFinite(rate) && rate > 0) {
+      usdEurCache = {
+        expiresAt: Date.now() + PRICE_CACHE_MS,
+        rate
+      }
+      return rate
+    }
+  } catch {
+  }
+
+  return 0.87689
+}
+
+const convertUsdToEur = (value?: number | null, rate = 1) =>
+  value == null ? null : Number((value * rate).toFixed(2))
 
 const getSetHint = (input: PriceLookupInput) => {
   const setName = normalize(input.setName)
@@ -173,19 +196,29 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
   if (!best) return null
 
   const price = best.price
+  const usdToEur = await getUsdToEurRate()
+
   return {
     source: 'TCGplayer',
     provider: 'TCGCSV',
+    currency: 'EUR',
+    originalCurrency: 'USD',
+    exchangeRate: usdToEur,
     productId: best.product.productId,
     productUrl: best.product.url || null,
     productImageUrl: best.product.imageUrl || null,
     productName: best.product.name,
     groupName: best.group.name,
-    marketPrice: price?.marketPrice ?? null,
-    lowPrice: price?.lowPrice ?? null,
-    midPrice: price?.midPrice ?? null,
-    highPrice: price?.highPrice ?? null,
-    directLowPrice: price?.directLowPrice ?? null,
+    marketPrice: convertUsdToEur(price?.marketPrice, usdToEur),
+    lowPrice: convertUsdToEur(price?.lowPrice, usdToEur),
+    midPrice: convertUsdToEur(price?.midPrice, usdToEur),
+    highPrice: convertUsdToEur(price?.highPrice, usdToEur),
+    directLowPrice: convertUsdToEur(price?.directLowPrice, usdToEur),
+    originalMarketPrice: price?.marketPrice ?? null,
+    originalLowPrice: price?.lowPrice ?? null,
+    originalMidPrice: price?.midPrice ?? null,
+    originalHighPrice: price?.highPrice ?? null,
+    originalDirectLowPrice: price?.directLowPrice ?? null,
     priceType: price?.subTypeName || null,
     modifiedOn: best.group.modifiedOn || null
   }

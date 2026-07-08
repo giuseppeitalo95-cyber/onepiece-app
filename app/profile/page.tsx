@@ -259,7 +259,7 @@ export default function Profile() {
     .join('') || 'OP'
 
   return (
-    <div className="min-h-screen pt-14 text-white onepiece-wave-bg onepiece-clouds">
+    <div className="min-h-screen pb-32 pt-14 text-white onepiece-wave-bg onepiece-clouds sm:pb-36">
       <Sidebar activePage="profilo" />
       <Topbar />
       <div className="flex items-center justify-between gap-3 p-4 border-b border-teal-800/20 bg-slate-900/60 backdrop-blur-md">

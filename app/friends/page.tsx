@@ -240,7 +240,7 @@ export default function FriendsPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
+      <main className="mx-auto max-w-6xl px-3 pb-32 pt-4 sm:px-6 sm:pb-36 sm:pt-8 lg:px-8">
         <div className="overflow-hidden rounded-2xl border border-teal-800/30 bg-slate-900/80 p-3 shadow-2xl shadow-slate-950/40 sm:rounded-[2rem] sm:p-8">
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="space-y-5">

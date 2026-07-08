@@ -34,13 +34,14 @@ export default function Topbar() {
 
   return (
     <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/10 bg-[#061116]/86 px-3 shadow-[0_14px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:px-5">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border border-cyan-200/15 bg-white/[0.045] px-3 shadow-inner shadow-white/5">
+        <span className="absolute inset-0 rounded-full bg-cyan-300/10 blur-md" />
         <img
           src="/luffyhatlogo.webp"
-          className="h-10 w-10 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.24)] sm:h-11 sm:w-11"
+          className="relative h-9 w-9 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.28)]"
           alt="Logo Cap"
         />
-        <span className="hidden whitespace-nowrap bg-gradient-to-r from-cyan-50 via-cyan-300 to-rose-200 bg-clip-text text-sm font-black tracking-[0.32em] text-transparent sm:block">
+        <span className="relative whitespace-nowrap bg-gradient-to-r from-cyan-50 via-cyan-300 to-rose-200 bg-clip-text text-xs font-black tracking-[0.28em] text-transparent sm:text-sm">
           OPV
         </span>
       </div>
