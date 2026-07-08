@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
@@ -1037,7 +1037,7 @@ export default function ScanPage() {
       window.clearTimeout(summarySwipeTimerRef.current)
     }
 
-    const exitOffset = direction === 'left' ? -220 : 220
+    const exitOffset = direction === 'left' ? -190 : 190
 
     setSummaryDrag({ active: false, startX: 0, offset: exitOffset })
     summarySwipeTimerRef.current = window.setTimeout(() => {
@@ -1048,7 +1048,7 @@ export default function ScanPage() {
       ))
       setSummaryDrag({ active: false, startX: 0, offset: 0 })
       summarySwipeTimerRef.current = null
-    }, 210)
+    }, 260)
   }
 
   const beginSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1195,35 +1195,45 @@ export default function ScanPage() {
   }, 0)
 
   const currentCard = scannedCards[carouselIndex] ?? null
-  const prevCard = scannedCards.length > 1 ? scannedCards[(carouselIndex - 1 + scannedCards.length) % scannedCards.length] : null
-  const nextCard = scannedCards.length > 1 ? scannedCards[(carouselIndex + 1) % scannedCards.length] : null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
   const formatPrice = (value: number) => `$${value.toFixed(2)}`
-  const dragProgress = Math.max(-1, Math.min(1, summaryDrag.offset / 170))
-  const dragAbs = Math.abs(dragProgress)
-  const prevPull = Math.max(0, dragProgress)
-  const nextPull = Math.max(0, -dragProgress)
-  const cardMotion = summaryDrag.active ? 'none' : 'transform 360ms cubic-bezier(0.2, 0.85, 0.2, 1), opacity 240ms ease'
-  const centerCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${summaryDrag.offset}px, 0, ${95 - dragAbs * 64}px) rotateY(${-dragProgress * 30}deg) rotateZ(${dragProgress * 5}deg) scale(${1 - dragAbs * 0.08})`,
-    opacity: 1 - dragAbs * 0.28,
-    transition: cardMotion,
-    willChange: 'transform, opacity',
-    zIndex: dragAbs > 0.56 ? 24 : 32
+  const carouselSwipeWidth = 190
+  const carouselProgress = Math.max(-1, Math.min(1, -summaryDrag.offset / carouselSwipeWidth))
+  const cardMotion = summaryDrag.active ? 'none' : 'transform 260ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 220ms ease'
+  const getCarouselDelta = (index: number) => {
+    if (scannedCards.length <= 1) return 0
+    let delta = index - carouselIndex
+    const half = scannedCards.length / 2
+    if (delta > half) delta -= scannedCards.length
+    if (delta < -half) delta += scannedCards.length
+    return delta
   }
-  const prevCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${-160 + prevPull * 160}px, 0, ${-122 + prevPull * 217}px) rotateY(${36 - prevPull * 36}deg) rotateZ(${-10 + prevPull * 10}deg) scale(${0.76 + prevPull * 0.24})`,
-    opacity: 0.38 + prevPull * 0.62,
-    transition: cardMotion,
-    willChange: 'transform, opacity',
-    zIndex: prevPull > 0.56 ? 34 : 12
-  }
-  const nextCardStyle = {
-    transform: `translate(-50%, -50%) translate3d(${160 - nextPull * 160}px, 0, ${-122 + nextPull * 217}px) rotateY(${-36 + nextPull * 36}deg) rotateZ(${10 - nextPull * 10}deg) scale(${0.76 + nextPull * 0.24})`,
-    opacity: 0.38 + nextPull * 0.62,
-    transition: cardMotion,
-    willChange: 'transform, opacity',
-    zIndex: nextPull > 0.56 ? 34 : 12
+  const summaryCarouselCards = scannedCards
+    .map((card, index) => ({
+      card,
+      index,
+      relative: getCarouselDelta(index) - carouselProgress
+    }))
+    .filter(({ relative }) => Math.abs(relative) <= 2.35)
+    .sort((a, b) => Math.abs(b.relative) - Math.abs(a.relative))
+  const getSummaryCardStyle = (relative: number): CSSProperties => {
+    const clamped = Math.max(-2.25, Math.min(2.25, relative))
+    const abs = Math.abs(clamped)
+    const x = clamped * 150
+    const y = abs * 10
+    const z = 120 - abs * 115
+    const scale = Math.max(0.58, 1 - abs * 0.16)
+    const rotateY = -clamped * 34
+    const rotateZ = clamped * 4
+
+    return {
+      transform: `translate(-50%, -50%) translate3d(${x}px, ${y}px, ${z}px) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg) scale(${scale})`,
+      opacity: abs > 2.05 ? 0 : Math.max(0.2, 1 - abs * 0.36),
+      transition: cardMotion,
+      willChange: 'transform, opacity',
+      zIndex: Math.round(80 - abs * 12),
+      pointerEvents: abs < 1.35 ? 'auto' : 'none'
+    }
   }
   const imageKey = (card: ScannedCard) => `${card.id}:${card.image_url || ''}`
   const renderCardImage = (card: ScannedCard, className: string) => {
@@ -1389,36 +1399,28 @@ export default function ScanPage() {
                       onPointerUp={endSummaryDrag}
                       onPointerCancel={endSummaryDrag}
                     >
-                      {prevCard && (
-                        <button
-                          onClick={() => animateSummarySwipe('right')}
-                          className="absolute left-1/2 top-1/2 w-[58%] max-w-[285px] blur-[0.2px] active:scale-95"
-                          style={prevCardStyle}
-                          aria-label="Carta precedente"
-                        >
-                          {renderCardImage(prevCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
-                        </button>
-                      )}
+                      {summaryCarouselCards.map(({ card, index, relative }) => {
+                        const abs = Math.abs(relative)
+                        const isCenter = abs < 0.45
+                        const direction = relative > 0 ? 'left' : 'right'
 
-                      {nextCard && (
-                        <button
-                          onClick={() => animateSummarySwipe('left')}
-                          className="absolute left-1/2 top-1/2 w-[58%] max-w-[285px] blur-[0.2px] active:scale-95"
-                          style={nextCardStyle}
-                          aria-label="Carta successiva"
-                        >
-                          {renderCardImage(nextCard, 'aspect-[3/4] w-full rounded-[22px] border border-slate-700 shadow-2xl')}
-                        </button>
-                      )}
-
-                      {currentCard && (
-                        <div className="absolute left-1/2 top-1/2 w-[74%] max-w-[340px]" style={centerCardStyle}>
-                          <div className="relative rounded-[30px] border border-amber-300/40 bg-slate-900/80 p-2 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
-                            <div className="pointer-events-none absolute inset-2 rounded-[24px] border border-white/10" />
-                            {renderCardImage(currentCard, 'aspect-[3/4] w-full rounded-[24px]')}
-                          </div>
-                        </div>
-                      )}
+                        return (
+                          <button
+                            key={card.id}
+                            onClick={() => {
+                              if (!isCenter) animateSummarySwipe(direction)
+                            }}
+                            className={`${isCenter ? 'w-[74%] max-w-[340px]' : 'w-[58%] max-w-[285px]'} absolute left-1/2 top-1/2 active:scale-[0.99]`}
+                            style={getSummaryCardStyle(relative)}
+                            aria-label={isCenter ? `Carta ${index + 1}` : relative > 0 ? 'Carta successiva' : 'Carta precedente'}
+                          >
+                            <div className={`relative ${isCenter ? 'rounded-[30px] border border-cyan-200/40 bg-slate-900/80 p-2 shadow-[0_30px_80px_rgba(0,0,0,0.62)]' : 'rounded-[24px] opacity-90 shadow-2xl'}`}>
+                              {isCenter && <div className="pointer-events-none absolute inset-2 rounded-[24px] border border-white/10" />}
+                              {renderCardImage(card, `${isCenter ? 'rounded-[24px]' : 'rounded-[22px] border border-slate-700'} aspect-[3/4] w-full`)}
+                            </div>
+                          </button>
+                        )
+                      })}
 
                       <button
                         onClick={() => animateSummarySwipe('right')}
@@ -1462,7 +1464,10 @@ export default function ScanPage() {
                       {scannedCards.slice(0, 14).map((card, index) => (
                         <button
                           key={`${card.id}-dot`}
-                          onClick={() => setCarouselIndex(index)}
+                          onClick={() => {
+                            setSummaryDrag({ active: false, startX: 0, offset: 0 })
+                            setCarouselIndex(index)
+                          }}
                           className={`h-1.5 rounded-full transition-all ${index === carouselIndex ? 'w-6 bg-amber-300' : 'w-1.5 bg-slate-600'}`}
                           aria-label={`Vai alla carta ${index + 1}`}
                         />

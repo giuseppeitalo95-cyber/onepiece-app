@@ -3,13 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { isAdminAccount } from '@/lib/admin'
 
 export default function Topbar() {
   const router = useRouter()
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -28,7 +26,6 @@ export default function Topbar() {
 
       setUsername(data?.username || 'Utente')
       setAvatarUrl(data?.avatar_url || '')
-      setIsAdmin(isAdminAccount(session.user, data))
       setLoading(false)
     }
 
@@ -36,46 +33,34 @@ export default function Topbar() {
   }, [])
 
   return (
-    <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-teal-800/30 bg-slate-900/85 px-3 shadow-lg shadow-black/20 backdrop-blur-md sm:px-4">
-      <div className="w-14 shrink-0" />
-
-      <div className="flex min-w-0 flex-1 items-center justify-center">
-        <div className="relative flex h-12 min-w-[120px] items-center justify-center px-2">
-          <div className="absolute inset-x-2 top-1 h-10 rounded-full border border-cyan-300/10 bg-slate-950/35 blur-[0.2px]" />
-          <img
-            src="/luffyhatlogo.webp"
-            className="absolute -top-3 h-14 w-14 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.22)] onepiece-float sm:-top-4 sm:h-16 sm:w-16"
-            alt="Logo Cap"
-          />
-          <span className="relative whitespace-nowrap bg-gradient-to-r from-cyan-100 via-cyan-300 to-rose-200 bg-clip-text pt-7 text-sm font-black tracking-[0.34em] text-transparent sm:pt-8 sm:text-lg">
-            OPV
-          </span>
-        </div>
+    <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/10 bg-[#061116]/86 px-3 shadow-[0_14px_38px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:px-5">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2">
+        <img
+          src="/luffyhatlogo.webp"
+          className="h-10 w-10 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.24)] sm:h-11 sm:w-11"
+          alt="Logo Cap"
+        />
+        <span className="hidden whitespace-nowrap bg-gradient-to-r from-cyan-50 via-cyan-300 to-rose-200 bg-clip-text text-sm font-black tracking-[0.32em] text-transparent sm:block">
+          OPV
+        </span>
       </div>
 
-      <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
-        {isAdmin && (
-          <button
-            onClick={() => router.push('/admin')}
-            className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100 transition hover:bg-cyan-300/20"
-          >
-            Admin
-          </button>
-        )}
+      <div className="flex min-w-0 shrink-0 items-center justify-end">
         <button
           onClick={() => router.push('/profile')}
-          className="flex min-w-0 items-center gap-2 rounded-full border border-slate-700 bg-slate-800/60 px-2 py-1 transition hover:border-cyan-300 hover:bg-slate-700/80"
+          className="flex min-w-0 items-center rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-white/5 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 sm:gap-2 sm:px-2"
+          aria-label="Apri profilo"
         >
-          <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full border border-cyan-300/30 bg-gradient-to-br from-cyan-200 to-amber-200 sm:h-8 sm:w-8">
+          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-cyan-300/35 bg-gradient-to-br from-cyan-200 to-rose-200 sm:h-9 sm:w-9">
             {avatarUrl ? (
               <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-sm font-bold text-slate-900">
+              <div className="flex h-full w-full items-center justify-center text-sm font-black text-slate-950">
                 {(username || 'U').charAt(0).toUpperCase()}
               </div>
             )}
           </div>
-          <span className="max-w-[82px] truncate text-[10px] font-semibold text-cyan-100 sm:max-w-[110px] sm:text-xs">
+          <span className="hidden max-w-[130px] truncate pr-1 text-xs font-bold text-cyan-50 sm:block">
             {loading ? '...' : username}
           </span>
         </button>

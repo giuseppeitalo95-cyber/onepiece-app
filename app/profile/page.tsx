@@ -248,8 +248,8 @@ export default function Profile() {
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
+    await supabase.auth.signOut({ scope: 'global' })
+    router.replace('/')
   }
 
   const avatarInitials = username

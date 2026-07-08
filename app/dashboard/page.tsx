@@ -379,16 +379,16 @@ export default function Dashboard() {
       </div>
 
       {/* ADD BUTTON */}
-      <div className="fixed left-1/2 bottom-4 sm:bottom-6 z-50 -translate-x-1/2 pointer-events-none">
+      <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 pointer-events-none sm:bottom-6">
         <button
           onClick={() => setAddOpen(true)}
-          className="pointer-events-auto flex flex-col items-center group"
+          className="pointer-events-auto group flex items-center gap-3 rounded-full border border-cyan-200/50 bg-gradient-to-r from-cyan-300 to-rose-300 px-4 py-2.5 text-slate-950 shadow-[0_18px_44px_rgba(0,0,0,0.45)] transition hover:scale-[1.03] hover:shadow-cyan-950/40 sm:px-5 sm:py-3"
         >
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg transition group-hover:scale-110 onepiece-glow onepiece-decoration">
-            <Plus className="text-black sm:w-7 sm:h-7" size={24} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950/12 ring-1 ring-slate-950/10 sm:h-11 sm:w-11">
+            <Plus className="text-slate-950 sm:h-6 sm:w-6" size={22} />
           </div>
 
-          <span className="text-[10px] sm:text-xs mt-1 sm:mt-2 text-amber-300 font-semibold">
+          <span className="text-sm font-black sm:text-base">
             Aggiungi carta
           </span>
         </button>
