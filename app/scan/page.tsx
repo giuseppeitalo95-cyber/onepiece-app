@@ -1697,62 +1697,82 @@ export default function ScanPage() {
           )}
 
           {pendingRecognition && !showSummary && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6">
-              <div className="w-full max-w-[420px] rounded-[28px] border border-amber-400/30 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-                <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
-                <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
-                <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{displayCardId(pendingRecognition.card_id)}</p>
-                <div className="mt-4">
-                  {renderCardImage(pendingRecognition, 'h-[52vh] min-h-[300px] max-h-[430px] w-full rounded-[24px] border border-slate-700')}
-                </div>
-                {recognitionVariants.length > 1 && (
-                  <div className="mt-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Variante</p>
-                      {recognitionVariantsLoading && <span className="text-[10px] text-slate-500">Carico...</span>}
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {recognitionVariants.map(variant => {
-                        const selected = variant.card_id === pendingRecognition.card_id
-                        return (
-                          <button
-                            key={variant.card_id}
-                            onClick={() => selectRecognitionVariant(variant)}
-                            className={`w-[82px] shrink-0 rounded-2xl border p-1.5 text-left transition ${
-                              selected
-                                ? 'border-cyan-200 bg-cyan-300/15 shadow-[0_0_22px_rgba(103,232,249,0.25)]'
-                                : 'border-slate-700 bg-slate-950/70 hover:border-slate-500'
-                            }`}
-                          >
-                            {renderCardImage(variant, 'aspect-[3/4] w-full rounded-xl bg-slate-950')}
-                            <p className={`mt-1 truncate text-[10px] font-black ${selected ? 'text-cyan-100' : 'text-slate-200'}`}>{variantLabel(variant)}</p>
-                            <p className="truncate text-[9px] text-slate-500">{variant.rarity || '-'}</p>
-                          </button>
-                        )
-                      })}
-                    </div>
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 sm:items-center sm:px-4 sm:py-6">
+              <div className="flex h-[100dvh] w-full max-w-[420px] flex-col overflow-hidden bg-slate-900/95 shadow-[0_20px_60px_rgba(0,0,0,0.45)] sm:h-auto sm:max-h-[92dvh] sm:rounded-[28px] sm:border sm:border-amber-400/30">
+
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-6">
+                  <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
+                  <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
+                  <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{displayCardId(pendingRecognition.card_id)}</p>
+
+                  <div className="mt-4">
+                    {renderCardImage(
+                      pendingRecognition,
+                      'h-[42dvh] min-h-[240px] max-h-[390px] w-full rounded-[24px] border border-slate-700'
+                    )}
                   </div>
-                )}
-                <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore live</p>
-                  <p className="mt-1 text-2xl font-black text-cyan-200">
-                    {formatPrice(pendingRecognition.market_price ?? pendingRecognition.inventory_price ?? 0)}
+
+                  {recognitionVariants.length > 1 && (
+                    <div className="mt-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Variante</p>
+                        {recognitionVariantsLoading && <span className="text-[10px] text-slate-500">Carico...</span>}
+                      </div>
+
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {recognitionVariants.map(variant => {
+                          const selected = variant.card_id === pendingRecognition.card_id
+
+                          return (
+                            <button
+                              key={variant.card_id}
+                              onClick={() => selectRecognitionVariant(variant)}
+                              className={`w-[82px] shrink-0 rounded-2xl border p-1.5 text-left transition ${
+                                selected
+                                  ? 'border-cyan-200 bg-cyan-300/15 shadow-[0_0_22px_rgba(103,232,249,0.25)]'
+                                  : 'border-slate-700 bg-slate-950/70 hover:border-slate-500'
+                              }`}
+                            >
+                              {renderCardImage(variant, 'aspect-[3/4] w-full rounded-xl bg-slate-950')}
+                              <p className={`mt-1 truncate text-[10px] font-black ${selected ? 'text-cyan-100' : 'text-slate-200'}`}>
+                                {variantLabel(variant)}
+                              </p>
+                              <p className="truncate text-[9px] text-slate-500">{variant.rarity || '-'}</p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore live</p>
+                    <p className="mt-1 text-2xl font-black text-cyan-200">
+                      {formatPrice(pendingRecognition.market_price ?? pendingRecognition.inventory_price ?? 0)}
+                    </p>
+                  </div>
+
+                  <p className="mt-3 text-center text-sm text-slate-300">
+                    Questa è la carta che hai appena scansionato?
                   </p>
                 </div>
-                <p className="mt-3 text-center text-sm text-slate-300">Questa e la carta che hai appena scansionato?</p>
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => setPendingRecognition(null)}
-                    className="flex-1 rounded-2xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
-                  >
-                    Scarta
-                  </button>
-                  <button
-                    onClick={() => confirmRecognizedCard(pendingRecognition)}
-                    className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
-                  >
-                    Conferma
-                  </button>
+
+                <div className="shrink-0 border-t border-slate-700 bg-slate-950/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPendingRecognition(null)}
+                      className="flex-1 rounded-2xl border border-slate-600 bg-slate-800 px-3 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
+                    >
+                      Scarta
+                    </button>
+
+                    <button
+                      onClick={() => confirmRecognizedCard(pendingRecognition)}
+                      className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/30"
+                    >
+                      Conferma
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
