@@ -539,7 +539,7 @@ export default function FriendsPage() {
 
       {selectedProfile ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-2 backdrop-blur-sm sm:p-4"
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-2 backdrop-blur-sm sm:p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               closeModal()
@@ -547,10 +547,10 @@ export default function FriendsPage() {
           }}
         >
           <div
-            className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 sm:h-[88vh] sm:rounded-[2rem]"
+            className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 sm:my-4 sm:rounded-[2rem]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 p-5">
+            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-800/70 bg-slate-900/95 p-5 backdrop-blur-xl">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Profilo giocatore</p>
                 <h3 className="text-2xl font-semibold text-white">{selectedProfile.username || 'Giocatore'}</h3>
@@ -563,7 +563,7 @@ export default function FriendsPage() {
               </button>
             </div>
 
-            <div className="grid flex-1 gap-4 overflow-y-auto p-3 sm:p-5 lg:grid-cols-[280px_1fr] lg:overflow-hidden">
+            <div className="grid gap-4 p-3 sm:p-5 lg:grid-cols-[280px_1fr]">
               <div className="h-fit space-y-5 rounded-2xl border border-slate-800/80 bg-slate-900/90 p-4 sm:rounded-[1.75rem]">
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-4xl text-amber-300">
@@ -643,7 +643,7 @@ export default function FriendsPage() {
                 ) : null}
               </div>
 
-              <div className="min-h-[360px] flex-1 overflow-y-auto rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
+              <div className="min-h-[360px] rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Carte</p>
