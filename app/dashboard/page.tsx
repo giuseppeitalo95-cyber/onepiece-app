@@ -123,8 +123,8 @@ export default function Dashboard() {
 
     const loadedCards = (data || []).map(card => ({
       ...card,
-      market_price: null,
-      inventory_price: null
+      market_price: card.market_price ? Number(card.market_price) : null,
+      inventory_price: card.inventory_price ? Number(card.inventory_price) : null
     }))
     setCards(loadedCards)
     evaluateProgress(uid, loadedCards, { claimDaily: true })
@@ -199,50 +199,50 @@ export default function Dashboard() {
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const displayCardId = (value?: string | null) => (value || '').replace(/_p\d+$/i, '')
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
-    if (!price || price.originalCurrency === 'USD') return null
+    if (!price || (price.originalCurrency !== 'EUR' && price.currency !== 'EUR')) return null
     return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
   }
 
   const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null; set_name?: string | null }>) => {
+    const allPrices: Record<string, LivePriceResult | null> = {}
+
     try {
-      const res = await fetch('/api/cards/prices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cards: cardsToPrice.map(card => ({
-            cardId: card.card_id,
-            name: card.name,
-            setName: card.set_name
-          }))
+      for (let index = 0; index < cardsToPrice.length; index += 120) {
+        const chunk = cardsToPrice.slice(index, index + 120)
+        const res = await fetch('/api/cards/prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cards: chunk.map(card => ({
+              cardId: card.card_id,
+              name: card.name,
+              setName: card.set_name
+            }))
+          })
         })
-      })
-      const data = await res.json()
-      return (data?.prices || {}) as Record<string, LivePriceResult | null>
+        const data = await res.json()
+        Object.assign(allPrices, (data?.prices || {}) as Record<string, LivePriceResult | null>)
+      }
     } catch {
-      return {}
     }
+
+    return allPrices
   }
 
   const syncEuPricesForCards = async (uid: string, cardsToSync: UserCard[]) => {
     if (cardsToSync.length === 0) return
 
     const prices = await fetchLivePricesForCards(cardsToSync)
-    const nextCards = cardsToSync.map(card => {
-      const live = getLivePriceNumber(prices[card.card_id])
+    const liveMap = Object.fromEntries(
+      cardsToSync.map(card => [card.card_id, getLivePriceNumber(prices[card.card_id])] as const)
+    )
+    setAnalyticsLivePrices(prev => ({ ...prev, ...liveMap }))
+
+    const progressCards = cardsToSync.map(card => {
+      const live = liveMap[card.card_id]
       return live == null ? card : { ...card, market_price: live, inventory_price: null }
     })
-
-    setCards(prev => prev.map(card => nextCards.find(next => next.card_id === card.card_id) || card))
-    evaluateProgress(uid, nextCards, { claimDaily: true })
-
-    const updates = nextCards.filter(card => card.market_price != null)
-    await Promise.all(updates.map(card =>
-      supabase
-        .from('user_cards')
-        .update({ market_price: card.market_price, inventory_price: null })
-        .eq('user_id', uid)
-        .eq('card_id', card.card_id)
-    ))
+    evaluateProgress(uid, progressCards, { claimDaily: true })
   }
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
@@ -264,7 +264,9 @@ export default function Dashboard() {
   const isPriceAnomaly = (saved?: number | null, live?: number | null) => {
     if (saved == null || live == null) return false
     if (saved <= 0 || live <= 0) return false
-    return saved >= 20 && (saved / live >= 8 || saved - live >= 50)
+    const high = Math.max(saved, live)
+    const low = Math.min(saved, live)
+    return high >= 50 && high / low >= 12
   }
 
   const loadLivePrice = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
@@ -357,34 +359,12 @@ export default function Dashboard() {
     setAnalyticsLoading(true)
 
     const candidates = [...cards]
-      .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
-      .slice(0, 80)
 
     const priceResults = await fetchLivePricesForCards(candidates)
     const liveMap = Object.fromEntries(
       candidates.map(card => [card.card_id, getLivePriceNumber(priceResults[card.card_id])] as const)
     )
-    const repairs = candidates.filter(card => isPriceAnomaly(getSavedPrice(card), liveMap[card.card_id]))
-
-    if (userId && repairs.length > 0) {
-      await Promise.all(
-        repairs.map(card =>
-          supabase
-            .from('user_cards')
-            .update({ market_price: liveMap[card.card_id], inventory_price: null })
-            .eq('user_id', userId)
-            .eq('card_id', card.card_id)
-        )
-      )
-
-      setCards(prev => prev.map(card =>
-        isPriceAnomaly(getSavedPrice(card), liveMap[card.card_id])
-          ? { ...card, market_price: liveMap[card.card_id], inventory_price: null }
-          : card
-      ))
-    }
-
-    setAnalyticsLivePrices(liveMap)
+    setAnalyticsLivePrices(prev => ({ ...prev, ...liveMap }))
     setAnalyticsLoading(false)
   }
 
@@ -480,11 +460,12 @@ export default function Dashboard() {
   ).sort((a, b) => b[1] - a[1])
   const rarityStats = groupByQuantity('rarity').slice(0, 5)
   const colorStats = groupByQuantity('card_color').slice(0, 5)
-  const analyticsCandidates = [...cards]
+  const analyticsPricedCards = [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
     .sort((a, b) => ((getAnalyticsPrice(b) || 0) * b.quantity) - ((getAnalyticsPrice(a) || 0) * a.quantity))
+  const analyticsCandidates = analyticsPricedCards
     .slice(0, 12)
-  const analyticsDeltas = analyticsCandidates
+  const analyticsDeltas = cards
     .map(card => {
       const stored = getSavedPrice(card)
       const live = analyticsLivePrices[card.card_id]

@@ -86,8 +86,20 @@ const normalize = (value?: string | null) =>
     .trim()
 
 const compact = (value?: string | null) => normalize(value).replace(/\s/g, '')
-const baseCardId = (value?: string | null) => compact(value).replace(/p\d+$/i, '')
-const hasVariantSuffix = (value?: string | null) => /_?p\d+$/i.test(value || '')
+const baseCardId = (value?: string | null) => {
+  const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+  const withoutUnderscoreVariant = raw.replace(/_p\d+$/i, '')
+  return withoutUnderscoreVariant
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
+}
+const hasVariantSuffix = (value?: string | null) => {
+  const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+  const compactRaw = raw.replace(/[^a-z0-9]/g, '')
+  return /_p\d+$/i.test(raw) || /^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i.test(compactRaw)
+}
+const hasVariantText = (value?: string | null) =>
+  /\b(parallel|alternate|alt|special|manga|treasure|winner|super\s*parallel)\b|_?p\d+$/i.test(value || '')
 
 const fetchJson = async (url: string) => {
   const res = await fetch(url, {
@@ -226,16 +238,21 @@ const unpackCardmarketResults = (data: unknown): CardmarketApiCard[] => {
 const selectCardmarketCard = (cards: CardmarketApiCard[], input: PriceLookupInput) => {
   const wantedId = baseCardId(input.cardId)
   const wantedName = normalize(input.name)
+  const wantsVariant = hasVariantSuffix(input.cardId)
 
   return cards
     .map(card => {
       const number = baseCardId(card.card_number)
       const name = normalize([card.name_numbered, card.name].filter(Boolean).join(' '))
+      const variantLike = hasVariantText([card.card_number, card.name_numbered, card.name, card.rarity].filter(Boolean).join(' '))
       let score = 0
 
       if (wantedId && number === wantedId) score += 100
       if (wantedId && name.includes(wantedId)) score += 35
       if (wantedName && name.includes(wantedName)) score += 20
+      if (wantsVariant && variantLike) score += 25
+      if (!wantsVariant && !variantLike) score += 18
+      if (!wantsVariant && variantLike) score -= 35
 
       return { card, score }
     })
@@ -427,7 +444,8 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
   const optcgPrice = await getOptcgPrice(input)
   if (optcgPrice) return optcgPrice
 
-  if (process.env.ALLOW_US_PRICE_FALLBACK !== 'true') return null
+  const allowUsFallback = process.env.ALLOW_US_PRICE_FALLBACK === 'true' && process.env.EU_PRICES_ONLY === 'false'
+  if (!allowUsFallback) return null
 
   const groups = await selectGroups(input)
   let best: { product: TcgProduct; price: TcgPrice | null; score: number; group: TcgGroup } | null = null

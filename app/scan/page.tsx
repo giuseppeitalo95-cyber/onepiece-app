@@ -288,7 +288,13 @@ export default function ScanPage() {
   }
 
   const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const baseCardCode = (value: string) => compactText(value).replace(/p\d+$/i, '')
+  const baseCardCode = (value: string) => {
+    const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+    const withoutUnderscoreVariant = raw.replace(/_p\d+$/i, '')
+    return withoutUnderscoreVariant
+      .replace(/[^a-z0-9]/g, '')
+      .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
+  }
 
   const cardImageSrc = (url?: string | null) => {
     if (!url) return ''
@@ -383,18 +389,26 @@ export default function ScanPage() {
             const name = compactText(card.name || '')
             const imageUrl = card.image_url || card.card_image
             const imageDistance = imageUrl ? await compareImageToCandidate(cropCanvas, imageUrl) : 999
-            let score = Math.max(0, 130 - imageDistance)
+            const isVariant = /(_p\d+|parallel|alternate|alt|special|manga|treasure)/i.test(String(card.card_id || card.id || card.rarity || card.name || ''))
+            let score = Math.max(0, 150 - imageDistance)
 
             if (id && compactOcr.includes(id)) score += 70
             if (name && compactOcr.includes(name)) score += 18
-            if (/(_p\d+|parallel|alternate|alt|special|manga|treasure)/i.test(String(card.card_id || card.id || card.rarity || ''))) score += 2
+            if (isVariant) score += 8
 
-            return { card, score }
+            return { card, score, imageDistance, isVariant }
           })
         )
 
         variantMatches.sort((a, b) => b.score - a.score)
-        return toScannedCard(variantMatches[0].card)
+        const best = variantMatches[0]
+        const bestVariant = variantMatches.find(match => match.isVariant)
+
+        if (best && bestVariant && !best.isVariant && best.score - bestVariant.score <= 16 && bestVariant.imageDistance <= best.imageDistance + 8) {
+          return toScannedCard(bestVariant.card)
+        }
+
+        return toScannedCard(best.card)
       }
     }
 
@@ -591,8 +605,8 @@ export default function ScanPage() {
       })
 
       const candidateCanvas = document.createElement('canvas')
-      candidateCanvas.width = 256
-      candidateCanvas.height = 256
+      candidateCanvas.width = sourceCanvas.width
+      candidateCanvas.height = sourceCanvas.height
       const ctx = candidateCanvas.getContext('2d')
       if (!ctx) return Number.POSITIVE_INFINITY
       ctx.drawImage(image, 0, 0, candidateCanvas.width, candidateCanvas.height)
@@ -601,15 +615,32 @@ export default function ScanPage() {
       const candidateData = ctx.getImageData(0, 0, candidateCanvas.width, candidateCanvas.height)
       if (!sourceData || !candidateData) return Number.POSITIVE_INFINITY
 
-      let diff = 0
-      const total = Math.min(sourceData.data.length, candidateData.data.length)
-      for (let i = 0; i < total; i += 4) {
-        diff += Math.abs(sourceData.data[i] - candidateData.data[i])
-        diff += Math.abs(sourceData.data[i + 1] - candidateData.data[i + 1])
-        diff += Math.abs(sourceData.data[i + 2] - candidateData.data[i + 2])
+      const regionDiff = (xRatio: number, yRatio: number, widthRatio: number, heightRatio: number) => {
+        const startX = Math.max(0, Math.floor(sourceCanvas.width * xRatio))
+        const startY = Math.max(0, Math.floor(sourceCanvas.height * yRatio))
+        const endX = Math.min(sourceCanvas.width, Math.floor(startX + sourceCanvas.width * widthRatio))
+        const endY = Math.min(sourceCanvas.height, Math.floor(startY + sourceCanvas.height * heightRatio))
+        let diff = 0
+        let count = 0
+
+        for (let y = startY; y < endY; y += 2) {
+          for (let x = startX; x < endX; x += 2) {
+            const i = (y * sourceCanvas.width + x) * 4
+            diff += Math.abs(sourceData.data[i] - candidateData.data[i])
+            diff += Math.abs(sourceData.data[i + 1] - candidateData.data[i + 1])
+            diff += Math.abs(sourceData.data[i + 2] - candidateData.data[i + 2])
+            count += 1
+          }
+        }
+
+        return count > 0 ? diff / (count * 3) : Number.POSITIVE_INFINITY
       }
 
-      return diff / (total / 4 * 3)
+      const fullCard = regionDiff(0, 0, 1, 1)
+      const artBox = regionDiff(0.08, 0.11, 0.84, 0.5)
+      const lowerBox = regionDiff(0.08, 0.58, 0.84, 0.25)
+
+      return fullCard * 0.25 + artBox * 0.55 + lowerBox * 0.2
     } catch {
       return Number.POSITIVE_INFINITY
     }
@@ -872,11 +903,11 @@ export default function ScanPage() {
     fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
 
     const imageMatchCanvas = document.createElement('canvas')
-    imageMatchCanvas.width = 256
-    imageMatchCanvas.height = 256
+    imageMatchCanvas.width = 320
+    imageMatchCanvas.height = 448
     const imageMatchCtx = imageMatchCanvas.getContext('2d')
     if (imageMatchCtx) {
-      imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, 256, 256)
+      imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, imageMatchCanvas.width, imageMatchCanvas.height)
     }
 
     const ocrText = await runOcrOnCanvases([
