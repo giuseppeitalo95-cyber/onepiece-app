@@ -31,6 +31,18 @@ type TcgPrice = {
   subTypeName?: string | null
 }
 
+type OptcgCardPrice = {
+  inventory_price?: number | string | null
+  market_price?: number | string | null
+  card_name?: string | null
+  set_name?: string | null
+  rarity?: string | null
+  card_set_id?: string | null
+  card_image_id?: string | null
+  card_image?: string | null
+  date_scraped?: string | null
+}
+
 const CATEGORY_ID = 68
 const PRICE_CACHE_MS = 5 * 60 * 1000
 
@@ -47,6 +59,8 @@ const normalize = (value?: string | null) =>
     .trim()
 
 const compact = (value?: string | null) => normalize(value).replace(/\s/g, '')
+const baseCardId = (value?: string | null) => compact(value).replace(/p\d+$/i, '')
+const hasVariantSuffix = (value?: string | null) => /_?p\d+$/i.test(value || '')
 
 const fetchJson = async (url: string) => {
   const res = await fetch(url, {
@@ -118,6 +132,89 @@ const getUsdToEurRate = async () => {
 const convertUsdToEur = (value?: number | null, rate = 1) =>
   value == null ? null : Number((value * rate).toFixed(2))
 
+const toNumberOrNull = (value?: number | string | null) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+const getOptcgEndpoint = (cardId?: string | null) => {
+  const raw = (cardId || '').toUpperCase().replace(/_P\d+$/i, '')
+  if (/^ST\d{2}-\d{3}/.test(raw)) return `https://optcgapi.com/api/decks/card/${raw}/`
+  if (/^P-\d{3}/.test(raw) || /^P\d{2}-\d{3}/.test(raw)) return `https://optcgapi.com/api/promos/card/${raw}/`
+  if (/^(OP|EB|PRB)\d{2}-\d{3}/.test(raw)) return `https://optcgapi.com/api/sets/card/${raw}/`
+  return null
+}
+
+const selectOptcgCard = (cards: OptcgCardPrice[], input: PriceLookupInput) => {
+  const wantedId = compact(input.cardId)
+  const wantedBase = baseCardId(input.cardId)
+  const wantsVariant = hasVariantSuffix(input.cardId)
+
+  return cards
+    .map(card => {
+      const setId = compact(card.card_set_id)
+      const imageId = compact(card.card_image_id)
+      const name = normalize(card.card_name)
+      const wantedName = normalize(input.name)
+      let score = 0
+
+      if (wantedId && imageId === wantedId) score += 100
+      if (wantedBase && baseCardId(card.card_set_id) === wantedBase) score += 60
+      if (wantedBase && baseCardId(card.card_image_id) === wantedBase) score += 50
+      if (!wantsVariant && imageId && !hasVariantSuffix(card.card_image_id)) score += 20
+      if (wantsVariant && hasVariantSuffix(card.card_image_id)) score += 20
+      if (wantedName && name.includes(wantedName)) score += 10
+      if (setId === wantedId) score += 8
+
+      return { card, score }
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.card || cards[0]
+}
+
+const getOptcgPrice = async (input: PriceLookupInput) => {
+  const endpoint = getOptcgEndpoint(input.cardId)
+  if (!endpoint) return null
+
+  try {
+    const data = await fetchJson(endpoint)
+    const cards = Array.isArray(data) ? data : [data]
+    const card = selectOptcgCard(cards as OptcgCardPrice[], input)
+    if (!card) return null
+
+    const marketPrice = toNumberOrNull(card.market_price)
+    const lowPrice = toNumberOrNull(card.inventory_price)
+    if (marketPrice == null && lowPrice == null) return null
+
+    return {
+      source: 'OPTCGAPI',
+      provider: 'OPTCGAPI',
+      currency: 'EUR',
+      originalCurrency: 'EUR',
+      exchangeRate: 1,
+      productId: card.card_image_id || card.card_set_id || input.cardId || null,
+      productUrl: endpoint,
+      productImageUrl: card.card_image || null,
+      productName: card.card_name || input.name || null,
+      groupName: card.set_name || input.setName || null,
+      marketPrice,
+      lowPrice,
+      midPrice: marketPrice,
+      highPrice: null,
+      directLowPrice: lowPrice,
+      originalMarketPrice: marketPrice,
+      originalLowPrice: lowPrice,
+      originalMidPrice: marketPrice,
+      originalHighPrice: null,
+      originalDirectLowPrice: lowPrice,
+      priceType: card.rarity || null,
+      modifiedOn: card.date_scraped || null
+    }
+  } catch {
+    return null
+  }
+}
+
 const getSetHint = (input: PriceLookupInput) => {
   const setName = normalize(input.setName)
   const cardId = normalize(input.cardId).replace(/\s/g, '')
@@ -165,6 +262,9 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
 }
 
 export const getLiveCardPrice = async (input: PriceLookupInput) => {
+  const optcgPrice = await getOptcgPrice(input)
+  if (optcgPrice) return optcgPrice
+
   const groups = await selectGroups(input)
   let best: { product: TcgProduct; price: TcgPrice | null; score: number; group: TcgGroup } | null = null
 

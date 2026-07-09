@@ -288,6 +288,7 @@ export default function ScanPage() {
   }
 
   const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const baseCardCode = (value: string) => compactText(value).replace(/p\d+$/i, '')
 
   const cardImageSrc = (url?: string | null) => {
     if (!url) return ''
@@ -316,7 +317,7 @@ export default function ScanPage() {
 
   const hasExactCodeMatch = (ocrText: string, card: ScannedCard) => {
     const cardCode = extractCardCode(ocrText)
-    return Boolean(cardCode && compactText(cardCode) === compactText(card.card_id || ''))
+    return Boolean(cardCode && baseCardCode(cardCode) === baseCardCode(card.card_id || ''))
   }
 
   const hasStrongNameMatch = (ocrText: string, card: ScannedCard) => {
@@ -371,8 +372,30 @@ export default function ScanPage() {
     const ocrTokens = meaningfulTokens(ocrText)
 
     if (cardCode) {
-      const exact = referenceCards.find(card => normalizeText(card.card_id || card.id).replace(/\s/g, '') === normalizeText(cardCode).replace(/\s/g, ''))
-      if (exact) return toScannedCard(exact)
+      const exactMatches = referenceCards.filter(card => baseCardCode(card.card_id || card.id || '') === baseCardCode(cardCode))
+      if (exactMatches.length === 1) return toScannedCard(exactMatches[0])
+
+      if (exactMatches.length > 1) {
+        const compactOcr = compactText(ocrText)
+        const variantMatches = await Promise.all(
+          exactMatches.slice(0, 12).map(async card => {
+            const id = compactText(card.card_id || card.id || '')
+            const name = compactText(card.name || '')
+            const imageUrl = card.image_url || card.card_image
+            const imageDistance = imageUrl ? await compareImageToCandidate(cropCanvas, imageUrl) : 999
+            let score = Math.max(0, 130 - imageDistance)
+
+            if (id && compactOcr.includes(id)) score += 70
+            if (name && compactOcr.includes(name)) score += 18
+            if (/(_p\d+|parallel|alternate|alt|special|manga|treasure)/i.test(String(card.card_id || card.id || card.rarity || ''))) score += 2
+
+            return { card, score }
+          })
+        )
+
+        variantMatches.sort((a, b) => b.score - a.score)
+        return toScannedCard(variantMatches[0].card)
+      }
     }
 
     if (ocrTokens.length < 1) return null
@@ -1164,6 +1187,76 @@ export default function ScanPage() {
     }
   }
 
+  const saveCardsToCollectionBatch = async (cards: ScannedCard[]) => {
+    if (!userId || cards.length === 0) return
+
+    const grouped = new Map<string, { card: ScannedCard; quantity: number }>()
+    for (const card of cards) {
+      const key = card.card_id
+      if (!key) continue
+      const current = grouped.get(key)
+      grouped.set(key, { card, quantity: (current?.quantity || 0) + 1 })
+    }
+
+    const cardIds = [...grouped.keys()]
+    if (cardIds.length === 0) return
+
+    const { data: existingCards, error: lookupError } = await supabase
+      .from('user_cards')
+      .select('id, card_id, quantity')
+      .eq('user_id', userId)
+      .in('card_id', cardIds)
+
+    if (lookupError) throw lookupError
+
+    const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
+    const inserts: Array<Record<string, unknown>> = []
+    const operations: Array<Promise<{ error: unknown }>> = []
+
+    grouped.forEach(({ card, quantity }, cardId) => {
+      const payload = {
+        user_id: userId,
+        card_id: card.card_id,
+        name: card.name,
+        image_url: card.image_url,
+        rarity: card.rarity,
+        card_color: card.card_color ?? null,
+        card_type: card.card_type ?? null,
+        card_cost: card.card_cost ?? null,
+        card_power: card.card_power ?? null,
+        market_price: card.market_price ?? null,
+        inventory_price: card.inventory_price ?? null,
+      }
+      const existing = existingById.get(cardId)
+
+      if (existing) {
+        operations.push(
+          Promise.resolve(supabase
+            .from('user_cards')
+            .update({
+              ...payload,
+              quantity: Number(existing.quantity || 0) + quantity
+            })
+            .eq('id', existing.id))
+        )
+      } else {
+        inserts.push({
+          ...payload,
+          quantity
+        })
+      }
+    })
+
+    if (inserts.length > 0) {
+      operations.push(Promise.resolve(supabase.from('user_cards').insert(inserts)))
+    }
+
+    const results = await Promise.all(operations)
+
+    const errorResult = results.find(result => result.error)
+    if (errorResult?.error) throw errorResult.error
+  }
+
   const refreshProgressAfterCollectionChange = async () => {
     if (!userId) return
 
@@ -1180,9 +1273,7 @@ export default function ScanPage() {
 
     setAdding('all')
     try {
-      for (const card of scannedCards) {
-        await saveCardToCollection(card)
-      }
+      await saveCardsToCollectionBatch(scannedCards)
       await refreshProgressAfterCollectionChange()
       setScannedCards([])
       setCarouselIndex(0)

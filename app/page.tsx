@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
+import AppLogo from '@/app/components/AppLogo'
 
 type AuthMode = 'login' | 'register'
 
@@ -190,11 +191,7 @@ export default function Home() {
 
         <main className="mx-auto w-full max-w-[440px] rounded-[2rem] border border-white/10 bg-slate-900/86 p-4 shadow-2xl shadow-black/30 backdrop-blur-2xl sm:p-6">
           <div className="flex items-center justify-center">
-            <img
-              src="/luffyhatlogo.webp"
-              alt="Logo OnePiece Vault"
-              className="h-28 w-28 object-contain drop-shadow-lg onepiece-float sm:h-32 sm:w-32"
-            />
+            <AppLogo className="scale-125" />
           </div>
 
           <div className="mt-2 text-center">

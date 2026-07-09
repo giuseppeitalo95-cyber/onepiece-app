@@ -68,6 +68,11 @@ export type ProgressSummary = {
   newlyUnlocked: BadgeDefinition[]
 }
 
+const emitUnlockedBadges = (badges: BadgeDefinition[]) => {
+  if (typeof window === 'undefined' || badges.length === 0) return
+  window.dispatchEvent(new CustomEvent('opv:badges-unlocked', { detail: { badges } }))
+}
+
 const DAILY_LOGIN_XP = 25
 
 const todayKey = () => new Date().toISOString().slice(0, 10)
@@ -232,12 +237,73 @@ const streakBadge = (days: number, xp: number): BadgeDefinition => ({
   progress: countProgress(stats => stats.dailyStreak, days)
 })
 
+const cardQuantityBadge = (target: number, xp: number, title: string): BadgeDefinition => ({
+  id: `cards_${target}`,
+  title,
+  description: `Raggiungi ${target} carte totali.`,
+  xp,
+  code: `${target}`,
+  tone: target >= 500 ? 'rose' : 'amber',
+  category: 'collection',
+  isUnlocked: s => s.totalQuantity >= target,
+  progress: countProgress(s => s.totalQuantity, target)
+})
+
+const uniqueBadge = (target: number, xp: number): BadgeDefinition => ({
+  id: `unique_${target}`,
+  title: `${target} uniche`,
+  description: `Possiedi ${target} carte diverse.`,
+  xp,
+  code: `U${target}`,
+  tone: target >= 250 ? 'rose' : 'violet',
+  category: 'collection',
+  isUnlocked: s => s.uniqueCount >= target,
+  progress: countProgress(s => s.uniqueCount, target)
+})
+
+const colorBadge = (color: string, label: string, target: number, tone: BadgeDefinition['tone']): BadgeDefinition => ({
+  id: `color_${color}_${target}`,
+  title: `${label} ${target}`,
+  description: `Possiedi ${target} carte ${label.toLowerCase()}.`,
+  xp: target >= 50 ? 420 : 220,
+  code: `${label.slice(0, 3).toUpperCase()}${target}`,
+  tone,
+  category: 'mastery',
+  isUnlocked: s => s.hasColorQuantity(color, target),
+  progress: countProgress(s => s.colors[color] || 0, target)
+})
+
+const setBadge = (prefix: string, title: string, target: number, xp: number, tone: BadgeDefinition['tone']): BadgeDefinition => ({
+  id: `set_${prefix}_${target}`,
+  title,
+  description: `Possiedi ${target} carte ${prefix.toUpperCase()}.`,
+  xp,
+  code: prefix.toUpperCase(),
+  tone,
+  category: 'set',
+  isUnlocked: s => s.hasPrefixQuantity(prefix, target),
+  progress: countProgress(s => s.prefixes[prefix] || 0, target)
+})
+
+const crewBadge = (id: string, title: string, names: string[], xp: number, tone: BadgeDefinition['tone']): BadgeDefinition => ({
+  id: `crew_${id}`,
+  title,
+  description: `Aggiungi una carta ${names[0]}.`,
+  xp,
+  code: id.slice(0, 3).toUpperCase(),
+  tone,
+  category: 'crew',
+  isUnlocked: s => names.some(name => s.hasName(name))
+})
+
 export const BADGES: BadgeDefinition[] = [
   { id: 'daily_1', title: 'Primo attracco', description: 'Apri l’app in un nuovo giorno.', xp: 25, code: 'D1', tone: 'cyan', category: 'daily', isUnlocked: s => s.dailyCount >= 1, progress: countProgress(s => s.dailyCount, 1) },
   { id: 'daily_3', title: 'Tre giorni in rotta', description: 'Ottieni il bonus giornaliero 3 volte.', xp: 60, code: 'D3', tone: 'cyan', category: 'daily', isUnlocked: s => s.dailyCount >= 3, progress: countProgress(s => s.dailyCount, 3) },
   { id: 'daily_7', title: 'Settimana di mare', description: 'Ottieni il bonus giornaliero 7 volte.', xp: 140, code: 'D7', tone: 'cyan', category: 'daily', isUnlocked: s => s.dailyCount >= 7, progress: countProgress(s => s.dailyCount, 7) },
   { id: 'daily_14', title: 'Rotta costante', description: 'Ottieni il bonus giornaliero 14 volte.', xp: 260, code: '14', tone: 'cyan', category: 'daily', isUnlocked: s => s.dailyCount >= 14, progress: countProgress(s => s.dailyCount, 14) },
   { id: 'daily_30', title: 'Log Pose stabile', description: 'Ottieni il bonus giornaliero 30 volte.', xp: 600, code: '30', tone: 'cyan', category: 'daily', isUnlocked: s => s.dailyCount >= 30, progress: countProgress(s => s.dailyCount, 30) },
+  { id: 'daily_60', title: 'Due mesi in mare', description: 'Ottieni il bonus giornaliero 60 volte.', xp: 1250, code: 'D60', tone: 'emerald', category: 'daily', isUnlocked: s => s.dailyCount >= 60, progress: countProgress(s => s.dailyCount, 60) },
+  { id: 'daily_90', title: 'Rotta leggendaria', description: 'Ottieni il bonus giornaliero 90 volte.', xp: 2100, code: 'D90', tone: 'rose', category: 'daily', isUnlocked: s => s.dailyCount >= 90, progress: countProgress(s => s.dailyCount, 90) },
   ...[
     streakBadge(2, 45),
     streakBadge(3, 70),
@@ -250,6 +316,7 @@ export const BADGES: BadgeDefinition[] = [
     streakBadge(21, 860),
     streakBadge(30, 1300),
     streakBadge(60, 3200),
+    streakBadge(90, 5400),
   ],
 
   { id: 'cards_1', title: 'Prima carta', description: 'Aggiungi la prima carta alla collezione.', xp: 30, code: '01', tone: 'amber', category: 'collection', isUnlocked: s => s.totalQuantity >= 1, progress: countProgress(s => s.totalQuantity, 1) },
@@ -258,10 +325,19 @@ export const BADGES: BadgeDefinition[] = [
   { id: 'cards_50', title: 'Mezzo box', description: 'Raggiungi 50 carte totali.', xp: 220, code: '50', tone: 'amber', category: 'collection', isUnlocked: s => s.totalQuantity >= 50, progress: countProgress(s => s.totalQuantity, 50) },
   { id: 'cards_100', title: 'Vault serio', description: 'Raggiungi 100 carte totali.', xp: 420, code: '100', tone: 'amber', category: 'collection', isUnlocked: s => s.totalQuantity >= 100, progress: countProgress(s => s.totalQuantity, 100) },
   { id: 'cards_250', title: 'Archivio pirata', description: 'Raggiungi 250 carte totali.', xp: 900, code: '250', tone: 'amber', category: 'collection', isUnlocked: s => s.totalQuantity >= 250, progress: countProgress(s => s.totalQuantity, 250) },
+  cardQuantityBadge(500, 1700, 'Mezzo migliaio'),
+  cardQuantityBadge(1000, 3800, 'Grande archivio'),
+  uniqueBadge(50, 330),
   { id: 'unique_25', title: '25 uniche', description: 'Possiedi 25 carte diverse.', xp: 180, code: 'U25', tone: 'violet', category: 'collection', isUnlocked: s => s.uniqueCount >= 25, progress: countProgress(s => s.uniqueCount, 25) },
   { id: 'unique_100', title: '100 uniche', description: 'Possiedi 100 carte diverse.', xp: 700, code: 'U100', tone: 'violet', category: 'collection', isUnlocked: s => s.uniqueCount >= 100, progress: countProgress(s => s.uniqueCount, 100) },
+  uniqueBadge(250, 1800),
+  uniqueBadge(500, 4200),
   { id: 'duplicates_5', title: 'Materiale scambi', description: 'Possiedi almeno 5 carte doppie.', xp: 120, code: 'x2', tone: 'emerald', category: 'collection', isUnlocked: s => s.duplicateCount >= 5, progress: countProgress(s => s.duplicateCount, 5) },
+  { id: 'duplicates_15', title: 'Banca scambi', description: 'Possiedi almeno 15 carte doppie.', xp: 300, code: 'x15', tone: 'emerald', category: 'collection', isUnlocked: s => s.duplicateCount >= 15, progress: countProgress(s => s.duplicateCount, 15) },
+  { id: 'duplicates_30', title: 'Mercante del porto', description: 'Possiedi almeno 30 carte doppie.', xp: 650, code: 'x30', tone: 'emerald', category: 'collection', isUnlocked: s => s.duplicateCount >= 30, progress: countProgress(s => s.duplicateCount, 30) },
   { id: 'playset_5', title: 'Playset builder', description: 'Possiedi 5 carte con almeno 4 copie.', xp: 260, code: 'x4', tone: 'emerald', category: 'collection', isUnlocked: s => s.fourCopiesCount >= 5, progress: countProgress(s => s.fourCopiesCount, 5) },
+  { id: 'playset_15', title: 'Deck pronto', description: 'Possiedi 15 carte con almeno 4 copie.', xp: 620, code: 'P15', tone: 'emerald', category: 'collection', isUnlocked: s => s.fourCopiesCount >= 15, progress: countProgress(s => s.fourCopiesCount, 15) },
+  { id: 'playset_30', title: 'Playset master', description: 'Possiedi 30 carte con almeno 4 copie.', xp: 1400, code: 'P30', tone: 'rose', category: 'collection', isUnlocked: s => s.fourCopiesCount >= 30, progress: countProgress(s => s.fourCopiesCount, 30) },
 
   { id: 'rarity_r', title: 'Prima R', description: 'Aggiungi una carta Rare.', xp: 40, code: 'R', tone: 'cyan', category: 'rarity', isUnlocked: s => s.hasRarity('r') || s.hasRarity('rare') },
   { id: 'rarity_sr', title: 'Prima SR', description: 'Aggiungi una Super Rare.', xp: 90, code: 'SR', tone: 'rose', category: 'rarity', isUnlocked: s => s.hasRarity('sr') || s.hasRarity('super rare') },
@@ -273,8 +349,10 @@ export const BADGES: BadgeDefinition[] = [
   { id: 'value_5', title: 'Prima taglia', description: 'Possiedi una carta da almeno 5 euro.', xp: 90, code: '5€', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 5, progress: countProgress(s => Math.floor(s.maxValue), 5) },
   { id: 'value_20', title: 'Carta importante', description: 'Possiedi una carta da almeno 20 euro.', xp: 240, code: '20', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 20, progress: countProgress(s => Math.floor(s.maxValue), 20) },
   { id: 'value_50', title: 'Wanted alta', description: 'Possiedi una carta da almeno 50 euro.', xp: 520, code: '50', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 50, progress: countProgress(s => Math.floor(s.maxValue), 50) },
+  { id: 'value_100', title: 'Wanted rossa', description: 'Possiedi una carta da almeno 100 euro.', xp: 1150, code: '100', tone: 'rose', category: 'value', isUnlocked: s => s.maxValue >= 100, progress: countProgress(s => Math.floor(s.maxValue), 100) },
   { id: 'value_total_100', title: 'Vault 100', description: 'Raggiungi 100 euro di valore stimato.', xp: 280, code: 'V100', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 100, progress: countProgress(s => Math.floor(s.totalValue), 100) },
   { id: 'value_total_500', title: 'Tesoro serio', description: 'Raggiungi 500 euro di valore stimato.', xp: 900, code: 'V500', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 500, progress: countProgress(s => Math.floor(s.totalValue), 500) },
+  { id: 'value_total_1000', title: 'Tesoro da Yonko', description: 'Raggiungi 1000 euro di valore stimato.', xp: 2100, code: 'V1K', tone: 'rose', category: 'value', isUnlocked: s => s.totalValue >= 1000, progress: countProgress(s => Math.floor(s.totalValue), 1000) },
 
   { id: 'color_red_10', title: 'Rosso acceso', description: 'Possiedi 10 carte rosse.', xp: 120, code: 'RED', tone: 'rose', category: 'mastery', isUnlocked: s => s.hasColorQuantity('red', 10), progress: countProgress(s => s.colors.red || 0, 10) },
   { id: 'color_green_10', title: 'Verde solido', description: 'Possiedi 10 carte verdi.', xp: 120, code: 'GRN', tone: 'emerald', category: 'mastery', isUnlocked: s => s.hasColorQuantity('green', 10), progress: countProgress(s => s.colors.green || 0, 10) },
@@ -282,6 +360,20 @@ export const BADGES: BadgeDefinition[] = [
   { id: 'color_purple_10', title: 'Viola DON', description: 'Possiedi 10 carte viola.', xp: 120, code: 'PUR', tone: 'violet', category: 'mastery', isUnlocked: s => s.hasColorQuantity('purple', 10), progress: countProgress(s => s.colors.purple || 0, 10) },
   { id: 'color_black_10', title: 'Nero tattico', description: 'Possiedi 10 carte nere.', xp: 120, code: 'BLK', tone: 'violet', category: 'mastery', isUnlocked: s => s.hasColorQuantity('black', 10), progress: countProgress(s => s.colors.black || 0, 10) },
   { id: 'color_yellow_10', title: 'Giallo trigger', description: 'Possiedi 10 carte gialle.', xp: 120, code: 'YLW', tone: 'amber', category: 'mastery', isUnlocked: s => s.hasColorQuantity('yellow', 10), progress: countProgress(s => s.colors.yellow || 0, 10) },
+  ...[
+    colorBadge('red', 'Rosso', 25, 'rose'),
+    colorBadge('red', 'Rosso', 50, 'rose'),
+    colorBadge('green', 'Verde', 25, 'emerald'),
+    colorBadge('green', 'Verde', 50, 'emerald'),
+    colorBadge('blue', 'Blu', 25, 'cyan'),
+    colorBadge('blue', 'Blu', 50, 'cyan'),
+    colorBadge('purple', 'Viola', 25, 'violet'),
+    colorBadge('purple', 'Viola', 50, 'violet'),
+    colorBadge('black', 'Nero', 25, 'violet'),
+    colorBadge('black', 'Nero', 50, 'violet'),
+    colorBadge('yellow', 'Giallo', 25, 'amber'),
+    colorBadge('yellow', 'Giallo', 50, 'amber'),
+  ],
 
   { id: 'crew_luffy', title: 'Capitano', description: 'Aggiungi una carta Luffy.', xp: 80, code: 'LUF', tone: 'rose', category: 'crew', isUnlocked: s => s.hasName('luffy') },
   { id: 'crew_zoro', title: 'Spadaccino', description: 'Aggiungi una carta Zoro.', xp: 80, code: 'ZOR', tone: 'emerald', category: 'crew', isUnlocked: s => s.hasName('zoro') },
@@ -291,11 +383,44 @@ export const BADGES: BadgeDefinition[] = [
   { id: 'crew_boa', title: 'Imperatrice', description: 'Aggiungi una carta Boa Hancock.', xp: 120, code: 'BOA', tone: 'rose', category: 'crew', isUnlocked: s => s.hasName('boa') || s.hasName('hancock') },
   { id: 'crew_ace', title: 'Fuoco vivo', description: 'Aggiungi una carta Ace.', xp: 120, code: 'ACE', tone: 'rose', category: 'crew', isUnlocked: s => s.hasName('ace') },
   { id: 'crew_law', title: 'Room', description: 'Aggiungi una carta Trafalgar Law.', xp: 120, code: 'LAW', tone: 'cyan', category: 'crew', isUnlocked: s => s.hasName('law') || s.hasName('trafalgar') },
+  ...[
+    crewBadge('shanks', 'Capelli rossi', ['shanks'], 140, 'rose'),
+    crewBadge('blackbeard', 'Barbanera', ['blackbeard', 'teach'], 160, 'violet'),
+    crewBadge('mihawk', 'Occhi di falco', ['mihawk'], 140, 'emerald'),
+    crewBadge('crocodile', 'Mr. Zero', ['crocodile'], 120, 'amber'),
+    crewBadge('doflamingo', 'Fili invisibili', ['doflamingo'], 140, 'rose'),
+    crewBadge('perona', 'Ghost princess', ['perona'], 120, 'violet'),
+    crewBadge('kaido', 'Drago imperatore', ['kaido'], 160, 'emerald'),
+    crewBadge('bigmom', 'Soul queen', ['big mom', 'linlin'], 160, 'amber'),
+    crewBadge('jinbe', 'Cavaliere del mare', ['jinbe', 'jimbei'], 120, 'cyan'),
+    crewBadge('usopp', 'Cecchino', ['usopp'], 80, 'amber'),
+    crewBadge('chopper', 'Dottore', ['chopper'], 80, 'rose'),
+    crewBadge('franky', 'Super', ['franky'], 80, 'cyan'),
+    crewBadge('brook', 'Soul king', ['brook'], 80, 'violet'),
+  ],
 
   { id: 'set_op01_5', title: 'Romance Dawn', description: 'Possiedi 5 carte OP01.', xp: 150, code: 'OP01', tone: 'amber', category: 'set', isUnlocked: s => s.hasPrefixQuantity('op01', 5), progress: countProgress(s => s.prefixes.op01 || 0, 5) },
   { id: 'set_op05_5', title: 'Era nuova', description: 'Possiedi 5 carte OP05.', xp: 150, code: 'OP05', tone: 'rose', category: 'set', isUnlocked: s => s.hasPrefixQuantity('op05', 5), progress: countProgress(s => s.prefixes.op05 || 0, 5) },
   { id: 'set_op09_5', title: 'Imperatori', description: 'Possiedi 5 carte OP09.', xp: 150, code: 'OP09', tone: 'violet', category: 'set', isUnlocked: s => s.hasPrefixQuantity('op09', 5), progress: countProgress(s => s.prefixes.op09 || 0, 5) },
   { id: 'set_op13_5', title: 'Will Hunter', description: 'Possiedi 5 carte OP13.', xp: 150, code: 'OP13', tone: 'cyan', category: 'set', isUnlocked: s => s.hasPrefixQuantity('op13', 5), progress: countProgress(s => s.prefixes.op13 || 0, 5) },
+  ...[
+    setBadge('op02', 'Paramount War', 5, 150, 'rose'),
+    setBadge('op03', 'Pillars of Strength', 5, 150, 'emerald'),
+    setBadge('op04', 'Kingdoms of Intrigue', 5, 150, 'amber'),
+    setBadge('op06', 'Wings of the Captain', 5, 150, 'cyan'),
+    setBadge('op07', '500 Years Future', 5, 150, 'violet'),
+    setBadge('op08', 'Two Legends', 5, 150, 'emerald'),
+    setBadge('op10', 'Royal Blood', 5, 150, 'rose'),
+    setBadge('op11', 'A Fist of Divine Speed', 5, 150, 'cyan'),
+    setBadge('op12', 'Legacy of the Master', 5, 150, 'amber'),
+    setBadge('op14', 'Full set hunter OP14', 5, 170, 'violet'),
+    setBadge('op15', 'Full set hunter OP15', 5, 170, 'emerald'),
+    setBadge('op16', 'Meta OP16', 5, 170, 'cyan'),
+    setBadge('op01', 'Romance Dawn 15', 15, 380, 'amber'),
+    setBadge('op05', 'Era nuova 15', 15, 380, 'rose'),
+    setBadge('op09', 'Imperatori 15', 15, 380, 'violet'),
+    setBadge('op13', 'Will Hunter 15', 15, 380, 'cyan'),
+  ],
   { id: 'set_st_5', title: 'Starter crew', description: 'Possiedi 5 carte Starter Deck.', xp: 140, code: 'ST', tone: 'emerald', category: 'set', isUnlocked: s => Object.entries(s.prefixes).some(([key, count]) => key.startsWith('st') && count >= 5) },
   { id: 'set_eb_5', title: 'Extra booster', description: 'Possiedi 5 carte EB.', xp: 160, code: 'EB', tone: 'violet', category: 'set', isUnlocked: s => Object.entries(s.prefixes).some(([key, count]) => key.startsWith('eb') && count >= 5) },
 
@@ -341,6 +466,12 @@ export const evaluateProgress = (
     unlocked: unlocked.has(badge.id),
     progressValue: badge.progress?.(stats)
   }))
+  const orderedBadges = [
+    ...badges.filter(badge => badge.unlocked),
+    ...badges.filter(badge => !badge.unlocked)
+  ]
+
+  emitUnlockedBadges(newlyUnlocked)
 
   return {
     xp,
@@ -349,8 +480,44 @@ export const evaluateProgress = (
     dailyStreak: stats.dailyStreak,
     unlockedCount: badges.filter(badge => badge.unlocked).length,
     totalBadges: BADGES.length,
-    badges,
+    badges: orderedBadges,
     newlyUnlocked
+  }
+}
+
+export const summarizeProgress = (
+  cards: ProgressCard[],
+  progress: ProgressData = emptyProgressData()
+): ProgressSummary => {
+  const stats = buildStats(cards, progress)
+  const unlocked = new Set(progress.unlockedBadgeIds)
+
+  for (const badge of BADGES) {
+    if (badge.isUnlocked(stats)) unlocked.add(badge.id)
+  }
+
+  const xp = progress.dailyClaimDates.length * DAILY_LOGIN_XP +
+    BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badge.xp : 0), 0)
+  const levelInfo = getLevelInfo(xp)
+  const badges = BADGES.map(badge => ({
+    ...badge,
+    unlocked: unlocked.has(badge.id),
+    progressValue: badge.progress?.(stats)
+  }))
+  const orderedBadges = [
+    ...badges.filter(badge => badge.unlocked),
+    ...badges.filter(badge => !badge.unlocked)
+  ]
+
+  return {
+    xp,
+    ...levelInfo,
+    dailyClaimedToday: progress.dailyClaimDates.includes(todayKey()),
+    dailyStreak: stats.dailyStreak,
+    unlockedCount: orderedBadges.filter(badge => badge.unlocked).length,
+    totalBadges: BADGES.length,
+    badges: orderedBadges,
+    newlyUnlocked: []
   }
 }
 

@@ -4,6 +4,7 @@ const normalize = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 
 const compact = (value: string) => normalize(value).replace(/\s/g, '')
+const baseCode = (value: string) => compact(value).replace(/p\d+$/i, '')
 
 const tokenSimilarity = (a: string, b: string) => {
   if (a === b) return 1
@@ -76,8 +77,26 @@ export async function POST(req: Request) {
     const code = extractCardCode(text)
 
     if (code) {
-      const exact = cards.find((card: any) => compact(card.card_id || card.id || '') === compact(code))
-      if (exact) return Response.json({ card: toResponseCard(exact), candidates: [toResponseCard(exact)] })
+      const exactMatches = cards.filter((card: any) => baseCode(card.card_id || card.id || '') === baseCode(code))
+      if (exactMatches.length > 0) {
+        const compactText = compact(text)
+        const scoredExact = exactMatches
+          .map((card: any, index: number) => {
+            const id = compact(card.card_id || card.id || '')
+            const name = compact(card.card_name || card.name || '')
+            let score = 100 - index * 0.01
+            if (id && compactText.includes(id)) score += 80
+            if (name && compactText.includes(name)) score += 20
+            if (/(_p\d+|parallel|alternate|alt|special|manga|treasure)/i.test(String(card.card_id || card.id || card.rarity || ''))) score += 2
+            return { card, score }
+          })
+          .sort((a: any, b: any) => b.score - a.score)
+
+        return Response.json({
+          card: toResponseCard(scoredExact[0].card),
+          candidates: scoredExact.slice(0, 8).map((item: any) => toResponseCard(item.card))
+        })
+      }
     }
 
     const normalizedText = normalize(text)

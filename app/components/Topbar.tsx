@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { emptyProgressSummary, evaluateProgress, type ProgressSummary } from '@/lib/progression'
+import AchievementToasts from './AchievementToasts'
+import AppLogo from './AppLogo'
 
 export default function Topbar() {
   const router = useRouter()
@@ -47,17 +49,11 @@ export default function Topbar() {
   }, [pathname, router])
 
   return (
-    <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-11 -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border border-cyan-200/15 bg-white/[0.045] px-3 shadow-inner shadow-white/5">
-        <span className="absolute inset-0 rounded-full bg-cyan-300/10 blur-md" />
-        <img
-          src="/luffyhatlogo.webp"
-          className="relative h-9 w-9 object-contain opacity-95 drop-shadow-[0_0_14px_rgba(110,231,249,0.28)]"
-          alt="Logo Cap"
-        />
-        <span className="relative whitespace-nowrap bg-gradient-to-r from-cyan-50 via-cyan-300 to-rose-200 bg-clip-text text-xs font-black tracking-[0.28em] text-transparent sm:text-sm">
-          OPV
-        </span>
+    <>
+      <AchievementToasts />
+      <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 -translate-x-1/2 -translate-y-1/2 items-center">
+        <AppLogo compact />
       </div>
 
       <div className="flex min-w-0 shrink-0 items-center justify-end">
@@ -75,14 +71,21 @@ export default function Topbar() {
               </div>
             )}
           </div>
-          <span className="ml-1 rounded-full border border-cyan-200/25 bg-cyan-200/12 px-2 py-1 text-[10px] font-black text-cyan-50 sm:ml-0">
-            LV {progress.level}
+          <span
+            className="relative ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-full p-[2px] sm:ml-0"
+            style={{ background: `conic-gradient(#facc15 ${progress.progressPercent * 3.6}deg, rgba(255,255,255,0.12) 0deg)` }}
+            aria-label={`Livello ${progress.level}, ${Math.round(progress.progressPercent)} percento`}
+          >
+            <span className="grid h-full w-full place-items-center rounded-full border border-amber-100/30 bg-[#173842] text-[10px] font-black leading-none text-amber-100 shadow-[0_0_18px_rgba(250,204,21,0.24)]">
+              LV<br />{progress.level}
+            </span>
           </span>
           <span className="hidden max-w-[130px] truncate pr-1 text-xs font-bold text-cyan-50 sm:block">
             {loading ? '...' : username}
           </span>
         </button>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

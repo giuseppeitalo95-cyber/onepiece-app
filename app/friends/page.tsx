@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { Check, Heart, Inbox, Search, UserPlus, Users, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
+import CardImage from '@/app/components/CardImage'
+import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
 
 type ProfileItem = {
   id: string
@@ -19,6 +21,12 @@ type UserCard = {
   image_url: string | null
   rarity: string | null
   quantity: number
+  card_color?: string | null
+  card_type?: string | null
+  card_cost?: number | null
+  card_power?: number | null
+  market_price?: number | null
+  inventory_price?: number | null
 }
 
 type FriendRequest = {
@@ -38,6 +46,7 @@ export default function FriendsPage() {
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [selectedProfile, setSelectedProfile] = useState<ProfileItem | null>(null)
   const [selectedCards, setSelectedCards] = useState<UserCard[]>([])
+  const [selectedProgress, setSelectedProgress] = useState<ProgressSummary>(emptyProgressSummary())
   const [searchTerm, setSearchTerm] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -204,20 +213,23 @@ export default function FriendsPage() {
     setSelectedProfile(profile)
     if (!friendIds.includes(profile.id)) {
       setSelectedCards([])
+      setSelectedProgress(emptyProgressSummary())
       return
     }
 
     const { data: cards } = await supabase
       .from('user_cards')
-      .select('card_id, name, image_url, rarity, quantity')
+      .select('card_id, name, image_url, rarity, quantity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
       .eq('user_id', profile.id)
 
     setSelectedCards(cards ?? [])
+    setSelectedProgress(summarizeProgress(cards ?? []))
   }
 
   const closeModal = () => {
     setSelectedProfile(null)
     setSelectedCards([])
+    setSelectedProgress(emptyProgressSummary())
   }
 
   const isFriend = selectedProfile ? friendIds.includes(selectedProfile.id) : false
@@ -228,6 +240,17 @@ export default function FriendsPage() {
           (request.requester_id === selectedProfile.id && request.receiver_id === userId)
       )
     : null
+  const friendTotalQuantity = selectedCards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)
+  const friendTotalValue = selectedCards.reduce((sum, card) => {
+    const price = Number(card.market_price ?? card.inventory_price ?? 0)
+    return sum + price * Number(card.quantity || 0)
+  }, 0)
+  const friendDuplicateCount = selectedCards.filter(card => Number(card.quantity || 0) > 1).length
+  const friendTopCard = [...selectedCards].sort((a, b) =>
+    Number(b.market_price ?? b.inventory_price ?? 0) - Number(a.market_price ?? a.inventory_price ?? 0)
+  )[0]
+  const formatPrice = (value: number) =>
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
 
   return (
     <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
@@ -483,7 +506,6 @@ export default function FriendsPage() {
               closeModal()
             }
           }}
-          onTouchMove={(event) => event.preventDefault()}
         >
           <div
             className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-black/60 sm:h-[88vh] sm:rounded-[2rem]"
@@ -518,6 +540,34 @@ export default function FriendsPage() {
                     {isFriend ? 'Visualizza le carte del tuo amico' : selectedRequest?.status === 'incoming' ? 'Richiesta in arrivo' : 'Invia amicizia per vedere le carte'}
                   </div>
                 </div>
+
+                {isFriend ? (
+                  <div className="rounded-3xl border border-amber-200/20 bg-gradient-to-br from-amber-200/12 to-cyan-200/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">Livello</p>
+                        <p className="mt-1 text-3xl font-black text-white">LV {selectedProgress.level}</p>
+                      </div>
+                      <div className="text-right text-xs font-bold text-cyan-100">
+                        {selectedProgress.unlockedCount}/{selectedProgress.totalBadges}
+                        <span className="block text-slate-400">badge</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/60">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-200 to-cyan-200"
+                        style={{ width: `${selectedProgress.progressPercent}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {selectedProgress.badges.filter(badge => badge.unlocked).slice(0, 6).map((badge) => (
+                        <span key={badge.id} className="rounded-full border border-white/12 bg-white/10 px-2 py-1 text-[10px] font-black text-cyan-50">
+                          {badge.code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {!isFriend && selectedRequest?.status === 'incoming' ? (
                   <div className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4">
@@ -573,22 +623,48 @@ export default function FriendsPage() {
                       Nessuna carta trovata per questo utente.
                     </div>
                   ) : (
-                    <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                      {selectedCards.map((card) => (
-                        <div key={card.card_id} className="rounded-2xl border border-slate-800/70 bg-slate-900/80 p-1.5">
-                          <div className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-800">
-                            {card.image_url ? (
-                              <img src={card.image_url} alt={card.name || card.card_id} className="h-full w-full object-contain" />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-[8px] text-slate-500">NO IMAGE</div>
-                            )}
+                    <>
+                      <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                        {[
+                          ['Carte', friendTotalQuantity.toString()],
+                          ['Uniche', selectedCards.length.toString()],
+                          ['Doppioni', friendDuplicateCount.toString()],
+                          ['Valore', formatPrice(friendTotalValue)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</p>
+                            <p className="mt-1 truncate text-lg font-black text-white">{value}</p>
                           </div>
-                          <p className="mt-1.5 text-xs font-semibold text-white line-clamp-1">{card.name || card.card_id}</p>
-                          <p className="text-[10px] text-slate-500">{card.rarity || '—'}</p>
-                          <p className="text-[10px] text-amber-300">x{card.quantity}</p>
+                        ))}
+                      </div>
+
+                      {friendTopCard ? (
+                        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
+                          <CardImage src={friendTopCard.image_url} cardId={friendTopCard.card_id} alt={friendTopCard.name || friendTopCard.card_id} className="h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-950" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Carta più alta</p>
+                            <p className="mt-1 truncate text-sm font-black text-white">{friendTopCard.name || friendTopCard.card_id}</p>
+                            <p className="text-xs font-black text-cyan-100">{formatPrice(Number(friendTopCard.market_price ?? friendTopCard.inventory_price ?? 0))}</p>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      ) : null}
+
+                      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                        {selectedCards.map((card) => (
+                          <div key={card.card_id} className="rounded-2xl border border-slate-800/70 bg-slate-900/80 p-1.5">
+                            <CardImage
+                              src={card.image_url}
+                              cardId={card.card_id}
+                              alt={card.name || card.card_id}
+                              className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-800"
+                            />
+                            <p className="mt-1.5 text-xs font-semibold text-white line-clamp-1">{card.name || card.card_id}</p>
+                            <p className="text-[10px] text-slate-500">{card.rarity || '—'}</p>
+                            <p className="text-[10px] text-amber-300">x{card.quantity}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )
                 ) : (
                   <div className="mt-5 rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/80 p-5 text-sm text-slate-400">

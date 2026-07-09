@@ -280,6 +280,7 @@ export default function Profile() {
 
   const unlockedBadges = progress.badges.filter(badge => badge.unlocked)
   const lockedBadges = progress.badges.filter(badge => !badge.unlocked)
+  const sortedBadges = [...unlockedBadges, ...lockedBadges]
 
   return (
     <div className={`min-h-screen pb-32 text-white onepiece-wave-bg onepiece-clouds sm:pb-36 ${firstAccess ? 'pt-4' : 'pt-14'}`}>
@@ -510,7 +511,7 @@ export default function Profile() {
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {progress.badges.map((badge) => {
+              {sortedBadges.map((badge) => {
                 const progressValue = badge.progressValue
                 const percent = progressValue
                   ? Math.round((progressValue.current / progressValue.target) * 100)

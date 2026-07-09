@@ -215,12 +215,80 @@
   50% { box-shadow: 0 0 24px rgba(110, 231, 249, 0.34); }
 }
 
+@keyframes achievement-in {
+  0% { opacity: 0; transform: translateX(26px) scale(0.96); filter: blur(4px); }
+  14% { opacity: 1; transform: translateX(0) scale(1.02); filter: blur(0); }
+  22%, 88% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(18px) scale(0.98); }
+}
+
+@keyframes opv-logo-glow {
+  0%, 100% { transform: translateY(0) rotate(-1deg); filter: drop-shadow(0 0 12px rgba(110, 231, 249, 0.24)); }
+  50% { transform: translateY(-2px) rotate(1deg); filter: drop-shadow(0 0 20px rgba(250, 204, 21, 0.28)); }
+}
+
 .op-nav-active {
   animation: nav-active-glow 900ms ease both;
 }
 
 .op-nav-icon {
   animation: nav-active-pop 320ms cubic-bezier(0.2, 0.85, 0.25, 1.25) both;
+}
+
+.op-achievement-toast {
+  animation: achievement-in 5.2s cubic-bezier(0.18, 0.84, 0.26, 1) both;
+}
+
+.opv-logo {
+  display: inline-flex;
+  min-width: 88px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(185, 242, 251, 0.18);
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(110,231,249,0.08));
+  padding: 0.35rem 0.7rem 0.35rem 0.45rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 28px rgba(0,0,0,0.18);
+}
+
+.opv-logo-compact {
+  min-width: 84px;
+  padding: 0.22rem 0.58rem 0.22rem 0.36rem;
+}
+
+.opv-hat-wrap {
+  position: relative;
+  display: grid;
+  height: 42px;
+  width: 42px;
+  place-items: center;
+}
+
+.opv-logo-compact .opv-hat-wrap {
+  height: 34px;
+  width: 34px;
+}
+
+.opv-hat {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+  animation: opv-logo-glow 4.4s ease-in-out infinite;
+}
+
+.opv-logo-text {
+  background: linear-gradient(90deg, #ecfeff, #67e8f9, #fecdd3);
+  background-clip: text;
+  color: transparent;
+  font-size: 0.88rem;
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  line-height: 1;
+}
+
+.opv-logo-compact .opv-logo-text {
+  font-size: 0.78rem;
 }
 
 /* Enhanced button styles */

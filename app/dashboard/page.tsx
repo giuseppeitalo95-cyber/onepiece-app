@@ -183,6 +183,7 @@ export default function Dashboard() {
     value == null
       ? '—'
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+  const displayCardId = (value?: string | null) => (value || '').replace(/_p\d+$/i, '')
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
     try {
@@ -716,7 +717,7 @@ export default function Dashboard() {
 
                 <p className="font-bold mt-1 sm:mt-2 text-[10px] sm:text-xs line-clamp-2">{item.name || 'Unknown'}</p>
                 <p className="text-[8px] sm:text-[10px] text-gray-400">{item.rarity || '?'}</p>
-                <p className="text-[7px] sm:text-[9px] text-gray-500 truncate">{item.card_id}</p>
+                <p className="text-[7px] sm:text-[9px] text-gray-500 truncate">{displayCardId(item.card_id)}</p>
                 <p className="text-[10px] sm:text-xs text-amber-300 mt-1">x{item.quantity}</p>
 
               </div>
@@ -800,7 +801,7 @@ export default function Dashboard() {
               />
               <div className="min-w-0">
                 <p className="line-clamp-2 text-sm font-black text-white">{catalogSelectedCard.name}</p>
-                <p className="mt-1 truncate text-[10px] uppercase tracking-[0.18em] text-slate-500">{catalogSelectedCard.id}</p>
+                <p className="mt-1 truncate text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(catalogSelectedCard.id)}</p>
                 <p className="mt-2 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
                 <button
                   onClick={() => addCatalogCard(catalogSelectedCard)}
@@ -862,7 +863,7 @@ export default function Dashboard() {
                   className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950"
                 />
                 <p className="mt-3 text-xl font-black text-white">{catalogSelectedCard.name}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">{catalogSelectedCard.id}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">{displayCardId(catalogSelectedCard.id)}</p>
                 <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Valore live</p>
                   <p className="mt-1 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
@@ -944,7 +945,7 @@ export default function Dashboard() {
                 />
                 <div className="min-w-0">
                   <p className="line-clamp-2 text-sm font-bold text-white">{topSavedCard.name}</p>
-                  <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{topSavedCard.card_id}</p>
+                  <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(topSavedCard.card_id)}</p>
                   <p className="mt-2 text-2xl font-black text-cyan-200">{formatPrice(getAnalyticsPrice(topSavedCard))}</p>
                 </div>
               </div>
@@ -1059,7 +1060,7 @@ export default function Dashboard() {
               {selectedCard.name || 'Carta sconosciuta'}
             </h2>
             <p className="text-xs uppercase tracking-[0.25em] text-gray-400 mb-3">
-              {selectedCard.card_id}
+              {displayCardId(selectedCard.card_id)}
             </p>
             <div className="mb-3 grid gap-2 sm:grid-cols-3">
               <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">

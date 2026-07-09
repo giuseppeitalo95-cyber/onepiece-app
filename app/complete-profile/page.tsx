@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ShieldCheck, Sparkles, UserRound } from 'lucide-react'
+import AppLogo from '@/app/components/AppLogo'
 
 export default function CompleteProfilePage() {
   const router = useRouter()
@@ -101,13 +102,7 @@ export default function CompleteProfilePage() {
     <div className="flex min-h-screen items-center justify-center onepiece-wave-bg onepiece-clouds px-4 py-8 text-white">
       <main className="w-full max-w-[440px] overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/88 p-5 shadow-2xl shadow-black/30 backdrop-blur-2xl sm:p-7">
         <div className="flex justify-center">
-          <div className="rounded-full border border-cyan-200/15 bg-white/[0.045] p-3 shadow-inner shadow-white/5">
-            <img
-              src="/luffyhatlogo.webp"
-              alt="Logo OnePiece Vault"
-              className="h-24 w-24 object-contain drop-shadow-[0_0_18px_rgba(110,231,249,0.28)]"
-            />
-          </div>
+          <AppLogo />
         </div>
 
         <div className="mt-5 text-center">

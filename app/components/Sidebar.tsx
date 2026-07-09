@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Layers3, ScanLine, User, Users } from 'lucide-react'
+import { Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 type NavItem = {
@@ -15,12 +15,14 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
   { label: 'Collezione', href: '/dashboard', key: 'collezione', Icon: Layers3 },
+  { label: 'Deck', href: '/decks', key: 'decks', Icon: LibraryBig },
   { label: 'Amici', href: '/friends', key: 'amici', Icon: Users },
   { label: 'Profilo', href: '/profile', key: 'profilo', Icon: User },
 ]
 
 const getPageKey = (pathname: string) => {
   if (pathname.startsWith('/dashboard')) return 'collezione'
+  if (pathname.startsWith('/decks')) return 'decks'
   if (pathname.startsWith('/friends')) return 'amici'
   if (pathname.startsWith('/profile')) return 'profilo'
   return 'scan'
