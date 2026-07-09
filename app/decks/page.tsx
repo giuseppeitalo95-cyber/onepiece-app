@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Crown, Eye, LibraryBig, Minus, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
@@ -44,7 +44,7 @@ type SearchCardResponse = {
   card_type?: string | null
 }
 
-type Mode = 'home' | 'create' | 'meta'
+type Mode = 'saved' | 'create' | 'meta'
 
 const compact = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const baseCardId = (value?: string | null) => {
@@ -54,7 +54,10 @@ const baseCardId = (value?: string | null) => {
     .replace(/[^a-z0-9]/g, '')
     .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
 }
-const displayCardId = (value?: string | null) => (value || '').replace(/_p\d+$/i, '')
+const displayCardId = (value?: string | null) =>
+  (value || '')
+    .replace(/_p\d+$/i, '')
+    .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
 const deckStorageKey = (userId: string) => `opv-decks:${userId}`
 const colors = ['red', 'green', 'blue', 'purple', 'black', 'yellow']
 
@@ -90,17 +93,15 @@ const toDeckCard = (card: SearchCardResponse | DeckCard, quantity = 1): DeckCard
 
 export default function DeckBuilderPage() {
   const router = useRouter()
-  const [mode, setMode] = useState<Mode>('home')
+  const [mode, setMode] = useState<Mode>('saved')
   const [userId, setUserId] = useState<string | null>(null)
   const [deckName, setDeckName] = useState('Nuovo deck')
   const [leader, setLeader] = useState<DeckCard | null>(null)
   const [deckCards, setDeckCards] = useState<DeckCard[]>([])
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([])
-  const [collection, setCollection] = useState<DeckCard[]>([])
   const [search, setSearch] = useState('')
   const [catalogResults, setCatalogResults] = useState<DeckCard[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
-  const [activeSource, setActiveSource] = useState<'collection' | 'catalog'>('collection')
   const [openDeck, setOpenDeck] = useState<SavedDeck | null>(null)
   const [metaDecks, setMetaDecks] = useState<SavedDeck[]>([])
   const [metaLoading, setMetaLoading] = useState(false)
@@ -114,13 +115,6 @@ export default function DeckBuilderPage() {
       }
 
       setUserId(session.user.id)
-
-      const { data } = await supabase
-        .from('user_cards')
-        .select('card_id, quantity, name, image_url, rarity, card_color, card_type')
-        .eq('user_id', session.user.id)
-
-      setCollection((data || []).filter(card => !isDonCard(card)))
 
       try {
         const raw = window.localStorage.getItem(deckStorageKey(session.user.id))
@@ -152,7 +146,11 @@ export default function DeckBuilderPage() {
   }, [mode, metaDecks.length, metaLoading])
 
   useEffect(() => {
-    if (!search.trim() || activeSource !== 'catalog') return
+    if (!search.trim()) {
+      setCatalogResults([])
+      setLoadingSearch(false)
+      return
+    }
 
     const timer = window.setTimeout(async () => {
       setLoadingSearch(true)
@@ -169,7 +167,7 @@ export default function DeckBuilderPage() {
     }, 240)
 
     return () => window.clearTimeout(timer)
-  }, [search, activeSource])
+  }, [search])
 
   const mainCount = deckCards.reduce((sum, card) => sum + card.quantity, 0)
   const leaderColors = parseColors(leader?.card_color)
@@ -187,19 +185,7 @@ export default function DeckBuilderPage() {
       })
   const isValid = Boolean(leader) && mainCount === 50 && overLimit.length === 0 && offColor.length === 0
 
-  const filteredCollection = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const base = collection.filter(card => !isDonCard(card))
-    if (!q) return base.slice(0, 36)
-    return base
-      .filter(card =>
-        (card.name || '').toLowerCase().includes(q) ||
-        card.card_id.toLowerCase().includes(q)
-      )
-      .slice(0, 36)
-  }, [collection, search])
-
-  const availableCards = activeSource === 'collection' ? filteredCollection : catalogResults
+  const availableCards = catalogResults
 
   const deckCardsExpanded = deckCards.flatMap(card =>
     Array.from({ length: card.quantity }, (_, index) => ({ ...card, copyIndex: index }))
@@ -263,9 +249,9 @@ export default function DeckBuilderPage() {
     if (openDeck?.id === deckId) setOpenDeck(null)
   }
 
-  const pageTitle = mode === 'home' ? 'Deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
-  const pageDescription = mode === 'home'
-    ? 'Scegli se costruire un deck tuo o guardare le liste meta recenti.'
+  const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
+  const pageDescription = mode === 'saved'
+    ? 'Tutti i deck salvati, apribili e modificabili.'
     : mode === 'create'
     ? 'Costruisci Leader + 50 carte main. I DON sono nascosti.'
     : 'Decklist reali recenti da Limitless, apribili come i tuoi deck.'
@@ -333,85 +319,64 @@ export default function DeckBuilderPage() {
               <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">{pageTitle}</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{pageDescription}</p>
             </div>
-            <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-sm font-black">
-              <button onClick={() => setMode('home')} className={`rounded-xl px-4 py-2 ${mode === 'home' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Hub</button>
-              <button onClick={() => setMode('create')} className={`rounded-xl px-4 py-2 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea</button>
-              <button onClick={() => setMode('meta')} className={`rounded-xl px-4 py-2 ${mode === 'meta' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Meta</button>
+            <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
+              <button onClick={() => setMode('saved')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'saved' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>I miei deck</button>
+              <button onClick={() => setMode('create')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea deck</button>
+              <button onClick={() => setMode('meta')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'meta' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Deck meta</button>
             </div>
           </div>
         </section>
 
-        {mode === 'home' ? (
-          <section className="mt-4 grid gap-4 lg:grid-cols-2">
-            <button
-              onClick={() => setMode('create')}
-              className="group overflow-hidden rounded-[1.8rem] border border-cyan-200/20 bg-slate-900/78 p-4 text-left shadow-2xl shadow-black/20 transition hover:-translate-y-0.5 hover:border-cyan-200/50 sm:p-5"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="grid h-12 w-12 place-items-center rounded-2xl bg-cyan-300 text-slate-950">
-                    <Plus size={24} />
-                  </div>
-                  <h2 className="mt-5 text-2xl font-black text-white">Crea deck</h2>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-300">
-                    Cerca carte, scegli il leader e tieni il deck sempre visibile nella barra in basso mentre lo costruisci.
-                  </p>
-                </div>
-                <span className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-3 py-1 text-xs font-black text-cyan-100">
-                  {savedDecks.length} salvati
-                </span>
+        {mode === 'saved' ? (
+          <section className="mt-4 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+                <LibraryBig size={15} />I miei deck
               </div>
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                {(leader ? [leader, ...deckCards] : deckCards).slice(0, 3).map(card => (
-                  <CardImage key={card.card_id} src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
-                ))}
-                {deckCards.length === 0 && [0, 1, 2].map(item => (
-                  <div key={item} className="aspect-[3/4] rounded-2xl border border-dashed border-slate-700 bg-slate-950/50" />
-                ))}
-              </div>
-            </button>
+              <button onClick={() => setMode('create')} className="rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 active:scale-95">
+                Crea deck
+              </button>
+            </div>
 
-            <button
-              onClick={() => setMode('meta')}
-              className="group overflow-hidden rounded-[1.8rem] border border-amber-200/20 bg-slate-900/78 p-4 text-left shadow-2xl shadow-black/20 transition hover:-translate-y-0.5 hover:border-amber-200/50 sm:p-5"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-200 text-slate-950">
-                    <Trophy size={24} />
-                  </div>
-                  <h2 className="mt-5 text-2xl font-black text-white">Deck meta</h2>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-300">
-                    Apri le liste recenti, guarda leader e main deck come una lista salvata e prendi spunto senza mischiare tutto col builder.
-                  </p>
-                </div>
-                <span className="rounded-full border border-amber-200/20 bg-amber-200/10 px-3 py-1 text-xs font-black text-amber-100">
-                  Limitless
-                </span>
+            {savedDecks.length === 0 ? (
+              <div className="rounded-[1.5rem] border border-dashed border-slate-700 bg-slate-950/55 p-5 text-center">
+                <p className="text-lg font-black text-white">Nessun deck salvato</p>
+                <p className="mt-2 text-sm text-slate-400">Crea il primo deck e lo ritroverai qui.</p>
+                <button onClick={() => setMode('create')} className="mt-4 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Crea deck</button>
               </div>
-              <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-950/55 p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Apri e confronta</p>
-                <p className="mt-2 text-sm text-slate-300">I deck meta si aprono nello stesso viewer dei tuoi deck salvati.</p>
-              </div>
-            </button>
-
-            {savedDecks.length > 0 && (
-              <div className="lg:col-span-2 rounded-[1.6rem] border border-white/10 bg-slate-900/72 p-4 backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-white">Ultimi deck salvati</p>
-                  <button onClick={() => setMode('create')} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950">Modifica</button>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {savedDecks.slice(0, 3).map(deck => (
-                    <button key={deck.id} onClick={() => setOpenDeck(deck)} className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-2 text-left">
-                      {deck.leader ? <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-16 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-950" /> : <div className="h-16 w-11 shrink-0 rounded-xl border border-dashed border-slate-700" />}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-white">{deck.name}</p>
-                        <p className="text-[10px] text-slate-500">{deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50 - {deck.leader?.name || 'No leader'}</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {savedDecks.map(deck => {
+                  const mainCountSaved = deck.cards.reduce((sum, card) => sum + card.quantity, 0)
+                  const uniqueCount = deck.cards.length
+                  return (
+                    <article key={deck.id} className="overflow-hidden rounded-[1.5rem] border border-slate-700 bg-slate-950/65 p-3">
+                      <button onClick={() => setOpenDeck(deck)} className="w-full text-left">
+                        <div className="flex gap-3">
+                          {deck.leader ? (
+                            <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-28 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-900" />
+                          ) : (
+                            <div className="grid h-28 w-20 shrink-0 place-items-center rounded-2xl border border-dashed border-slate-700 text-[10px] text-slate-500">Leader</div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-lg font-black text-white">{deck.name}</p>
+                            <p className="mt-1 truncate text-xs text-slate-400">{deck.leader?.name || 'No leader'}</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{mainCountSaved}/50</span>
+                              <span className="rounded-full bg-white/8 px-2 py-1 text-[10px] font-black text-slate-200">{uniqueCount} uniche</span>
+                            </div>
+                            <p className="mt-3 text-[10px] text-slate-500">{new Date(deck.updatedAt).toLocaleDateString('it-IT')}</p>
+                          </div>
+                        </div>
+                      </button>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <button onClick={() => setOpenDeck(deck)} className="rounded-xl border border-slate-700 bg-slate-900 px-2 py-2 text-[10px] font-black text-slate-200">Apri</button>
+                        <button onClick={() => loadDeck(deck)} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-2 py-2 text-[10px] font-black text-cyan-100">Modifica</button>
+                        <button onClick={() => deleteDeck(deck.id)} className="rounded-xl border border-rose-300/25 bg-rose-400/10 px-2 py-2 text-[10px] font-black text-rose-100">Elimina</button>
                       </div>
-                    </button>
-                  ))}
-                </div>
+                    </article>
+                  )
+                })}
               </div>
             )}
           </section>
@@ -424,26 +389,24 @@ export default function DeckBuilderPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cerca carta da aggiungere"
+                    placeholder="Cerca nel catalogo carte"
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-10 py-3 text-sm text-white outline-none focus:border-cyan-300"
                   />
-                </div>
-                <div className="grid grid-cols-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black">
-                  <button onClick={() => setActiveSource('collection')} className={`rounded-xl px-3 py-2 ${activeSource === 'collection' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Mie</button>
-                  <button onClick={() => setActiveSource('catalog')} className={`rounded-xl px-3 py-2 ${activeSource === 'catalog' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Catalogo</button>
                 </div>
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6">
                 {loadingSearch ? (
                   <p className="col-span-full rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Ricerca...</p>
+                ) : !search.trim() ? (
+                  <p className="col-span-full rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Cerca una carta per aggiungerla al deck.</p>
                 ) : availableCards.map(card => {
                   const isLeader = (card.card_type || '').toLowerCase().includes('leader')
                   const copies = baseCounts[baseCardId(card.card_id)] || 0
                   const canAdd = !isLeader && !isDonCard(card) && copies < 4 && mainCount < 50
 
                   return (
-                    <div key={`${card.card_id}-${activeSource}`} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
+                    <div key={card.card_id} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
                       {copies > 0 && <div className="absolute right-3 top-3 z-10 rounded-full border border-cyan-100/40 bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg">x{copies}</div>}
                       <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-900" />
                       <p className="mt-2 truncate text-xs font-black text-white">{card.name}</p>
@@ -463,14 +426,6 @@ export default function DeckBuilderPage() {
             </section>
 
             <aside className="space-y-4">
-              <div className="rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-4 backdrop-blur-xl">
-                <label className="block text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Nome deck</label>
-                <input value={deckName} onChange={(event) => setDeckName(event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-bold text-white outline-none focus:border-cyan-300" />
-                <button onClick={saveCurrentDeck} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg">
-                  <Save size={16} />Salva deck
-                </button>
-              </div>
-
               <div className="rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-4 backdrop-blur-xl">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200"><LibraryBig size={15} />I miei deck</div>
                 <div className="mt-3 space-y-2">
@@ -522,6 +477,18 @@ export default function DeckBuilderPage() {
 
       {mode === 'create' && (
         <div className="fixed inset-x-0 z-40 mx-auto w-[min(calc(100%-1rem),980px)] rounded-[1.6rem] border border-white/14 bg-[#173842]/94 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-3" style={{ bottom: 'calc(max(0.5rem, env(safe-area-inset-bottom)) + 4.8rem)' }}>
+          <div className="mb-2 grid grid-cols-[1fr_auto] gap-2">
+            <input
+              value={deckName}
+              onChange={(event) => setDeckName(event.target.value)}
+              className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-black text-white outline-none focus:border-cyan-200"
+              aria-label="Nome deck"
+            />
+            <button onClick={saveCurrentDeck} className="flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 shadow-lg active:scale-95">
+              <Save size={16} />
+              <span className="hidden sm:inline">Salva</span>
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             {leader ? <CardImage src={leader.image_url} cardId={leader.card_id} alt={leader.name || 'Leader'} className="h-16 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-950" /> : <div className="grid h-16 w-11 shrink-0 place-items-center rounded-xl border border-dashed border-slate-600 text-[9px] text-slate-400">Lead</div>}
             <div className="min-w-0 flex-1">
@@ -540,7 +507,6 @@ export default function DeckBuilderPage() {
                 ))}
               </div>
             </div>
-            <button onClick={saveCurrentDeck} className="hidden rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 sm:flex">Salva</button>
           </div>
         </div>
       )}

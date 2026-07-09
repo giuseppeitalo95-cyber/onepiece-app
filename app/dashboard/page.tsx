@@ -197,7 +197,10 @@ export default function Dashboard() {
     value == null
       ? '—'
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
-  const displayCardId = (value?: string | null) => (value || '').replace(/_p\d+$/i, '')
+  const displayCardId = (value?: string | null) =>
+    (value || '')
+      .replace(/_p\d+$/i, '')
+      .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
     if (!price || (price.originalCurrency !== 'EUR' && price.currency !== 'EUR')) return null
     return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
@@ -770,15 +773,10 @@ export default function Dashboard() {
       <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 pointer-events-none sm:bottom-28">
         <button
           onClick={() => setAddOpen(true)}
-          className="pointer-events-auto group flex items-center gap-3 rounded-full border border-cyan-200/50 bg-gradient-to-r from-cyan-300 to-rose-300 px-4 py-2.5 text-slate-950 shadow-[0_18px_44px_rgba(0,0,0,0.45)] transition hover:scale-[1.03] hover:shadow-cyan-950/40 sm:px-5 sm:py-3"
+          className="pointer-events-auto group grid h-16 w-16 place-items-center rounded-full border border-cyan-200/50 bg-gradient-to-r from-cyan-300 to-rose-300 text-slate-950 shadow-[0_18px_44px_rgba(0,0,0,0.45)] transition hover:scale-[1.04] hover:shadow-cyan-950/40 active:scale-95"
+          aria-label="Aggiungi carta"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950/12 ring-1 ring-slate-950/10 sm:h-11 sm:w-11">
-            <Plus className="text-slate-950 sm:h-6 sm:w-6" size={22} />
-          </div>
-
-          <span className="text-sm font-black sm:text-base">
-            Aggiungi carta
-          </span>
+          <Plus className="text-slate-950" size={30} strokeWidth={3} />
         </button>
       </div>
 {catalogOpen && (

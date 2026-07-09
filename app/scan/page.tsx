@@ -60,6 +60,8 @@ export default function ScanPage() {
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
+  const [recognitionVariants, setRecognitionVariants] = useState<ScannedCard[]>([])
+  const [recognitionVariantsLoading, setRecognitionVariantsLoading] = useState(false)
   const [opencvReady, setOpencvReady] = useState(false)
   const [ocrReady] = useState(true)
   const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
@@ -295,6 +297,18 @@ export default function ScanPage() {
       .replace(/[^a-z0-9]/g, '')
       .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
   }
+  const displayCardId = (value?: string | null) =>
+    (value || '')
+      .replace(/_p\d+$/i, '')
+      .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
+
+  const variantLabel = (card: ScannedCard) => {
+    const variant = card.card_id.match(/_p(\d+)$/i)?.[1] || card.card_id.match(/(?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}p(\d+)$/i)?.[1]
+    if (variant) return `Alt ${variant}`
+    const rarity = (card.rarity || '').toUpperCase()
+    if (['SEC', 'SP', 'TR', 'MANGA'].some(label => rarity.includes(label))) return rarity
+    return 'Base'
+  }
 
   const cardImageSrc = (url?: string | null) => {
     if (!url) return ''
@@ -371,6 +385,53 @@ export default function ScanPage() {
     market_price: null,
     inventory_price: null,
   })
+
+  useEffect(() => {
+    if (!pendingRecognition?.card_id) {
+      setRecognitionVariants([])
+      setRecognitionVariantsLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    const loadVariants = async () => {
+      setRecognitionVariantsLoading(true)
+      try {
+        const res = await fetch(`/api/cards/search?q=${encodeURIComponent(displayCardId(pendingRecognition.card_id))}`)
+        const data = await res.json()
+        const variants = (Array.isArray(data) ? data : [])
+          .map((card: ReferenceCard) => toScannedCard(card))
+          .filter((card: ScannedCard) => baseCardCode(card.card_id) === baseCardCode(pendingRecognition.card_id))
+
+        const seen = new Set<string>()
+        const unique = [pendingRecognition, ...variants]
+          .filter(card => {
+            const key = card.card_id
+            if (!key || seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .sort((a, b) => {
+            const aVariant = /_p\d+$/i.test(a.card_id) ? 1 : 0
+            const bVariant = /_p\d+$/i.test(b.card_id) ? 1 : 0
+            return aVariant - bVariant || a.card_id.localeCompare(b.card_id)
+          })
+
+        if (!cancelled) setRecognitionVariants(unique)
+      } catch {
+        if (!cancelled) setRecognitionVariants([pendingRecognition])
+      } finally {
+        if (!cancelled) setRecognitionVariantsLoading(false)
+      }
+    }
+
+    loadVariants()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pendingRecognition?.card_id])
 
   const findBestReferenceMatch = async (ocrText: string, cropCanvas: HTMLCanvasElement) => {
     const cardCode = extractCardCode(ocrText)
@@ -593,6 +654,18 @@ export default function ScanPage() {
     } catch {
       return card
     }
+  }
+
+  const selectRecognitionVariant = async (variant: ScannedCard) => {
+    if (pendingRecognition?.card_id === variant.card_id) return
+
+    setRecognitionMessage(`Variante selezionata: ${variantLabel(variant)}. Recupero prezzo live...`)
+    const pricedVariant = await enrichCardWithLivePrice({
+      ...variant,
+      id: pendingRecognition?.id || variant.id
+    })
+    setPendingRecognition(pricedVariant)
+    setRecognitionMessage(`Carta trovata: ${pricedVariant.name}. Conferma o scarta.`)
   }
 
   const compareImageToCandidate = async (sourceCanvas: HTMLCanvasElement, candidateUrl: string) => {
@@ -1582,7 +1655,7 @@ export default function ScanPage() {
                         <p className="text-2xl font-black text-cyan-200">{formatPrice(currentCardValue)}</p>
                         <p className="mt-2 text-base font-extrabold text-white">{currentCard.name}</p>
                         <div className="mt-1 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                          <span>{currentCard.card_id}</span>
+                          <span>{displayCardId(currentCard.card_id)}</span>
                           <span className="rounded-full border border-slate-700 px-2 py-1">{carouselIndex + 1} / {scannedCards.length}</span>
                         </div>
                       </div>
@@ -1628,10 +1701,38 @@ export default function ScanPage() {
               <div className="w-full max-w-[420px] rounded-[28px] border border-amber-400/30 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                 <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
                 <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
-                <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{pendingRecognition.card_id}</p>
+                <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{displayCardId(pendingRecognition.card_id)}</p>
                 <div className="mt-4">
                   {renderCardImage(pendingRecognition, 'h-[52vh] min-h-[300px] max-h-[430px] w-full rounded-[24px] border border-slate-700')}
                 </div>
+                {recognitionVariants.length > 1 && (
+                  <div className="mt-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Variante</p>
+                      {recognitionVariantsLoading && <span className="text-[10px] text-slate-500">Carico...</span>}
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {recognitionVariants.map(variant => {
+                        const selected = variant.card_id === pendingRecognition.card_id
+                        return (
+                          <button
+                            key={variant.card_id}
+                            onClick={() => selectRecognitionVariant(variant)}
+                            className={`w-[82px] shrink-0 rounded-2xl border p-1.5 text-left transition ${
+                              selected
+                                ? 'border-cyan-200 bg-cyan-300/15 shadow-[0_0_22px_rgba(103,232,249,0.25)]'
+                                : 'border-slate-700 bg-slate-950/70 hover:border-slate-500'
+                            }`}
+                          >
+                            {renderCardImage(variant, 'aspect-[3/4] w-full rounded-xl bg-slate-950')}
+                            <p className={`mt-1 truncate text-[10px] font-black ${selected ? 'text-cyan-100' : 'text-slate-200'}`}>{variantLabel(variant)}</p>
+                            <p className="truncate text-[9px] text-slate-500">{variant.rarity || '-'}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
                   <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore live</p>
                   <p className="mt-1 text-2xl font-black text-cyan-200">

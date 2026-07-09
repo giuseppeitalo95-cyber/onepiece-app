@@ -34,6 +34,10 @@ export default function AddCard() {
   const [reportCardNumber, setReportCardNumber] = useState('')
   const [reportStatus, setReportStatus] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const displayCardId = (value?: string | null) =>
+    (value || '')
+      .replace(/_p\d+$/i, '')
+      .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
 
   // USER
   useEffect(() => {
@@ -292,7 +296,7 @@ useEffect(() => {
               <p className="text-xs text-gray-400">
                 {card.rarity} • {card.card_color}
               </p>
-              <p className="text-[10px] text-gray-500">{card.id}</p>
+              <p className="text-[10px] text-gray-500">{displayCardId(card.id)}</p>
             </div>
 
             <button
