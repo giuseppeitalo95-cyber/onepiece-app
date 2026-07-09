@@ -43,6 +43,33 @@ type OptcgCardPrice = {
   date_scraped?: string | null
 }
 
+type CardmarketApiCard = {
+  id?: number | string | null
+  name?: string | null
+  name_numbered?: string | null
+  card_number?: string | null
+  rarity?: string | null
+  cardmarket_id?: number | string | null
+  prices?: {
+    cardmarket?: {
+      currency?: string | null
+      lowest_near_mint?: number | string | null
+      lowest_near_mint_IT?: number | string | null
+      lowest_near_mint_DE?: number | string | null
+      lowest_near_mint_FR?: number | string | null
+      lowest_near_mint_ES?: number | string | null
+      '7d_average'?: number | string | null
+      '30d_average'?: number | string | null
+    }
+  }
+  episode?: {
+    name?: string | null
+    code?: string | null
+  }
+  image?: string | null
+  tcggo_url?: string | null
+}
+
 const CATEGORY_ID = 68
 const PRICE_CACHE_MS = 5 * 60 * 1000
 
@@ -135,6 +162,138 @@ const convertUsdToEur = (value?: number | null, rate = 1) =>
 const toNumberOrNull = (value?: number | string | null) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : null
+}
+
+const getCardmarketApiKey = () =>
+  process.env.CARDMARKET_RAPIDAPI_KEY ||
+  process.env.TCGGO_RAPIDAPI_KEY ||
+  process.env.RAPIDAPI_KEY ||
+  ''
+
+const getCardmarketApiHosts = () => {
+  const customHost = process.env.CARDMARKET_RAPIDAPI_HOST || process.env.TCGGO_RAPIDAPI_HOST
+  return [
+    customHost,
+    'cardmarket-api-tcg.p.rapidapi.com'
+  ].filter(Boolean) as string[]
+}
+
+const getCardmarketApiUrls = (host: string, search: string) => {
+  const customBase = process.env.CARDMARKET_API_BASE_URL || process.env.TCGGO_API_BASE_URL
+  const encodedSearch = encodeURIComponent(search)
+  const bases = customBase
+    ? [customBase.replace(/\/$/, '')]
+    : [
+        `https://${host}/one-piece`,
+        `https://${host}/onepiece`,
+        `https://${host}`
+      ]
+
+  return bases.flatMap(base => [
+    `${base}/cards?search=${encodedSearch}`,
+    `${base}/cards?q=${encodedSearch}`
+  ])
+}
+
+const fetchCardmarketApi = async (url: string, host: string, key: string) => {
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'OnePieceVault/1.0',
+      'X-RapidAPI-Key': key,
+      'X-RapidAPI-Host': host,
+      'rapidapi-key': key
+    },
+    next: { revalidate: 300 }
+  } as RequestInit & { next: { revalidate: number } })
+
+  if (!res.ok) throw new Error(`Cardmarket API ${res.status}`)
+  return res.json()
+}
+
+const unpackCardmarketResults = (data: unknown): CardmarketApiCard[] => {
+  if (Array.isArray(data)) return data as CardmarketApiCard[]
+  if (data && typeof data === 'object') {
+    const object = data as Record<string, unknown>
+    for (const key of ['results', 'data', 'cards', 'items']) {
+      if (Array.isArray(object[key])) return object[key] as CardmarketApiCard[]
+    }
+    if (object.card_number || object.prices) return [object as CardmarketApiCard]
+  }
+  return []
+}
+
+const selectCardmarketCard = (cards: CardmarketApiCard[], input: PriceLookupInput) => {
+  const wantedId = baseCardId(input.cardId)
+  const wantedName = normalize(input.name)
+
+  return cards
+    .map(card => {
+      const number = baseCardId(card.card_number)
+      const name = normalize([card.name_numbered, card.name].filter(Boolean).join(' '))
+      let score = 0
+
+      if (wantedId && number === wantedId) score += 100
+      if (wantedId && name.includes(wantedId)) score += 35
+      if (wantedName && name.includes(wantedName)) score += 20
+
+      return { card, score }
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.card || cards[0]
+}
+
+const getCardmarketApiPrice = async (input: PriceLookupInput) => {
+  const key = getCardmarketApiKey()
+  const search = input.cardId || input.name
+  if (!key || !search) return null
+
+  for (const host of getCardmarketApiHosts()) {
+    for (const url of getCardmarketApiUrls(host, search)) {
+      try {
+        const data = await fetchCardmarketApi(url, host, key)
+        const card = selectCardmarketCard(unpackCardmarketResults(data), input)
+        const cardmarket = card?.prices?.cardmarket
+        if (!card || !cardmarket || cardmarket.currency !== 'EUR') continue
+
+        const italyPrice = toNumberOrNull(cardmarket.lowest_near_mint_IT)
+        const euLowPrice = toNumberOrNull(cardmarket.lowest_near_mint)
+        const sevenDayAverage = toNumberOrNull(cardmarket['7d_average'])
+        const thirtyDayAverage = toNumberOrNull(cardmarket['30d_average'])
+        const marketPrice = italyPrice ?? euLowPrice ?? sevenDayAverage ?? thirtyDayAverage
+        if (marketPrice == null) continue
+
+        return {
+          source: 'Cardmarket EU',
+          provider: 'TCGGO/Cardmarket API',
+          currency: 'EUR',
+          originalCurrency: 'EUR',
+          exchangeRate: 1,
+          productId: card.cardmarket_id || card.id || card.card_number || input.cardId || null,
+          productUrl: card.tcggo_url || url,
+          productImageUrl: card.image || null,
+          productName: card.name_numbered || card.name || input.name || null,
+          groupName: card.episode?.name || input.setName || null,
+          marketPrice,
+          lowPrice: euLowPrice ?? marketPrice,
+          midPrice: sevenDayAverage ?? marketPrice,
+          highPrice: null,
+          directLowPrice: italyPrice ?? euLowPrice ?? marketPrice,
+          originalMarketPrice: marketPrice,
+          originalLowPrice: euLowPrice ?? marketPrice,
+          originalMidPrice: sevenDayAverage ?? marketPrice,
+          originalHighPrice: null,
+          originalDirectLowPrice: italyPrice ?? euLowPrice ?? marketPrice,
+          priceType: card.rarity || null,
+          modifiedOn: new Date().toISOString().slice(0, 10)
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  return null
 }
 
 const getOptcgEndpoint = (cardId?: string | null) => {
@@ -262,8 +421,13 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
 }
 
 export const getLiveCardPrice = async (input: PriceLookupInput) => {
+  const cardmarketPrice = await getCardmarketApiPrice(input)
+  if (cardmarketPrice) return cardmarketPrice
+
   const optcgPrice = await getOptcgPrice(input)
   if (optcgPrice) return optcgPrice
+
+  if (process.env.ALLOW_US_PRICE_FALLBACK !== 'true') return null
 
   const groups = await selectGroups(input)
   let best: { product: TcgProduct; price: TcgPrice | null; score: number; group: TcgGroup } | null = null

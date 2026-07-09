@@ -104,6 +104,21 @@ useEffect(() => {
 
     setAddingId(card.id)
 
+    let euPrice: number | null = null
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.id)
+      params.set('name', card.name)
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      const price = data?.price
+      euPrice = price?.originalCurrency === 'USD'
+        ? null
+        : price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
+    } catch {
+      euPrice = null
+    }
+
     const { data: existing } = await supabase
       .from('user_cards')
       .select('id, quantity')
@@ -123,8 +138,8 @@ useEffect(() => {
       card_type: card.card_type ?? null,
       card_cost: card.card_cost ?? null,
       card_power: card.card_power ?? null,
-      market_price: card.market_price ?? null,
-      inventory_price: card.inventory_price ?? null,
+      market_price: euPrice,
+      inventory_price: null,
     }
 
     if (existing) {

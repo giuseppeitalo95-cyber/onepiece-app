@@ -362,8 +362,8 @@ export default function ScanPage() {
     card_cost: candidate.card_cost ?? null,
     card_power: candidate.card_power ?? null,
     set_name: candidate.set_name ?? null,
-    market_price: candidate.market_price ?? null,
-    inventory_price: candidate.inventory_price ?? null,
+    market_price: null,
+    inventory_price: null,
   })
 
   const findBestReferenceMatch = async (ocrText: string, cropCanvas: HTMLCanvasElement) => {
@@ -563,13 +563,16 @@ export default function ScanPage() {
       const data = await res.json()
       const price = data?.price
       if (!price) return card
+      if (price.originalCurrency === 'USD') {
+        return { ...card, market_price: null, inventory_price: null }
+      }
 
       return {
         ...card,
         market_price: price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
         inventory_price: price.lowPrice ?? card.inventory_price ?? null,
         image_url: card.image_url || price.productImageUrl || null,
-        price_source: price.source || 'TCGplayer',
+        price_source: price.source || 'Prezzo EU',
         price_url: price.productUrl || null,
         price_updated_at: price.modifiedOn || null
       }
@@ -680,8 +683,8 @@ export default function ScanPage() {
               card_cost: candidate.card_cost ? Number(candidate.card_cost) : null,
               card_power: candidate.card_power ? Number(candidate.card_power) : null,
               set_name: candidate.set_name ?? null,
-              market_price: candidate.market_price ? Number(candidate.market_price) : null,
-              inventory_price: candidate.inventory_price ? Number(candidate.inventory_price) : null,
+              market_price: null,
+              inventory_price: null,
             },
             score
           }
@@ -1125,8 +1128,8 @@ export default function ScanPage() {
         card_type: card.card_type ?? null,
         card_cost: card.card_cost ? Number(card.card_cost) : null,
         card_power: card.card_power ? Number(card.card_power) : null,
-        market_price: card.market_price ? Number(card.market_price) : null,
-        inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
+        market_price: null,
+        inventory_price: null,
       }
 
       setScannedCards(prev => [...prev, newCard])

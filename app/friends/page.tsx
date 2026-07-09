@@ -29,6 +29,13 @@ type UserCard = {
   inventory_price?: number | null
 }
 
+type LivePriceResult = {
+  marketPrice?: number | null
+  midPrice?: number | null
+  lowPrice?: number | null
+  originalCurrency?: string | null
+}
+
 type FriendRequest = {
   id: string
   requester_id: string
@@ -222,8 +229,18 @@ export default function FriendsPage() {
       .select('card_id, name, image_url, rarity, quantity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
       .eq('user_id', profile.id)
 
-    setSelectedCards(cards ?? [])
-    setSelectedProgress(summarizeProgress(cards ?? []))
+    const baseCards = (cards ?? []).map(card => ({ ...card, market_price: null, inventory_price: null }))
+    setSelectedCards(baseCards)
+    setSelectedProgress(summarizeProgress(baseCards))
+
+    const prices = await fetchEuPricesForCards(baseCards)
+    const pricedCards = baseCards.map(card => {
+      const price = getLivePriceNumber(prices[card.card_id])
+      return price == null ? card : { ...card, market_price: price, inventory_price: null }
+    })
+
+    setSelectedCards(pricedCards)
+    setSelectedProgress(summarizeProgress(pricedCards))
   }
 
   const closeModal = () => {
@@ -240,6 +257,28 @@ export default function FriendsPage() {
           (request.requester_id === selectedProfile.id && request.receiver_id === userId)
       )
     : null
+  const getLivePriceNumber = (price?: LivePriceResult | null) => {
+    if (!price || price.originalCurrency === 'USD') return null
+    return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
+  }
+  const fetchEuPricesForCards = async (cardsToPrice: UserCard[]) => {
+    try {
+      const res = await fetch('/api/cards/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cards: cardsToPrice.map(card => ({
+            cardId: card.card_id,
+            name: card.name
+          }))
+        })
+      })
+      const data = await res.json()
+      return (data?.prices || {}) as Record<string, LivePriceResult | null>
+    } catch {
+      return {}
+    }
+  }
   const friendTotalQuantity = selectedCards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)
   const friendTotalValue = selectedCards.reduce((sum, card) => {
     const price = Number(card.market_price ?? card.inventory_price ?? 0)

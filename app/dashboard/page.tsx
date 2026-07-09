@@ -41,6 +41,15 @@ type CatalogCard = {
   sub_types?: string | null
 }
 
+type LivePriceResult = {
+  marketPrice?: number | null
+  midPrice?: number | null
+  lowPrice?: number | null
+  currency?: string | null
+  originalCurrency?: string | null
+  source?: string | null
+}
+
 export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
@@ -112,10 +121,15 @@ export default function Dashboard() {
       return
     }
 
-    const loadedCards = data || []
+    const loadedCards = (data || []).map(card => ({
+      ...card,
+      market_price: null,
+      inventory_price: null
+    }))
     setCards(loadedCards)
     evaluateProgress(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
+    void syncEuPricesForCards(uid, loadedCards)
   }
 
   useEffect(() => {
@@ -184,6 +198,52 @@ export default function Dashboard() {
       ? '—'
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const displayCardId = (value?: string | null) => (value || '').replace(/_p\d+$/i, '')
+  const getLivePriceNumber = (price?: LivePriceResult | null) => {
+    if (!price || price.originalCurrency === 'USD') return null
+    return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
+  }
+
+  const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null; set_name?: string | null }>) => {
+    try {
+      const res = await fetch('/api/cards/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cards: cardsToPrice.map(card => ({
+            cardId: card.card_id,
+            name: card.name,
+            setName: card.set_name
+          }))
+        })
+      })
+      const data = await res.json()
+      return (data?.prices || {}) as Record<string, LivePriceResult | null>
+    } catch {
+      return {}
+    }
+  }
+
+  const syncEuPricesForCards = async (uid: string, cardsToSync: UserCard[]) => {
+    if (cardsToSync.length === 0) return
+
+    const prices = await fetchLivePricesForCards(cardsToSync)
+    const nextCards = cardsToSync.map(card => {
+      const live = getLivePriceNumber(prices[card.card_id])
+      return live == null ? card : { ...card, market_price: live, inventory_price: null }
+    })
+
+    setCards(prev => prev.map(card => nextCards.find(next => next.card_id === card.card_id) || card))
+    evaluateProgress(uid, nextCards, { claimDaily: true })
+
+    const updates = nextCards.filter(card => card.market_price != null)
+    await Promise.all(updates.map(card =>
+      supabase
+        .from('user_cards')
+        .update({ market_price: card.market_price, inventory_price: null })
+        .eq('user_id', uid)
+        .eq('card_id', card.card_id)
+    ))
+  }
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
     try {
@@ -195,7 +255,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/cards/price?${params.toString()}`)
       const data = await res.json()
       const price = data?.price
-      return price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
+      return getLivePriceNumber(price)
     } catch {
       return null
     }
@@ -220,7 +280,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/cards/price?${params.toString()}`)
       const data = await res.json()
       const price = data?.price
-      setLivePrice(price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null)
+      setLivePrice(getLivePriceNumber(price))
     } catch {
       setLivePrice(null)
     }
@@ -300,14 +360,10 @@ export default function Dashboard() {
       .sort((a, b) => ((getSavedPrice(b) || 0) * b.quantity) - ((getSavedPrice(a) || 0) * a.quantity))
       .slice(0, 80)
 
-    const entries = await Promise.all(
-      candidates.map(async (card) => {
-        const price = await fetchLivePriceForCard({ card_id: card.card_id, name: card.name })
-        return [card.card_id, price] as const
-      })
+    const priceResults = await fetchLivePricesForCards(candidates)
+    const liveMap = Object.fromEntries(
+      candidates.map(card => [card.card_id, getLivePriceNumber(priceResults[card.card_id])] as const)
     )
-
-    const liveMap = Object.fromEntries(entries)
     const repairs = candidates.filter(card => isPriceAnomaly(getSavedPrice(card), liveMap[card.card_id]))
 
     if (userId && repairs.length > 0) {
