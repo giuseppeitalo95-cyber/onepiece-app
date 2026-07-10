@@ -196,7 +196,7 @@ export default function Dashboard() {
   const formatPrice = (value?: number | null) =>
     value == null
       ? '—'
-      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const displayCardId = (value?: string | null) =>
     (value || '')
       .replace(/_p\d+$/i, '')
@@ -1103,7 +1103,7 @@ export default function Dashboard() {
             </p>
             <div className="mb-3 grid gap-2 sm:grid-cols-3">
               <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live USD</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live Cardmarket</p>
                 <p className="mt-1 text-xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">

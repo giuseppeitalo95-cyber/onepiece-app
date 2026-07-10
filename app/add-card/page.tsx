@@ -40,7 +40,7 @@ export default function AddCard() {
       .replace(/_p\d+$/i, '')
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
   const formatPrice = (value?: number | null) =>
-    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
 
   // USER
   useEffect(() => {

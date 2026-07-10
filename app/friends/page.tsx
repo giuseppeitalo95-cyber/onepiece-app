@@ -75,6 +75,8 @@ export default function FriendsPage() {
   const [selectedDeckValues, setSelectedDeckValues] = useState<Record<string, number | null>>({})
   const [selectedFriendDeck, setSelectedFriendDeck] = useState<FriendDeck | null>(null)
   const [selectedFriendCard, setSelectedFriendCard] = useState<(UserCard | DeckCard) | null>(null)
+  const [selectedFriendCardPrice, setSelectedFriendCardPrice] = useState<number | null>(null)
+  const [selectedFriendCardPriceLoading, setSelectedFriendCardPriceLoading] = useState(false)
   const [selectedProgress, setSelectedProgress] = useState<ProgressSummary>(emptyProgressSummary())
   const [searchTerm, setSearchTerm] = useState('')
   const [actionMessage, setActionMessage] = useState('')
@@ -244,6 +246,7 @@ export default function FriendsPage() {
     setSelectedDeckValues({})
     setSelectedFriendDeck(null)
     setSelectedFriendCard(null)
+    setSelectedFriendCardPrice(null)
     if (!friendIds.includes(profile.id)) {
       setSelectedCards([])
       setSelectedProgress(emptyProgressSummary())
@@ -293,6 +296,7 @@ export default function FriendsPage() {
     setSelectedDeckValues({})
     setSelectedFriendDeck(null)
     setSelectedFriendCard(null)
+    setSelectedFriendCardPrice(null)
     setSelectedProgress(emptyProgressSummary())
   }
 
@@ -325,6 +329,25 @@ export default function FriendsPage() {
     } catch {
       return {}
     }
+  }
+  const openFriendCard = async (card: UserCard | DeckCard) => {
+    setSelectedFriendCard(card)
+    setSelectedFriendCardPrice(null)
+    setSelectedFriendCardPriceLoading(true)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.card_id)
+      if (card.name) params.set('name', card.name)
+
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      setSelectedFriendCardPrice(getLivePriceNumber(data?.price))
+    } catch {
+      setSelectedFriendCardPrice(null)
+    }
+
+    setSelectedFriendCardPriceLoading(false)
   }
   const loadFriendDeckValues = async (decks: FriendDeck[]) => {
     if (decks.length === 0) return
@@ -359,9 +382,9 @@ export default function FriendsPage() {
     Number(b.market_price ?? b.inventory_price ?? 0) - Number(a.market_price ?? a.inventory_price ?? 0)
   )[0]
   const formatPrice = (value: number) =>
-    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const formatOptionalPrice = (value?: number | null) =>
-    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const displayCardId = (value?: string | null) =>
     (value || '')
       .replace(/_p\d+$/i, '')
@@ -807,7 +830,7 @@ export default function FriendsPage() {
 
                       {friendTopCard ? (
                         <div className="mt-3 flex items-center gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                          <button onClick={() => setSelectedFriendCard(friendTopCard)} className="shrink-0">
+                          <button onClick={() => openFriendCard(friendTopCard)} className="shrink-0">
                             <CardImage src={friendTopCard.image_url} cardId={friendTopCard.card_id} alt={friendTopCard.name || friendTopCard.card_id} className="h-20 w-14 overflow-hidden rounded-xl bg-slate-950" />
                           </button>
                           <div className="min-w-0">
@@ -821,7 +844,7 @@ export default function FriendsPage() {
                       <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                         {selectedCards.map((card) => (
                           <div key={card.card_id} className="rounded-2xl border border-slate-800/70 bg-slate-900/80 p-1.5">
-                            <button onClick={() => setSelectedFriendCard(card)} className="block w-full text-left">
+                            <button onClick={() => openFriendCard(card)} className="block w-full text-left">
                               <CardImage
                                 src={card.image_url}
                                 cardId={card.card_id}
@@ -867,7 +890,7 @@ export default function FriendsPage() {
                 </div>
                 {selectedFriendDeck.leader ? (
                   <>
-                    <button onClick={() => setSelectedFriendCard(selectedFriendDeck.leader)} className="mt-3 block w-full text-left">
+                    <button onClick={() => selectedFriendDeck.leader && openFriendCard(selectedFriendDeck.leader)} className="mt-3 block w-full text-left">
                       <CardImage src={selectedFriendDeck.leader.image_url} cardId={selectedFriendDeck.leader.card_id} alt={selectedFriendDeck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
                     </button>
                     <p className="mt-2 text-sm font-black text-white">{selectedFriendDeck.leader.name}</p>
@@ -890,7 +913,7 @@ export default function FriendsPage() {
                   {selectedFriendDeck.cards.map(card => (
                     <div key={card.card_id} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-1.5">
                       <div className="relative">
-                        <button onClick={() => setSelectedFriendCard(card)} className="block w-full text-left">
+                        <button onClick={() => openFriendCard(card)} className="block w-full text-left">
                           <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
                         </button>
                         <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
@@ -907,14 +930,27 @@ export default function FriendsPage() {
       ) : null}
 
       {selectedFriendCard ? (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/74 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedFriendCard(null)}>
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/74 p-2 backdrop-blur-md sm:items-center sm:p-4"
+          onClick={() => {
+            setSelectedFriendCard(null)
+            setSelectedFriendCardPrice(null)
+          }}
+        >
           <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
                 <h3 className="truncate text-lg font-black text-white">{selectedFriendCard.name || selectedFriendCard.card_id}</h3>
               </div>
-              <button onClick={() => setSelectedFriendCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+              <button
+                onClick={() => {
+                  setSelectedFriendCard(null)
+                  setSelectedFriendCardPrice(null)
+                }}
+                className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100"
+                aria-label="Chiudi carta"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -928,7 +964,7 @@ export default function FriendsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     ['Rarita', selectedFriendCard.rarity || '-'],
-                    ['Prezzo', formatOptionalPrice(selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
+                    ['Prezzo live', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
                     ['Copie', selectedFriendCard.quantity || 1],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">

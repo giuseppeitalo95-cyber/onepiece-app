@@ -1,3 +1,5 @@
+import { getCardmarketExportPrice } from './cardmarketPrices'
+
 type PriceLookupInput = {
   cardId?: string | null
   name?: string | null
@@ -438,7 +440,11 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
 }
 
 export const getLiveCardPrice = async (input: PriceLookupInput) => {
-  const useEuPrices = process.env.PRICE_MARKET === 'EU'
+  const cardmarketExportPrice = await getCardmarketExportPrice(input)
+  if (cardmarketExportPrice) return cardmarketExportPrice
+
+  const useEuPrices = process.env.PRICE_MARKET !== 'US'
+  const allowUsFallback = process.env.PRICE_ALLOW_US_FALLBACK === 'true'
 
   if (useEuPrices) {
     const cardmarketPrice = await getCardmarketApiPrice(input)
@@ -446,6 +452,8 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
 
     const optcgPrice = await getOptcgPrice(input)
     if (optcgPrice) return optcgPrice
+
+    if (!allowUsFallback) return null
   }
 
   const groups = await selectGroups(input)

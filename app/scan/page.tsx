@@ -1405,7 +1405,7 @@ export default function ScanPage() {
   const currentCard = scannedCards[carouselIndex] ?? null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
   const formatPrice = (value: number) =>
-    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const carouselSwipeWidth = 190
   const carouselProgress = Math.max(-1, Math.min(1, -summaryDrag.offset / carouselSwipeWidth))
   const cardMotion = summaryDrag.active ? 'none' : 'transform 260ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 220ms ease'

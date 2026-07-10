@@ -165,6 +165,8 @@ export default function DeckBuilderPage() {
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [openDeck, setOpenDeck] = useState<SavedDeck | null>(null)
   const [selectedCard, setSelectedCard] = useState<DeckCard | null>(null)
+  const [selectedCardPrice, setSelectedCardPrice] = useState<number | null>(null)
+  const [selectedCardPriceLoading, setSelectedCardPriceLoading] = useState(false)
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null)
   const [metaDecks, setMetaDecks] = useState<SavedDeck[]>([])
   const [metaLoading, setMetaLoading] = useState(false)
@@ -352,7 +354,11 @@ export default function DeckBuilderPage() {
   const formatPrice = (value?: number | null) =>
     value == null
       ? '—'
-      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+  const getLivePriceNumber = (price?: LivePriceResult | null) => {
+    if (!price) return null
+    return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
+  }
 
   const deckCardsExpanded = deckCards.flatMap(card =>
     Array.from({ length: card.quantity }, (_, index) => ({ ...card, copyIndex: index }))
@@ -374,6 +380,28 @@ export default function DeckBuilderPage() {
     } catch {
       setDeckStoreReady(false)
     }
+  }
+
+  const openCardDetail = async (card: DeckCard | null) => {
+    if (!card) return
+
+    setSelectedCard(card)
+    setSelectedCardPrice(null)
+    setSelectedCardPriceLoading(true)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.card_id)
+      if (card.name) params.set('name', card.name)
+
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      setSelectedCardPrice(getLivePriceNumber(data?.price))
+    } catch {
+      setSelectedCardPrice(null)
+    }
+
+    setSelectedCardPriceLoading(false)
   }
 
   const addMainCard = (card: DeckCard) => {
@@ -589,7 +617,7 @@ export default function DeckBuilderPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Leader</p>
             {deck.leader ? (
               <>
-                <button onClick={() => setSelectedCard(deck.leader)} className="mt-3 block w-full text-left">
+                <button onClick={() => openCardDetail(deck.leader)} className="mt-3 block w-full text-left">
                   <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
                 </button>
                 <p className="mt-2 text-sm font-black text-white">{deck.leader.name}</p>
@@ -624,7 +652,7 @@ export default function DeckBuilderPage() {
               {deck.cards.filter(card => !isDonCard(card)).map(card => (
                 <div key={card.card_id} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-1.5">
                   <div className="relative">
-                    <button onClick={() => setSelectedCard(card)} className="block w-full text-left">
+                    <button onClick={() => openCardDetail(card)} className="block w-full text-left">
                       <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
                     </button>
                     <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
@@ -743,7 +771,7 @@ export default function DeckBuilderPage() {
                   return (
                     <div key={card.card_id} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
                       {copies > 0 && <div className="absolute right-3 top-3 z-10 rounded-full border border-cyan-100/40 bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg">x{copies}</div>}
-                      <button onClick={() => setSelectedCard(card)} className="block w-full text-left">
+                      <button onClick={() => openCardDetail(card)} className="block w-full text-left">
                         <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-900" />
                       </button>
                       <p className="mt-2 truncate text-xs font-black text-white">{card.name}</p>
@@ -850,14 +878,27 @@ export default function DeckBuilderPage() {
 
       {openDeck && renderDeckModal(openDeck)}
       {selectedCard ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedCard(null)}>
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4"
+          onClick={() => {
+            setSelectedCard(null)
+            setSelectedCardPrice(null)
+          }}
+        >
           <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
                 <h3 className="truncate text-lg font-black text-white">{selectedCard.name || selectedCard.card_id}</h3>
               </div>
-              <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+              <button
+                onClick={() => {
+                  setSelectedCard(null)
+                  setSelectedCardPrice(null)
+                }}
+                className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100"
+                aria-label="Chiudi carta"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -873,7 +914,7 @@ export default function DeckBuilderPage() {
                     ['Rarita', selectedCard.rarity || '-'],
                     ['Colore', selectedCard.card_color || '-'],
                     ['Tipo', selectedCard.card_type || '-'],
-                    ['Prezzo', formatPrice(selectedCard.market_price ?? selectedCard.inventory_price)],
+                    ['Prezzo live', selectedCardPriceLoading ? '...' : formatPrice(selectedCardPrice ?? selectedCard.market_price ?? selectedCard.inventory_price)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
