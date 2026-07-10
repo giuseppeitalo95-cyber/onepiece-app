@@ -35,6 +35,9 @@ type CatalogCard = {
   rarity: string | null
 }
 
+const BOARD_MAX_POSTS = 30
+const BOARD_RETENTION_DAYS = 30
+
 const displayCardId = (value?: string | null) =>
   (value || '')
     .replace(/_p\d+$/i, '')
@@ -148,12 +151,16 @@ export default function BachecaPage() {
   const loadPosts = async (ids: string[]) => {
     if (ids.length === 0) return
 
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - BOARD_RETENTION_DAYS)
+
     const { data, error } = await supabase
       .from('board_posts')
       .select('id, user_id, type, title, message, card_id, card_name, card_code, card_image_url, card_rarity, created_at')
       .in('user_id', ids)
+      .gte('created_at', cutoff.toISOString())
       .order('created_at', { ascending: false })
-      .limit(40)
+      .limit(BOARD_MAX_POSTS)
 
     if (error) {
       setBoardReady(false)
@@ -163,6 +170,33 @@ export default function BachecaPage() {
 
     setBoardReady(true)
     setPosts((data || []) as BoardPost[])
+  }
+
+  const cleanupOwnPosts = async (uid: string) => {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - BOARD_RETENTION_DAYS)
+
+    await supabase
+      .from('board_posts')
+      .delete()
+      .eq('user_id', uid)
+      .lt('created_at', cutoff.toISOString())
+
+    const { data } = await supabase
+      .from('board_posts')
+      .select('id')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .range(BOARD_MAX_POSTS, BOARD_MAX_POSTS + 100)
+
+    const staleIds = (data || []).map(post => post.id).filter(Boolean)
+    if (staleIds.length > 0) {
+      await supabase
+        .from('board_posts')
+        .delete()
+        .eq('user_id', uid)
+        .in('id', staleIds)
+    }
   }
 
   const submitPost = async () => {
@@ -212,6 +246,7 @@ export default function BachecaPage() {
     setCardResults([])
     setSelectedPostCard(null)
     setStatus('Annuncio pubblicato in bacheca.')
+    await cleanupOwnPosts(userId)
     await loadPosts(visibleUserIds)
   }
 
@@ -238,6 +273,9 @@ export default function BachecaPage() {
               <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
                 Annunci, richieste, attivita amici e segnali utili dalla tua crew.
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                Restano visibili gli ultimi {BOARD_MAX_POSTS} annunci degli ultimi {BOARD_RETENTION_DAYS} giorni.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2">
