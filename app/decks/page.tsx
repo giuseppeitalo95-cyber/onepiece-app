@@ -15,6 +15,8 @@ type DeckCard = {
   rarity: string | null
   card_color?: string | null
   card_type?: string | null
+  card_cost?: number | null
+  card_power?: number | null
   market_price?: number | null
   inventory_price?: number | null
   quantity: number
@@ -44,6 +46,8 @@ type SearchCardResponse = {
   rarity?: string | null
   card_color?: string | null
   card_type?: string | null
+  card_cost?: number | string | null
+  card_power?: number | string | null
   market_price?: number | string | null
   inventory_price?: number | string | null
 }
@@ -113,6 +117,8 @@ const toDeckCard = (card: SearchCardResponse | DeckCard, quantity = 1): DeckCard
     rarity: card.rarity || null,
     card_color: card.card_color ?? null,
     card_type: card.card_type ?? null,
+    card_cost: card.card_cost == null ? null : Number(card.card_cost),
+    card_power: card.card_power == null ? null : Number(card.card_power),
     market_price: card.market_price == null ? null : Number(card.market_price),
     inventory_price: card.inventory_price == null ? null : Number(card.inventory_price),
     quantity
@@ -164,6 +170,8 @@ export default function DeckBuilderPage() {
   const [metaLoading, setMetaLoading] = useState(false)
   const [deckValues, setDeckValues] = useState<Record<string, number | null>>({})
   const [deckStoreReady, setDeckStoreReady] = useState(true)
+  const [collectionSavingDeckId, setCollectionSavingDeckId] = useState<string | null>(null)
+  const [collectionMessage, setCollectionMessage] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -450,6 +458,98 @@ export default function DeckBuilderPage() {
     setOpenDeck(copiedDeck)
   }
 
+  const addDeckToCollection = async (deck: SavedDeck) => {
+    if (!userId || collectionSavingDeckId) return
+
+    const cardsToAdd = [
+      ...(deck.leader ? [{ ...deck.leader, quantity: 1 }] : []),
+      ...deck.cards.filter(card => !isDonCard(card))
+    ].filter(card => card.card_id)
+
+    if (cardsToAdd.length === 0) {
+      setCollectionMessage('Questo deck non contiene carte aggiungibili.')
+      return
+    }
+
+    setCollectionSavingDeckId(deck.id)
+    setCollectionMessage('Aggiungo le carte alla collezione...')
+
+    try {
+      const grouped = new Map<string, { card: DeckCard; quantity: number }>()
+      for (const card of cardsToAdd) {
+        const current = grouped.get(card.card_id)
+        grouped.set(card.card_id, {
+          card,
+          quantity: (current?.quantity || 0) + Number(card.quantity || 1)
+        })
+      }
+
+      const cardIds = [...grouped.keys()]
+      const { data: existingCards, error: lookupError } = await supabase
+        .from('user_cards')
+        .select('id, card_id, quantity')
+        .eq('user_id', userId)
+        .in('card_id', cardIds)
+
+      if (lookupError) throw lookupError
+
+      const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
+      const inserts: Array<Record<string, unknown>> = []
+      const updates: Array<Promise<{ error: unknown }>> = []
+
+      grouped.forEach(({ card, quantity }, cardId) => {
+        const payload = {
+          user_id: userId,
+          card_id: card.card_id,
+          name: card.name,
+          image_url: card.image_url,
+          rarity: card.rarity,
+          card_color: card.card_color ?? null,
+          card_type: card.card_type ?? null,
+          card_cost: card.card_cost ?? null,
+          card_power: card.card_power ?? null,
+          market_price: card.market_price ?? null,
+          inventory_price: card.inventory_price ?? null,
+        }
+        const existing = existingById.get(cardId)
+
+        if (existing) {
+          updates.push(Promise.resolve(
+            supabase
+              .from('user_cards')
+              .update({
+                ...payload,
+                quantity: Number(existing.quantity || 0) + quantity
+              })
+              .eq('id', existing.id)
+          ))
+        } else {
+          inserts.push({
+            ...payload,
+            quantity
+          })
+        }
+      })
+
+      const operations = [...updates]
+      if (inserts.length > 0) {
+        operations.push(Promise.resolve(supabase.from('user_cards').insert(inserts)))
+      }
+
+      const results = await Promise.all(operations)
+      const errorResult = results.find(result => result.error)
+      if (errorResult?.error) throw errorResult.error
+
+      const totalQuantity = [...grouped.values()].reduce((sum, item) => sum + item.quantity, 0)
+      setCollectionMessage(`${totalQuantity} carte aggiunte alla collezione.`)
+    } catch (error) {
+      console.error('Deck collection save error:', error)
+      setCollectionMessage('Non sono riuscito ad aggiungere il deck. Riprova quando Supabase torna stabile.')
+    }
+
+    setCollectionSavingDeckId(null)
+  }
+
   const getDeckValue = (deck: SavedDeck) => {
     const liveValue = deckValues[deck.id]
     if (liveValue != null) return liveValue
@@ -500,8 +600,16 @@ export default function DeckBuilderPage() {
             {deck.id.startsWith('meta-') ? (
               <button onClick={() => saveMetaDeckToMine(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Salva nei miei deck</button>
             ) : (
-              <button onClick={() => loadDeck(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Modifica</button>
+              <>
+                <button onClick={() => addDeckToCollection(deck)} disabled={collectionSavingDeckId === deck.id} className="mt-3 w-full rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60">
+                  {collectionSavingDeckId === deck.id ? 'Aggiungo...' : 'Aggiungi alla collezione'}
+                </button>
+                <button onClick={() => loadDeck(deck)} className="mt-2 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Modifica</button>
+              </>
             )}
+            {collectionMessage ? (
+              <p className="mt-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-slate-200">{collectionMessage}</p>
+            ) : null}
           </aside>
           <section>
             <div className="mb-3 flex items-center justify-between">
