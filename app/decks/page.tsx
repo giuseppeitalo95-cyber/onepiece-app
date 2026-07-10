@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Crown, Eye, LibraryBig, Minus, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
+import { Crown, Eye, LibraryBig, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -168,7 +168,9 @@ export default function DeckBuilderPage() {
   const [selectedCardPrice, setSelectedCardPrice] = useState<number | null>(null)
   const [selectedCardPriceLoading, setSelectedCardPriceLoading] = useState(false)
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null)
+  const [deckNameEditing, setDeckNameEditing] = useState(true)
   const [metaDecks, setMetaDecks] = useState<SavedDeck[]>([])
+  const [metaQuery, setMetaQuery] = useState('')
   const [metaLoading, setMetaLoading] = useState(false)
   const [deckValues, setDeckValues] = useState<Record<string, number | null>>({})
   const [deckStoreReady, setDeckStoreReady] = useState(true)
@@ -433,6 +435,7 @@ export default function DeckBuilderPage() {
   const startNewDeck = () => {
     setMode('create')
     setDeckName('Nuovo deck')
+    setDeckNameEditing(true)
     setLeader(null)
     setDeckCards([])
     setEditingDeckId(null)
@@ -450,12 +453,14 @@ export default function DeckBuilderPage() {
     }
     await saveDecks([deck, ...savedDecks.filter(item => item.id !== deck.id && item.name !== deck.name)].slice(0, 80))
     setEditingDeckId(deck.id)
+    setDeckNameEditing(false)
     setOpenDeck(deck)
   }
 
   const loadDeck = (deck: SavedDeck) => {
     setMode('create')
     setDeckName(deck.name)
+    setDeckNameEditing(false)
     setLeader(deck.leader)
     setDeckCards(deck.cards.filter(card => !isDonCard(card)))
     setEditingDeckId(deck.id)
@@ -592,6 +597,17 @@ export default function DeckBuilderPage() {
     return storedValue > 0 ? storedValue : null
   }
 
+  const filteredMetaDecks = metaDecks.filter(deck => {
+    const query = metaQuery.trim().toLowerCase()
+    if (!query) return true
+    return [
+      deck.name,
+      deck.player,
+      deck.placement,
+      deck.leader?.name
+    ].filter(Boolean).join(' ').toLowerCase().includes(query)
+  })
+
   const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
   const pageDescription = mode === 'saved'
     ? 'Tutti i deck salvati, apribili e modificabili.'
@@ -669,7 +685,7 @@ export default function DeckBuilderPage() {
   )
 
   return (
-    <div className={`min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds ${mode === 'create' ? 'pb-56 sm:pb-60' : 'pb-32 sm:pb-36'}`}>
+    <div className={`min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds ${mode === 'create' ? 'pb-72 sm:pb-76' : 'pb-32 sm:pb-36'}`}>
       <Sidebar activePage="decks" />
       <Topbar />
 
@@ -817,23 +833,44 @@ export default function DeckBuilderPage() {
             ) : metaDecks.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Deck meta non disponibili adesso.</p>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {metaDecks.map(deck => (
-                  <button key={deck.id} onClick={() => setOpenDeck(deck)} className="rounded-[1.5rem] border border-slate-700 bg-slate-950/65 p-3 text-left transition hover:border-cyan-300/50">
-                    <div className="flex gap-3">
-                      {deck.leader ? <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-28 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-900" /> : null}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200"><Trophy size={13} />{deck.placement}</div>
-                        <p className="mt-1 truncate text-lg font-black text-white">{deck.name}</p>
-                        <p className="mt-1 truncate text-xs text-slate-400">{deck.player || 'Limitless'}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50</span>
-                          <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</span>
+              <div className="space-y-3">
+                <label className="relative block">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    value={metaQuery}
+                    onChange={(event) => setMetaQuery(event.target.value)}
+                    placeholder="Cerca deck meta per nome, leader o player"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-10 py-3 text-sm text-white outline-none focus:border-cyan-300"
+                  />
+                </label>
+
+                {filteredMetaDecks.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Nessun deck meta trovato con questa ricerca.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredMetaDecks.map(deck => (
+                      <button key={deck.id} onClick={() => setOpenDeck(deck)} className="w-full rounded-[1.35rem] border border-slate-700 bg-slate-950/65 p-2.5 text-left transition hover:border-cyan-300/50">
+                        <div className="flex items-center gap-3">
+                          {deck.leader ? (
+                            <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-24 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-900 sm:h-28 sm:w-20" />
+                          ) : (
+                            <div className="grid h-24 w-16 shrink-0 place-items-center rounded-2xl border border-dashed border-slate-700 text-[9px] text-slate-500 sm:h-28 sm:w-20">Lead</div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200"><Trophy size={13} />{deck.placement || 'Meta'}</div>
+                            <p className="mt-1 truncate text-base font-black text-white sm:text-lg">{deck.name}</p>
+                            <p className="mt-1 truncate text-xs text-slate-400">{deck.player || 'Limitless'} · {deck.leader?.name || 'No leader'}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50</span>
+                              <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[10px] font-black text-slate-200">{deck.cards.length} uniche</span>
+                              <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -843,17 +880,39 @@ export default function DeckBuilderPage() {
       {mode === 'create' && (
         <div className="fixed inset-x-0 z-40 mx-auto w-[min(calc(100%-1rem),980px)] rounded-[1.6rem] border border-white/14 bg-[#173842]/94 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-3" style={{ bottom: 'calc(max(0.5rem, env(safe-area-inset-bottom)) + 4.8rem)' }}>
           <div className="mb-2 grid grid-cols-[1fr_auto] gap-2">
-            <input
-              value={deckName}
-              onChange={(event) => setDeckName(event.target.value)}
-              className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-black text-white outline-none focus:border-cyan-200"
-              aria-label="Nome deck"
-            />
+            {deckNameEditing ? (
+              <input
+                value={deckName}
+                onChange={(event) => setDeckName(event.target.value)}
+                className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-black text-white outline-none focus:border-cyan-200"
+                aria-label="Nome deck"
+              />
+            ) : (
+              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-950/55 px-3 py-2">
+                <span className="min-w-0 truncate text-sm font-black text-white">{deckName}</span>
+                <button
+                  onClick={() => setDeckNameEditing(true)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-100 active:scale-95"
+                  aria-label="Modifica nome deck"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
             <button onClick={saveCurrentDeck} className="flex items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 shadow-lg active:scale-95">
               <Save size={16} />
               <span className="hidden sm:inline">Salva</span>
             </button>
           </div>
+          <label className="relative mb-2 block">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Cerca carta da aggiungere"
+              className="w-full rounded-2xl border border-white/10 bg-slate-950/55 py-2.5 pl-10 pr-3 text-sm text-white outline-none focus:border-cyan-200"
+            />
+          </label>
           <div className="flex items-center gap-3">
             {leader ? <CardImage src={leader.image_url} cardId={leader.card_id} alt={leader.name || 'Leader'} className="h-16 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-950" /> : <div className="grid h-16 w-11 shrink-0 place-items-center rounded-xl border border-dashed border-slate-600 text-[9px] text-slate-400">Lead</div>}
             <div className="min-w-0 flex-1">

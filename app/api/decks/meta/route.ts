@@ -30,7 +30,7 @@ const parseDeckSummary = (html: string) => {
   const rowRegex = /<tr>\s*<td>([^<]+)<\/td>\s*<td><a href="\/decks\/list\/(\d+)">([\s\S]*?)<\/a><\/td>\s*<\/tr>/g
   let match: RegExpExecArray | null
 
-  while ((match = rowRegex.exec(html)) && decks.length < 12) {
+  while ((match = rowRegex.exec(html)) && decks.length < 36) {
     const [, placement, id, rawTitle] = match
     const title = decodeHtml(rawTitle.replace(/<span class="annotation">[\s\S]*?<\/span>/, ''))
     const player = decodeHtml(rawTitle.match(/<span class="annotation">by ([\s\S]*?)<\/span>/)?.[1] || '')
@@ -93,7 +93,7 @@ export async function GET() {
     const summaries = parseDeckSummary(listHtml)
 
     const decks = await Promise.all(
-      summaries.slice(0, 8).map(async summary => {
+      summaries.slice(0, 28).map(async summary => {
         const detailRes = await fetch(summary.url, {
           headers: { 'User-Agent': 'OnePieceVault/1.0' },
           next: { revalidate: 900 }
