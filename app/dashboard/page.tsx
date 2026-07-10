@@ -997,7 +997,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <TrendingUp className="text-emerald-200" size={18} />
-                <p className="text-sm font-black text-white">Trend live</p>
+                <p className="text-sm font-black text-white">Statistiche collezione live</p>
               </div>
               <button
                 onClick={openAnalytics}
