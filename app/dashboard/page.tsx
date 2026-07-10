@@ -529,7 +529,7 @@ export default function Dashboard() {
                     className="flex h-11 items-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 sm:px-4"
                   >
                     <Search size={17} />
-                    <span className="hidden sm:inline">Catalogo carte</span>
+                    <span className="hidden sm:inline">Cerca carta non posseduta</span>
                     <span className="sm:hidden">Catalogo</span>
                   </button>
                 </div>
