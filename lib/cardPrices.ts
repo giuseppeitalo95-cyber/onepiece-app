@@ -279,7 +279,7 @@ const getCardmarketApiPrice = async (input: PriceLookupInput) => {
         const euLowPrice = toNumberOrNull(cardmarket.lowest_near_mint)
         const sevenDayAverage = toNumberOrNull(cardmarket['7d_average'])
         const thirtyDayAverage = toNumberOrNull(cardmarket['30d_average'])
-        const marketPrice = italyPrice ?? euLowPrice ?? sevenDayAverage ?? thirtyDayAverage
+        const marketPrice = euLowPrice ?? italyPrice ?? sevenDayAverage ?? thirtyDayAverage
         if (marketPrice == null) continue
 
         return {
@@ -297,12 +297,12 @@ const getCardmarketApiPrice = async (input: PriceLookupInput) => {
           lowPrice: euLowPrice ?? marketPrice,
           midPrice: sevenDayAverage ?? marketPrice,
           highPrice: null,
-          directLowPrice: italyPrice ?? euLowPrice ?? marketPrice,
+          directLowPrice: euLowPrice ?? italyPrice ?? marketPrice,
           originalMarketPrice: marketPrice,
           originalLowPrice: euLowPrice ?? marketPrice,
           originalMidPrice: sevenDayAverage ?? marketPrice,
           originalHighPrice: null,
-          originalDirectLowPrice: italyPrice ?? euLowPrice ?? marketPrice,
+          originalDirectLowPrice: euLowPrice ?? italyPrice ?? marketPrice,
           priceType: card.rarity || null,
           modifiedOn: new Date().toISOString().slice(0, 10)
         }

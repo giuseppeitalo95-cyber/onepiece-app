@@ -94,26 +94,6 @@ const baseCardId = (value?: string | null) => {
   return direct ? direct.toUpperCase() : ''
 }
 
-const cardPrefix = (value?: string | null) =>
-  baseCardId(value).match(/^([A-Z]+[0-9]{2})-/)?.[1] || ''
-
-// Cardmarket keeps separate products for English/EU, Asia-region/legal, reprints,
-// and some special releases even when the printed card code is identical.
-// Prefer the regular EU expansion when a code exists in multiple expansions.
-const preferredExpansionIdsByPrefix: Record<string, number[]> = {
-  EB03: [6449, 6379],
-  OP13: [6187, 6277]
-}
-
-const expansionPreferenceScore = (row: PriceRow, input: LookupInput) => {
-  const priority = preferredExpansionIdsByPrefix[cardPrefix(input.cardId)]
-  if (!priority || !row.expansion_id) return 0
-
-  const index = priority.indexOf(row.expansion_id)
-  if (index === -1) return -35
-  return (priority.length - index) * 35
-}
-
 const variantRank = (value?: string | null) => {
   const match = (value || '').match(/(?:_p|p)(\d+)$/i)
   return match ? Number(match[1]) : 0
@@ -141,7 +121,7 @@ const fetchJson = async <T>(url: string): Promise<T> => {
 }
 
 const rowPrice = (row: Pick<PriceRow, 'price_trend' | 'price_low' | 'price_avg'>) =>
-  row.price_trend ?? row.price_low ?? row.price_avg ?? null
+  row.price_low ?? row.price_avg ?? row.price_trend ?? null
 
 const scoreRow = (row: PriceRow, input: LookupInput) => {
   const wantedCardId = baseCardId(input.cardId)
@@ -154,11 +134,9 @@ const scoreRow = (row: PriceRow, input: LookupInput) => {
   if (wantedName && rowName === wantedName) score += 40
   else if (wantedName && rowName.includes(wantedName)) score += 18
 
-  if (row.variant_rank === wantedVariant) score += 50
-  else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 20
-  else if (row.variant_rank > 0) score -= 18
-
-  score += expansionPreferenceScore(row, input)
+  if (row.variant_rank === wantedVariant) score += wantedVariant > 0 ? 70 : 55
+  else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 28
+  else if (row.variant_rank > 0) score -= 35 + row.variant_rank * 10
 
   const price = rowPrice(row)
   if (price != null && price > 0) score += 12
@@ -199,20 +177,25 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     if (!error && Array.isArray(data)) rows = data as PriceRow[]
   }
 
+  const wantedVariant = variantRank(input.cardId)
+
   const best = rows
     .map(row => ({ row, score: scoreRow(row, input) }))
     .filter(item => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
-      const aPrice = rowPrice(a.row) ?? 0
-      const bPrice = rowPrice(b.row) ?? 0
-      if (variantRank(input.cardId) > 0) return bPrice - aPrice
+      if (a.row.variant_rank !== b.row.variant_rank) {
+        return Math.abs(a.row.variant_rank - wantedVariant) - Math.abs(b.row.variant_rank - wantedVariant)
+      }
+      const aPrice = rowPrice(a.row) ?? Number.POSITIVE_INFINITY
+      const bPrice = rowPrice(b.row) ?? Number.POSITIVE_INFINITY
+      if (aPrice !== bPrice) return aPrice - bPrice
       return a.row.product_id - b.row.product_id
-    })[0]?.row
+    })[0]
 
   if (!best) return null
 
-  const marketPrice = rowPrice(best)
+  const marketPrice = rowPrice(best.row)
   if (marketPrice == null) return null
 
   return {
@@ -221,23 +204,23 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     currency: 'EUR',
     originalCurrency: 'EUR',
     exchangeRate: 1,
-    productId: best.product_id,
-    productUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${best.product_id}`,
+    productId: best.row.product_id,
+    productUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${best.row.product_id}`,
     productImageUrl: null,
-    productName: best.product_name,
-    groupName: best.expansion_id ? `Cardmarket expansion ${best.expansion_id}` : input.setName || null,
+    productName: best.row.product_name,
+    groupName: best.row.expansion_id ? `Cardmarket expansion ${best.row.expansion_id}` : input.setName || null,
     marketPrice,
-    lowPrice: best.price_low,
-    midPrice: best.price_avg,
+    lowPrice: best.row.price_low,
+    midPrice: best.row.price_avg,
     highPrice: null,
-    directLowPrice: best.price_low_ex_plus ?? best.price_low,
+    directLowPrice: best.row.price_low_ex_plus ?? best.row.price_low,
     originalMarketPrice: marketPrice,
-    originalLowPrice: best.price_low,
-    originalMidPrice: best.price_avg,
+    originalLowPrice: best.row.price_low,
+    originalMidPrice: best.row.price_avg,
     originalHighPrice: null,
-    originalDirectLowPrice: best.price_low_ex_plus ?? best.price_low,
-    priceType: best.variant_rank > 0 ? `Variant ${best.variant_rank}` : 'Base',
-    modifiedOn: best.source_created_at || best.synced_at
+    originalDirectLowPrice: best.row.price_low_ex_plus ?? best.row.price_low,
+    priceType: best.row.variant_rank > 0 ? `Variant ${best.row.variant_rank}` : 'Base',
+    modifiedOn: best.row.source_created_at || best.row.synced_at
   }
 }
 

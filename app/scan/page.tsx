@@ -641,8 +641,8 @@ export default function ScanPage() {
 
       return {
         ...card,
-        market_price: price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
-        inventory_price: price.lowPrice ?? card.inventory_price ?? null,
+        market_price: price.directLowPrice ?? price.lowPrice ?? price.marketPrice ?? price.midPrice ?? card.market_price ?? null,
+        inventory_price: null,
         image_url: card.image_url || price.productImageUrl || null,
         price_source: price.source || 'Prezzo live',
         price_url: price.productUrl || null,

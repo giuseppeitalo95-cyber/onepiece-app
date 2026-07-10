@@ -45,6 +45,7 @@ type LivePriceResult = {
   marketPrice?: number | null
   midPrice?: number | null
   lowPrice?: number | null
+  directLowPrice?: number | null
   currency?: string | null
   originalCurrency?: string | null
   source?: string | null
@@ -203,7 +204,7 @@ export default function Dashboard() {
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
     if (!price) return null
-    return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
+    return price.directLowPrice ?? price.lowPrice ?? price.marketPrice ?? price.midPrice ?? null
   }
 
   const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null; set_name?: string | null }>) => {

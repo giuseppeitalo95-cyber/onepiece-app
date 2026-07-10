@@ -10,7 +10,7 @@ type PriceRequestCard = {
 }
 
 const priceValue = (price: Awaited<ReturnType<typeof getLiveCardPrice>>) =>
-  price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
+  price?.directLowPrice ?? price?.lowPrice ?? price?.marketPrice ?? price?.midPrice ?? null
 
 export async function POST(req: Request) {
   try {
