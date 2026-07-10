@@ -272,7 +272,7 @@ export default function BachecaPage() {
               </div>
               <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                Annunci, richieste, attivita amici e segnali utili dalla tua crew.
+                Qui troverai tutte le richieste carte dei tuoi amici.
               </p>
               <p className="mt-1 text-xs font-semibold text-slate-500">
                 Restano visibili gli ultimi {BOARD_MAX_POSTS} annunci degli ultimi {BOARD_RETENTION_DAYS} giorni.
@@ -368,7 +368,7 @@ export default function BachecaPage() {
                 ) : null}
               </div>
             )}
-            <textarea value={message} onChange={event => setMessage(event.target.value)} placeholder="Esempio: cerco x2 di questa carta, pago bene, contattatemi." rows={4} className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300" />
+            <textarea value={message} onChange={event => setMessage(event.target.value)} placeholder="Esempio: cerco x2 di questa carta, contattatemi." rows={4} className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300" />
             <button onClick={submitPost} disabled={posting} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60">
               <Send size={16} />
               {posting ? 'Pubblico...' : 'Pubblica'}
@@ -412,7 +412,7 @@ export default function BachecaPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-black text-white">{profile?.username || 'Giocatore'}</span>
-                          <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Cerca</span>
+                          <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Nuovo</span>
                           <span className="text-[10px] text-slate-500">{timeLabel(post.created_at)}</span>
                         </div>
                         <p className="mt-2 text-base font-black text-white">{post.title}</p>
