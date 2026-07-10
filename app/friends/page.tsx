@@ -473,7 +473,7 @@ export default function FriendsPage() {
                           </div>
                           <div className="truncate">
                             <p className="font-semibold text-white truncate">{friend.username || 'Giocatore'}</p>
-                            <p className="text-xs text-slate-500">Amico in comune</p>
+                            <p className="text-xs text-slate-500">Tuo Amico</p>
                           </div>
                         </button>
                       ))}
@@ -573,7 +573,7 @@ export default function FriendsPage() {
                           <p className="font-semibold text-white truncate">{profile.username || 'Giocatore'}</p>
                           <p className="text-[11px] text-slate-500 truncate">
                             {status === 'friend'
-                              ? 'Già vostro amico'
+                              ? 'Già tuo amico'
                               : status === 'sent'
                               ? 'Richiesta inviata'
                               : status === 'incoming'
