@@ -1070,7 +1070,7 @@ export default function Dashboard() {
   >
 
     <div
-      className="w-full max-w-sm sm:max-w-2xl bg-slate-900 rounded-xl border border-slate-700 p-3 sm:p-5 relative max-h-[90vh] overflow-y-auto"
+      className="w-full max-w-sm sm:max-w-2xl lg:max-w-5xl bg-slate-900 rounded-xl border border-slate-700 p-3 sm:p-5 lg:p-6 relative max-h-[90vh] overflow-y-auto"
       onClick={(event) => event.stopPropagation()}
     >
 
@@ -1084,12 +1084,12 @@ export default function Dashboard() {
         ✕
       </button>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+      <div className="grid gap-4 lg:grid-cols-[360px_1fr] xl:grid-cols-[420px_1fr] lg:items-start">
         <CardImage
           src={selectedCard.image_url}
           cardId={selectedCard.card_id}
           alt={selectedCard.name || 'Carta'}
-          className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3"
+          className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3 lg:max-h-[70vh]"
           imgClassName="h-full w-full object-contain"
         />
 
@@ -1101,14 +1101,14 @@ export default function Dashboard() {
             <p className="text-xs uppercase tracking-[0.25em] text-gray-400 mb-3">
               {displayCardId(selectedCard.card_id)}
             </p>
-            <div className="mb-3 grid gap-2 sm:grid-cols-3">
+            <div className="mb-3 grid gap-2 sm:grid-cols-3 lg:gap-3">
               <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live Cardmarket</p>
-                <p className="mt-1 text-xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
+                <p className="mt-1 text-xl font-black text-cyan-200 lg:text-2xl">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Aggiunta</p>
-                <p className="mt-1 text-xl font-black text-white">{formatPrice(selectedSavedPrice)}</p>
+                <p className="mt-1 text-xl font-black text-white lg:text-2xl">{formatPrice(selectedSavedPrice)}</p>
               </div>
               <div className={`rounded-2xl border p-3 ${
                 selectedPriceDelta == null
@@ -1118,7 +1118,7 @@ export default function Dashboard() {
                   : 'border-rose-400/25 bg-rose-400/10'
               }`}>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Differenza</p>
-                <p className={`mt-1 text-xl font-black ${
+                <p className={`mt-1 text-xl font-black lg:text-2xl ${
                   selectedPriceDelta == null
                     ? 'text-slate-300'
                     : selectedPriceDelta >= 0
@@ -1147,7 +1147,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:gap-3">
             {[
               ['Rarita', selectedCard.rarity || '-'],
               ['Colore', selectedCard.card_color || '-'],

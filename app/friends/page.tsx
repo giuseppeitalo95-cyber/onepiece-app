@@ -937,7 +937,7 @@ export default function FriendsPage() {
             setSelectedFriendCardPrice(null)
           }}
         >
-          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
+          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
@@ -954,14 +954,14 @@ export default function FriendsPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr]">
-              <CardImage src={selectedFriendCard.image_url} cardId={selectedFriendCard.card_id} alt={selectedFriendCard.name || selectedFriendCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950" />
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr] lg:grid-cols-[360px_1fr] lg:gap-6 lg:p-5 xl:grid-cols-[420px_1fr]">
+              <CardImage src={selectedFriendCard.image_url} cardId={selectedFriendCard.card_id} alt={selectedFriendCard.name || selectedFriendCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950 lg:max-h-[70vh]" />
               <div className="space-y-3">
                 <div>
                   <p className="text-2xl font-black text-white">{selectedFriendCard.name || 'Carta'}</p>
                   <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedFriendCard.card_id)}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
                     ['Rarita', selectedFriendCard.rarity || '-'],
                     ['Prezzo live', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],

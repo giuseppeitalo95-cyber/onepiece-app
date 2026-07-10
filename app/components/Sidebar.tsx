@@ -34,7 +34,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
 
   return (
     <nav
-      className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-1rem),560px)] items-center justify-between rounded-[1.55rem] border border-white/16 bg-[#1a414b]/90 p-1.5 shadow-[0_18px_38px_rgba(0,0,0,0.24)] backdrop-blur-2xl"
+      className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-0.4rem),680px)] items-center justify-between rounded-[1.55rem] border border-white/16 bg-[#1a414b]/90 p-1 shadow-[0_18px_38px_rgba(0,0,0,0.24)] backdrop-blur-2xl sm:p-1.5"
       style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
     >
       {navItems.map(({ label, href, key, Icon }) => {
@@ -45,7 +45,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
             key={key}
             href={href}
             prefetch
-            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-2 py-2 text-[10px] font-black transition sm:flex-row sm:gap-2 sm:text-xs ${active
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-0.5 py-2 text-[9px] font-black leading-none transition min-[390px]:text-[10px] sm:flex-row sm:gap-2 sm:px-2 sm:text-xs ${active
               ? 'op-nav-active text-slate-950'
               : 'text-slate-300 hover:bg-white/[0.08] hover:text-cyan-50'}`}
             aria-label={label}
@@ -54,7 +54,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
             <span className={`relative flex h-6 w-6 items-center justify-center rounded-full ${active ? 'op-nav-icon bg-white/30' : ''}`}>
               <Icon size={active ? 19 : 18} strokeWidth={active ? 2.9 : 2.2} />
             </span>
-            <span className="relative truncate">{label}</span>
+            <span className="relative max-w-full whitespace-nowrap">{label}</span>
           </Link>
         )
       })}
