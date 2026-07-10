@@ -1512,7 +1512,7 @@ export default function ScanPage() {
                       </div>
                       <div>
                         <p className="text-xl font-semibold text-amber-300">Preview camera</p>
-                        <p className="mt-2 text-sm text-slate-400">Premi avvia scan per iniziare a tracciare i tuoi pacchetti con la telecamere.</p>
+                        <p className="mt-2 text-sm text-slate-400">Premi avvia scan per iniziare a tracciare i tuoi pacchetti con la camera.</p>
                       </div>
                     </div>
                   )}
