@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { House, Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 type NavItem = {
   label: string
@@ -30,9 +32,87 @@ const getPageKey = (pathname: string) => {
   return 'bacheca'
 }
 
+const badgeLabel = (value: number) => value > 9 ? '9+' : String(value)
+
 export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
   const currentPage = getPageKey(pathname || '/bacheca') || activePage || 'bacheca'
+  const [badges, setBadges] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadBadges = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const uid = session?.user?.id
+      if (!uid) {
+        if (!cancelled) setBadges({})
+        return
+      }
+
+      const { count: friendRequestsCount } = await supabase
+        .from('friend_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', uid)
+        .eq('status', 'pending')
+
+      const lastSeenKey = `opv_bacheca_seen_${uid}`
+      const now = new Date().toISOString()
+      let lastSeen = typeof window !== 'undefined' ? window.localStorage.getItem(lastSeenKey) : null
+      if (!lastSeen && typeof window !== 'undefined') {
+        lastSeen = now
+        window.localStorage.setItem(lastSeenKey, now)
+      }
+
+      let boardCount = 0
+      const { data: requests } = await supabase
+        .from('friend_requests')
+        .select('requester_id, receiver_id, status')
+        .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
+        .eq('status', 'accepted')
+
+      const friendIds = (requests || []).map((request: any) =>
+        request.requester_id === uid ? request.receiver_id : request.requester_id
+      )
+
+      if (friendIds.length > 0 && lastSeen) {
+        const { count } = await supabase
+          .from('board_posts')
+          .select('id', { count: 'exact', head: true })
+          .in('user_id', friendIds)
+          .gt('created_at', lastSeen)
+        boardCount = count || 0
+      }
+
+      if (!cancelled) {
+        setBadges({
+          amici: friendRequestsCount || 0,
+          bacheca: boardCount
+        })
+      }
+    }
+
+    loadBadges()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    if (currentPage !== 'bacheca') return
+
+    const markBoardSeen = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const uid = session?.user?.id
+      if (!uid || typeof window === 'undefined') return
+
+      window.localStorage.setItem(`opv_bacheca_seen_${uid}`, new Date().toISOString())
+      setBadges(current => ({ ...current, bacheca: 0 }))
+    }
+
+    markBoardSeen()
+  }, [currentPage])
 
   return (
     <nav
@@ -41,6 +121,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
     >
       {navItems.map(({ label, href, key, Icon }) => {
         const active = currentPage === key
+        const badge = badges[key] || 0
 
         return (
           <Link
@@ -55,8 +136,16 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
             {active && <span className="pointer-events-none absolute inset-0 rounded-[1.15rem] bg-gradient-to-r from-cyan-300 to-rose-300" />}
             <span className={`relative flex h-5 w-5 items-center justify-center rounded-full sm:h-6 sm:w-6 ${active ? 'op-nav-icon bg-white/30' : ''}`}>
               <Icon size={active ? 18 : 17} strokeWidth={active ? 2.9 : 2.2} />
+              {badge > 0 && (
+                <span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-400 px-1 text-[9px] font-black leading-none text-white shadow-[0_0_16px_rgba(251,113,133,0.65)] ring-2 ring-[#1a414b]">
+                  {badgeLabel(badge)}
+                </span>
+              )}
             </span>
-            <span className="relative max-w-full whitespace-nowrap">{label}</span>
+            <span className="relative max-w-full whitespace-nowrap">
+              {label}
+              {badge > 0 && <span className="sr-only">, {badge} notifiche</span>}
+            </span>
           </Link>
         )
       })}
