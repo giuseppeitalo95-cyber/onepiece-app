@@ -68,12 +68,19 @@ export type ProgressSummary = {
   newlyUnlocked: BadgeDefinition[]
 }
 
+const XP_SCALE = 0.12
+const DAILY_LOGIN_XP = 5
+
+const badgeXp = (badge: BadgeDefinition) => Math.max(5, Math.round(badge.xp * XP_SCALE))
+const withScaledXp = (badge: BadgeDefinition): BadgeDefinition => ({
+  ...badge,
+  xp: badgeXp(badge)
+})
+
 const emitUnlockedBadges = (badges: BadgeDefinition[]) => {
   if (typeof window === 'undefined' || badges.length === 0) return
-  window.dispatchEvent(new CustomEvent('opv:badges-unlocked', { detail: { badges } }))
+  window.dispatchEvent(new CustomEvent('opv:badges-unlocked', { detail: { badges: badges.map(withScaledXp) } }))
 }
-
-const DAILY_LOGIN_XP = 25
 
 const todayKey = () => new Date().toISOString().slice(0, 10)
 
@@ -145,7 +152,7 @@ const getDailyStreak = (dates: string[]) => {
 
 const getLevelXp = (level: number) => {
   if (level <= 1) return 0
-  return Math.round(100 * Math.pow(level - 1, 1.45))
+  return Math.round(260 * Math.pow(level - 1, 1.7))
 }
 
 export const getLevelInfo = (xp: number) => {
@@ -346,13 +353,13 @@ export const BADGES: BadgeDefinition[] = [
   { id: 'rarity_manga', title: 'Leggenda Manga', description: 'Aggiungi una carta Manga o Manga Rare.', xp: 1200, code: 'MG', tone: 'rose', category: 'rarity', isUnlocked: s => s.hasRarity('manga') || s.cards.some(card => normalize(card.name).includes('manga')) },
   { id: 'rarity_tr', title: 'Treasure Rare', description: 'Aggiungi una Treasure Rare.', xp: 260, code: 'TR', tone: 'amber', category: 'rarity', isUnlocked: s => s.hasRarity('tr') || s.hasRarity('treasure') },
 
-  { id: 'value_5', title: 'Prima taglia', description: 'Possiedi una carta da almeno 5 euro.', xp: 90, code: '5€', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 5, progress: countProgress(s => Math.floor(s.maxValue), 5) },
-  { id: 'value_20', title: 'Carta importante', description: 'Possiedi una carta da almeno 20 euro.', xp: 240, code: '20', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 20, progress: countProgress(s => Math.floor(s.maxValue), 20) },
-  { id: 'value_50', title: 'Wanted alta', description: 'Possiedi una carta da almeno 50 euro.', xp: 520, code: '50', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 50, progress: countProgress(s => Math.floor(s.maxValue), 50) },
-  { id: 'value_100', title: 'Wanted rossa', description: 'Possiedi una carta da almeno 100 euro.', xp: 1150, code: '100', tone: 'rose', category: 'value', isUnlocked: s => s.maxValue >= 100, progress: countProgress(s => Math.floor(s.maxValue), 100) },
-  { id: 'value_total_100', title: 'Vault 100', description: 'Raggiungi 100 euro di valore stimato.', xp: 280, code: 'V100', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 100, progress: countProgress(s => Math.floor(s.totalValue), 100) },
-  { id: 'value_total_500', title: 'Tesoro serio', description: 'Raggiungi 500 euro di valore stimato.', xp: 900, code: 'V500', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 500, progress: countProgress(s => Math.floor(s.totalValue), 500) },
-  { id: 'value_total_1000', title: 'Tesoro da Yonko', description: 'Raggiungi 1000 euro di valore stimato.', xp: 2100, code: 'V1K', tone: 'rose', category: 'value', isUnlocked: s => s.totalValue >= 1000, progress: countProgress(s => Math.floor(s.totalValue), 1000) },
+  { id: 'value_5', title: 'Prima taglia', description: 'Possiedi una carta da almeno 5 dollari.', xp: 90, code: '$5', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 5, progress: countProgress(s => Math.floor(s.maxValue), 5) },
+  { id: 'value_20', title: 'Carta importante', description: 'Possiedi una carta da almeno 20 dollari.', xp: 240, code: '$20', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 20, progress: countProgress(s => Math.floor(s.maxValue), 20) },
+  { id: 'value_50', title: 'Wanted alta', description: 'Possiedi una carta da almeno 50 dollari.', xp: 520, code: '$50', tone: 'emerald', category: 'value', isUnlocked: s => s.maxValue >= 50, progress: countProgress(s => Math.floor(s.maxValue), 50) },
+  { id: 'value_100', title: 'Wanted rossa', description: 'Possiedi una carta da almeno 100 dollari.', xp: 1150, code: '$100', tone: 'rose', category: 'value', isUnlocked: s => s.maxValue >= 100, progress: countProgress(s => Math.floor(s.maxValue), 100) },
+  { id: 'value_total_100', title: 'Vault 100', description: 'Raggiungi 100 dollari di valore stimato.', xp: 280, code: 'V100', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 100, progress: countProgress(s => Math.floor(s.totalValue), 100) },
+  { id: 'value_total_500', title: 'Tesoro serio', description: 'Raggiungi 500 dollari di valore stimato.', xp: 900, code: 'V500', tone: 'emerald', category: 'value', isUnlocked: s => s.totalValue >= 500, progress: countProgress(s => Math.floor(s.totalValue), 500) },
+  { id: 'value_total_1000', title: 'Tesoro da Yonko', description: 'Raggiungi 1000 dollari di valore stimato.', xp: 2100, code: 'V1K', tone: 'rose', category: 'value', isUnlocked: s => s.totalValue >= 1000, progress: countProgress(s => Math.floor(s.totalValue), 1000) },
 
   { id: 'color_red_10', title: 'Rosso acceso', description: 'Possiedi 10 carte rosse.', xp: 120, code: 'RED', tone: 'rose', category: 'mastery', isUnlocked: s => s.hasColorQuantity('red', 10), progress: countProgress(s => s.colors.red || 0, 10) },
   { id: 'color_green_10', title: 'Verde solido', description: 'Possiedi 10 carte verdi.', xp: 120, code: 'GRN', tone: 'emerald', category: 'mastery', isUnlocked: s => s.hasColorQuantity('green', 10), progress: countProgress(s => s.colors.green || 0, 10) },
@@ -459,10 +466,11 @@ export const evaluateProgress = (
   saveProgressData(userId, progress)
 
   const xp = progress.dailyClaimDates.length * DAILY_LOGIN_XP +
-    BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badge.xp : 0), 0)
+    BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badgeXp(badge) : 0), 0)
   const levelInfo = getLevelInfo(xp)
   const badges = BADGES.map(badge => ({
     ...badge,
+    xp: badgeXp(badge),
     unlocked: unlocked.has(badge.id),
     progressValue: badge.progress?.(stats)
   }))
@@ -471,6 +479,7 @@ export const evaluateProgress = (
     ...badges.filter(badge => !badge.unlocked)
   ]
 
+  const scaledNewlyUnlocked = newlyUnlocked.map(withScaledXp)
   emitUnlockedBadges(newlyUnlocked)
 
   return {
@@ -481,7 +490,7 @@ export const evaluateProgress = (
     unlockedCount: badges.filter(badge => badge.unlocked).length,
     totalBadges: BADGES.length,
     badges: orderedBadges,
-    newlyUnlocked
+    newlyUnlocked: scaledNewlyUnlocked
   }
 }
 
@@ -497,10 +506,11 @@ export const summarizeProgress = (
   }
 
   const xp = progress.dailyClaimDates.length * DAILY_LOGIN_XP +
-    BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badge.xp : 0), 0)
+    BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badgeXp(badge) : 0), 0)
   const levelInfo = getLevelInfo(xp)
   const badges = BADGES.map(badge => ({
     ...badge,
+    xp: badgeXp(badge),
     unlocked: unlocked.has(badge.id),
     progressValue: badge.progress?.(stats)
   }))
@@ -530,7 +540,7 @@ export const emptyProgressSummary = (): ProgressSummary => {
     dailyStreak: 0,
     unlockedCount: 0,
     totalBadges: BADGES.length,
-    badges: BADGES.map(badge => ({ ...badge, unlocked: false, progressValue: { current: 0, target: 1 } })),
+    badges: BADGES.map(badge => ({ ...badge, xp: badgeXp(badge), unlocked: false, progressValue: { current: 0, target: 1 } })),
     newlyUnlocked: []
   }
 }

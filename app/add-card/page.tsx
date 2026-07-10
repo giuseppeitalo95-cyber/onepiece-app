@@ -34,10 +34,13 @@ export default function AddCard() {
   const [reportCardNumber, setReportCardNumber] = useState('')
   const [reportStatus, setReportStatus] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null)
   const displayCardId = (value?: string | null) =>
     (value || '')
       .replace(/_p\d+$/i, '')
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
+  const formatPrice = (value?: number | null) =>
+    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
 
   // USER
   useEffect(() => {
@@ -108,7 +111,7 @@ useEffect(() => {
 
     setAddingId(card.id)
 
-    let euPrice: number | null = null
+    let livePriceForSave: number | null = null
     try {
       const params = new URLSearchParams()
       params.set('cardId', card.id)
@@ -116,11 +119,9 @@ useEffect(() => {
       const res = await fetch(`/api/cards/price?${params.toString()}`)
       const data = await res.json()
       const price = data?.price
-      euPrice = price?.originalCurrency === 'USD'
-        ? null
-        : price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
+      livePriceForSave = price?.marketPrice ?? price?.midPrice ?? price?.lowPrice ?? null
     } catch {
-      euPrice = null
+      livePriceForSave = null
     }
 
     const { data: existing } = await supabase
@@ -142,7 +143,7 @@ useEffect(() => {
       card_type: card.card_type ?? null,
       card_cost: card.card_cost ?? null,
       card_power: card.card_power ?? null,
-      market_price: euPrice,
+      market_price: livePriceForSave,
       inventory_price: null,
     }
 
@@ -282,14 +283,16 @@ useEffect(() => {
             className="flex items-center gap-3 bg-slate-900 rounded-xl p-3"
           >
 
-            <CardImage
-              src={card.image_url}
-              cardId={card.id}
-              alt={card.name}
-              className="h-16 w-12 overflow-hidden rounded bg-gray-700"
-              imgClassName="h-full w-full object-cover"
-              fallbackClassName="flex h-full w-full items-center justify-center text-xs"
-            />
+            <button onClick={() => setSelectedCard(card)} className="shrink-0">
+              <CardImage
+                src={card.image_url}
+                cardId={card.id}
+                alt={card.name}
+                className="h-16 w-12 overflow-hidden rounded bg-gray-700"
+                imgClassName="h-full w-full object-cover"
+                fallbackClassName="flex h-full w-full items-center justify-center text-xs"
+              />
+            </button>
 
             <div className="flex-1">
               <p className="font-bold">{card.name}</p>
@@ -311,6 +314,43 @@ useEffect(() => {
         ))}
 
       </div>
+      {selectedCard ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedCard(null)}>
+          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 p-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
+                <h3 className="truncate text-lg font-black text-white">{selectedCard.name}</h3>
+              </div>
+              <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+                X
+              </button>
+            </div>
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr]">
+              <CardImage src={selectedCard.image_url} cardId={selectedCard.id} alt={selectedCard.name} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950" />
+              <div className="space-y-3">
+                <div>
+                  <p className="text-2xl font-black text-white">{selectedCard.name}</p>
+                  <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedCard.id)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['Rarita', selectedCard.rarity || '-'],
+                    ['Colore', selectedCard.card_color || '-'],
+                    ['Tipo', selectedCard.card_type || '-'],
+                    ['Prezzo', formatPrice(selectedCard.market_price ?? selectedCard.inventory_price)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+                      <p className="mt-1 text-sm font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

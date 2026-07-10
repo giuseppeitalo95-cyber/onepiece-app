@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Check, Heart, Inbox, Search, UserPlus, Users, X } from 'lucide-react'
+import { Check, Crown, Heart, Inbox, LibraryBig, Search, UserPlus, Users, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -36,6 +36,24 @@ type LivePriceResult = {
   originalCurrency?: string | null
 }
 
+type DeckCard = {
+  card_id: string
+  name: string | null
+  image_url: string | null
+  rarity: string | null
+  quantity: number
+  market_price?: number | null
+  inventory_price?: number | null
+}
+
+type FriendDeck = {
+  id: string
+  name: string
+  leader: DeckCard | null
+  cards: DeckCard[]
+  updated_at?: string | null
+}
+
 type FriendRequest = {
   id: string
   requester_id: string
@@ -53,6 +71,10 @@ export default function FriendsPage() {
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [selectedProfile, setSelectedProfile] = useState<ProfileItem | null>(null)
   const [selectedCards, setSelectedCards] = useState<UserCard[]>([])
+  const [selectedDecks, setSelectedDecks] = useState<FriendDeck[]>([])
+  const [selectedDeckValues, setSelectedDeckValues] = useState<Record<string, number | null>>({})
+  const [selectedFriendDeck, setSelectedFriendDeck] = useState<FriendDeck | null>(null)
+  const [selectedFriendCard, setSelectedFriendCard] = useState<(UserCard | DeckCard) | null>(null)
   const [selectedProgress, setSelectedProgress] = useState<ProgressSummary>(emptyProgressSummary())
   const [searchTerm, setSearchTerm] = useState('')
   const [actionMessage, setActionMessage] = useState('')
@@ -218,22 +240,43 @@ export default function FriendsPage() {
 
   const openProfile = async (profile: ProfileItem) => {
     setSelectedProfile(profile)
+    setSelectedDecks([])
+    setSelectedDeckValues({})
+    setSelectedFriendDeck(null)
+    setSelectedFriendCard(null)
     if (!friendIds.includes(profile.id)) {
       setSelectedCards([])
       setSelectedProgress(emptyProgressSummary())
       return
     }
 
-    const { data: cards } = await supabase
-      .from('user_cards')
-      .select('card_id, name, image_url, rarity, quantity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
-      .eq('user_id', profile.id)
+    const [{ data: cards }, { data: decks }] = await Promise.all([
+      supabase
+        .from('user_cards')
+        .select('card_id, name, image_url, rarity, quantity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
+        .eq('user_id', profile.id),
+      supabase
+        .from('user_decks')
+        .select('id, name, leader, cards, updated_at')
+        .eq('user_id', profile.id)
+        .order('updated_at', { ascending: false })
+    ])
 
     const baseCards = (cards ?? []).map(card => ({ ...card, market_price: null, inventory_price: null }))
     setSelectedCards(baseCards)
     setSelectedProgress(summarizeProgress(baseCards))
 
-    const prices = await fetchEuPricesForCards(baseCards)
+    const friendDecks = (decks ?? []).map((deck: any) => ({
+      id: String(deck.id),
+      name: deck.name || 'Deck senza nome',
+      leader: deck.leader || null,
+      cards: Array.isArray(deck.cards) ? deck.cards : [],
+      updated_at: deck.updated_at || null
+    }))
+    setSelectedDecks(friendDecks)
+    void loadFriendDeckValues(friendDecks)
+
+    const prices = await fetchLivePricesForCards(baseCards)
     const pricedCards = baseCards.map(card => {
       const price = getLivePriceNumber(prices[card.card_id])
       return price == null ? card : { ...card, market_price: price, inventory_price: null }
@@ -246,6 +289,10 @@ export default function FriendsPage() {
   const closeModal = () => {
     setSelectedProfile(null)
     setSelectedCards([])
+    setSelectedDecks([])
+    setSelectedDeckValues({})
+    setSelectedFriendDeck(null)
+    setSelectedFriendCard(null)
     setSelectedProgress(emptyProgressSummary())
   }
 
@@ -258,10 +305,10 @@ export default function FriendsPage() {
       )
     : null
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
-    if (!price || price.originalCurrency === 'USD') return null
+    if (!price) return null
     return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
   }
-  const fetchEuPricesForCards = async (cardsToPrice: UserCard[]) => {
+  const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null }>) => {
     try {
       const res = await fetch('/api/cards/prices', {
         method: 'POST',
@@ -279,6 +326,29 @@ export default function FriendsPage() {
       return {}
     }
   }
+  const loadFriendDeckValues = async (decks: FriendDeck[]) => {
+    if (decks.length === 0) return
+
+    const uniqueCards = new Map<string, DeckCard>()
+    decks.forEach(deck => {
+      if (deck.leader) uniqueCards.set(deck.leader.card_id, deck.leader)
+      deck.cards.forEach(card => uniqueCards.set(card.card_id, card))
+    })
+
+    const prices = await fetchLivePricesForCards([...uniqueCards.values()])
+    const values = Object.fromEntries(
+      decks.map(deck => {
+        const total = deck.cards.reduce((sum, card) => {
+          const live = getLivePriceNumber(prices[card.card_id])
+          const price = live ?? card.market_price ?? card.inventory_price ?? 0
+          return sum + Number(price || 0) * Number(card.quantity || 0)
+        }, 0)
+        return [deck.id, total > 0 ? total : null]
+      })
+    )
+
+    setSelectedDeckValues(values)
+  }
   const friendTotalQuantity = selectedCards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)
   const friendTotalValue = selectedCards.reduce((sum, card) => {
     const price = Number(card.market_price ?? card.inventory_price ?? 0)
@@ -289,7 +359,22 @@ export default function FriendsPage() {
     Number(b.market_price ?? b.inventory_price ?? 0) - Number(a.market_price ?? a.inventory_price ?? 0)
   )[0]
   const formatPrice = (value: number) =>
-    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+  const formatOptionalPrice = (value?: number | null) =>
+    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
+  const displayCardId = (value?: string | null) =>
+    (value || '')
+      .replace(/_p\d+$/i, '')
+      .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
+  const getFriendDeckValue = (deck: FriendDeck) => {
+    const liveValue = selectedDeckValues[deck.id]
+    if (liveValue != null) return liveValue
+    const storedValue = deck.cards.reduce((sum, card) => {
+      const price = Number(card.market_price ?? card.inventory_price ?? 0)
+      return sum + price * Number(card.quantity || 0)
+    }, 0)
+    return storedValue > 0 ? storedValue : null
+  }
 
   return (
     <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
@@ -677,9 +762,54 @@ export default function FriendsPage() {
                         ))}
                       </div>
 
+                      <div className="mt-5 rounded-3xl border border-cyan-300/15 bg-cyan-300/[0.08] p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <LibraryBig size={16} className="text-cyan-100" />
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Deck</p>
+                              <p className="text-xs text-slate-400">Deck salvati da questo amico</p>
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[10px] font-black text-slate-200">{selectedDecks.length}</span>
+                        </div>
+
+                        {selectedDecks.length === 0 ? (
+                          <p className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/45 p-3 text-sm text-slate-400">
+                            Nessun deck salvato visibile.
+                          </p>
+                        ) : (
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {selectedDecks.map(deck => (
+                              <button
+                                key={deck.id}
+                                onClick={() => setSelectedFriendDeck(deck)}
+                                className="flex gap-3 rounded-2xl border border-slate-700 bg-slate-950/65 p-2 text-left transition hover:border-cyan-300/45"
+                              >
+                                {deck.leader ? (
+                                  <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-24 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-900" />
+                                ) : (
+                                  <div className="grid h-24 w-16 shrink-0 place-items-center rounded-xl border border-dashed border-slate-700 text-[9px] text-slate-500">Lead</div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-black text-white">{deck.name}</p>
+                                  <p className="mt-1 truncate text-[10px] text-slate-400">{deck.leader?.name || 'No leader'}</p>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{deck.cards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)}/50</span>
+                                    <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatOptionalPrice(getFriendDeckValue(deck))}</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {friendTopCard ? (
                         <div className="mt-3 flex items-center gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                          <CardImage src={friendTopCard.image_url} cardId={friendTopCard.card_id} alt={friendTopCard.name || friendTopCard.card_id} className="h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-950" />
+                          <button onClick={() => setSelectedFriendCard(friendTopCard)} className="shrink-0">
+                            <CardImage src={friendTopCard.image_url} cardId={friendTopCard.card_id} alt={friendTopCard.name || friendTopCard.card_id} className="h-20 w-14 overflow-hidden rounded-xl bg-slate-950" />
+                          </button>
                           <div className="min-w-0">
                             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Carta più alta</p>
                             <p className="mt-1 truncate text-sm font-black text-white">{friendTopCard.name || friendTopCard.card_id}</p>
@@ -691,12 +821,14 @@ export default function FriendsPage() {
                       <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                         {selectedCards.map((card) => (
                           <div key={card.card_id} className="rounded-2xl border border-slate-800/70 bg-slate-900/80 p-1.5">
-                            <CardImage
-                              src={card.image_url}
-                              cardId={card.card_id}
-                              alt={card.name || card.card_id}
-                              className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-800"
-                            />
+                            <button onClick={() => setSelectedFriendCard(card)} className="block w-full text-left">
+                              <CardImage
+                                src={card.image_url}
+                                cardId={card.card_id}
+                                alt={card.name || card.card_id}
+                                className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-800"
+                              />
+                            </button>
                             <p className="mt-1.5 text-xs font-semibold text-white line-clamp-1">{card.name || card.card_id}</p>
                             <p className="text-[10px] text-slate-500">{card.rarity || '—'}</p>
                             <p className="text-[10px] text-amber-300">x{card.quantity}</p>
@@ -710,6 +842,101 @@ export default function FriendsPage() {
                     Solo gli amici possono vedere le carte complete del profilo.
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedFriendDeck ? (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedFriendDeck(null)}>
+          <div className="w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 p-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Deck amico</p>
+                <h3 className="truncate text-lg font-black text-white">{selectedFriendDeck.name}</h3>
+              </div>
+              <button onClick={() => setSelectedFriendDeck(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi deck">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 lg:grid-cols-[230px_1fr]">
+              <aside className="rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">
+                  <Crown size={14} />Leader
+                </div>
+                {selectedFriendDeck.leader ? (
+                  <>
+                    <button onClick={() => setSelectedFriendCard(selectedFriendDeck.leader)} className="mt-3 block w-full text-left">
+                      <CardImage src={selectedFriendDeck.leader.image_url} cardId={selectedFriendDeck.leader.card_id} alt={selectedFriendDeck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
+                    </button>
+                    <p className="mt-2 text-sm font-black text-white">{selectedFriendDeck.leader.name}</p>
+                    <p className="text-[10px] text-slate-400">{displayCardId(selectedFriendDeck.leader.card_id)}</p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-400">Nessun leader salvato.</p>
+                )}
+                <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100/70">Valore stimato</p>
+                  <p className="mt-1 text-lg font-black text-emerald-100">{formatOptionalPrice(getFriendDeckValue(selectedFriendDeck))}</p>
+                </div>
+              </aside>
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-black text-white">{selectedFriendDeck.cards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)}/50 carte</p>
+                  <p className="text-xs text-slate-400">{selectedFriendDeck.updated_at ? new Date(selectedFriendDeck.updated_at).toLocaleDateString('it-IT') : ''}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                  {selectedFriendDeck.cards.map(card => (
+                    <div key={card.card_id} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-1.5">
+                      <div className="relative">
+                        <button onClick={() => setSelectedFriendCard(card)} className="block w-full text-left">
+                          <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
+                        </button>
+                        <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs font-black text-white">{card.name}</p>
+                      <p className="text-[10px] text-slate-500">{displayCardId(card.card_id)}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedFriendCard ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/74 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedFriendCard(null)}>
+          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 p-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
+                <h3 className="truncate text-lg font-black text-white">{selectedFriendCard.name || selectedFriendCard.card_id}</h3>
+              </div>
+              <button onClick={() => setSelectedFriendCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr]">
+              <CardImage src={selectedFriendCard.image_url} cardId={selectedFriendCard.card_id} alt={selectedFriendCard.name || selectedFriendCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950" />
+              <div className="space-y-3">
+                <div>
+                  <p className="text-2xl font-black text-white">{selectedFriendCard.name || 'Carta'}</p>
+                  <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedFriendCard.card_id)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['Rarita', selectedFriendCard.rarity || '-'],
+                    ['Prezzo', formatOptionalPrice(selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
+                    ['Copie', selectedFriendCard.quantity || 1],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+                      <p className="mt-1 text-sm font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

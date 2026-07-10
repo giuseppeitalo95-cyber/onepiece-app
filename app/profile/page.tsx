@@ -394,7 +394,7 @@ export default function Profile() {
                 {[
                   { label: 'Badge', value: `${progress.unlockedCount}/${progress.totalBadges}`, Icon: Award },
                   { label: 'Streak', value: `${progress.dailyStreak}`, Icon: Flame },
-                  { label: 'Daily', value: progress.dailyClaimedToday ? '+25' : '0', Icon: Trophy },
+                  { label: 'Daily', value: progress.dailyClaimedToday ? '+5' : '0', Icon: Trophy },
                 ].map(({ label, value, Icon }) => (
                   <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/52 p-3 text-center">
                     <Icon className="mx-auto text-cyan-200" size={17} />

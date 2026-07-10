@@ -41,9 +41,11 @@ export async function POST(req: Request) {
 
     return Response.json({
       prices,
-      market: 'EU',
-      sourcePriority: ['Cardmarket EU', 'OPTCGAPI daily EUR'],
-      usFallbackEnabled: process.env.ALLOW_US_PRICE_FALLBACK === 'true' && process.env.EU_PRICES_ONLY === 'false'
+      market: process.env.PRICE_MARKET === 'EU' ? 'EU' : 'US',
+      sourcePriority: process.env.PRICE_MARKET === 'EU'
+        ? ['Cardmarket EU', 'OPTCGAPI daily EUR', 'TCGplayer USD']
+        : ['TCGplayer USD'],
+      usFallbackEnabled: true
     })
   } catch (error) {
     console.error('Batch price lookup error:', error)

@@ -15,6 +15,8 @@ type DeckCard = {
   rarity: string | null
   card_color?: string | null
   card_type?: string | null
+  market_price?: number | null
+  inventory_price?: number | null
   quantity: number
 }
 
@@ -28,7 +30,7 @@ type SavedDeck = {
   placement?: string
   source?: string
   sourceUrl?: string
-  eurTotal?: string
+  sourceTotal?: string
 }
 
 type SearchCardResponse = {
@@ -42,6 +44,30 @@ type SearchCardResponse = {
   rarity?: string | null
   card_color?: string | null
   card_type?: string | null
+  market_price?: number | string | null
+  inventory_price?: number | string | null
+}
+
+type DbDeckRow = {
+  id: string
+  user_id: string
+  name: string
+  leader: DeckCard | null
+  cards: DeckCard[] | null
+  source?: string | null
+  source_url?: string | null
+  player?: string | null
+  placement?: string | null
+  meta_total?: string | null
+  updated_at?: string | null
+}
+
+type LivePriceResult = {
+  marketPrice?: number | null
+  midPrice?: number | null
+  lowPrice?: number | null
+  currency?: string | null
+  originalCurrency?: string | null
 }
 
 type Mode = 'saved' | 'create' | 'meta'
@@ -87,9 +113,38 @@ const toDeckCard = (card: SearchCardResponse | DeckCard, quantity = 1): DeckCard
     rarity: card.rarity || null,
     card_color: card.card_color ?? null,
     card_type: card.card_type ?? null,
+    market_price: card.market_price == null ? null : Number(card.market_price),
+    inventory_price: card.inventory_price == null ? null : Number(card.inventory_price),
     quantity
   }
 }
+
+const rowToDeck = (row: DbDeckRow): SavedDeck => ({
+  id: String(row.id),
+  name: row.name || 'Deck senza nome',
+  leader: row.leader || null,
+  cards: Array.isArray(row.cards) ? row.cards : [],
+  updatedAt: row.updated_at || new Date().toISOString(),
+  source: row.source || undefined,
+  sourceUrl: row.source_url || undefined,
+  player: row.player || undefined,
+  placement: row.placement || undefined,
+  sourceTotal: row.meta_total || undefined
+})
+
+const deckToRow = (deck: SavedDeck, uid: string) => ({
+  id: deck.id,
+  user_id: uid,
+  name: deck.name,
+  leader: deck.leader,
+  cards: deck.cards,
+  source: deck.source || null,
+  source_url: deck.sourceUrl || null,
+  player: deck.player || null,
+  placement: deck.placement || null,
+  meta_total: deck.sourceTotal || null,
+  updated_at: deck.updatedAt
+})
 
 export default function DeckBuilderPage() {
   const router = useRouter()
@@ -103,8 +158,12 @@ export default function DeckBuilderPage() {
   const [catalogResults, setCatalogResults] = useState<DeckCard[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
   const [openDeck, setOpenDeck] = useState<SavedDeck | null>(null)
+  const [selectedCard, setSelectedCard] = useState<DeckCard | null>(null)
+  const [editingDeckId, setEditingDeckId] = useState<string | null>(null)
   const [metaDecks, setMetaDecks] = useState<SavedDeck[]>([])
   const [metaLoading, setMetaLoading] = useState(false)
+  const [deckValues, setDeckValues] = useState<Record<string, number | null>>({})
+  const [deckStoreReady, setDeckStoreReady] = useState(true)
 
   useEffect(() => {
     const load = async () => {
@@ -116,16 +175,59 @@ export default function DeckBuilderPage() {
 
       setUserId(session.user.id)
 
-      try {
-        const raw = window.localStorage.getItem(deckStorageKey(session.user.id))
-        setSavedDecks(raw ? JSON.parse(raw) : [])
-      } catch {
-        setSavedDecks([])
-      }
+      await loadSavedDecks(session.user.id)
     }
 
     load()
   }, [router])
+
+  const loadLocalDecks = (uid: string) => {
+    try {
+      const raw = window.localStorage.getItem(deckStorageKey(uid))
+      return raw ? JSON.parse(raw) as SavedDeck[] : []
+    } catch {
+      return []
+    }
+  }
+
+  const saveLocalDecks = (uid: string, decks: SavedDeck[]) => {
+    window.localStorage.setItem(deckStorageKey(uid), JSON.stringify(decks))
+  }
+
+  const loadSavedDecks = async (uid: string) => {
+    const localDecks = loadLocalDecks(uid)
+
+    try {
+      const { data, error } = await supabase
+        .from('user_decks')
+        .select('id, user_id, name, leader, cards, source, source_url, player, placement, meta_total, updated_at')
+        .eq('user_id', uid)
+        .order('updated_at', { ascending: false })
+
+      if (error) throw error
+
+      setDeckStoreReady(true)
+      const dbDecks = (data || []).map(row => rowToDeck(row as DbDeckRow))
+      const dbIds = new Set(dbDecks.map(deck => deck.id))
+      const decksToMigrate = localDecks.filter(deck => !dbIds.has(deck.id))
+
+      if (decksToMigrate.length > 0) {
+        await supabase
+          .from('user_decks')
+          .upsert(decksToMigrate.map(deck => deckToRow(deck, uid)), { onConflict: 'user_id,id' })
+      }
+
+      const merged = [...decksToMigrate, ...dbDecks]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 80)
+
+      setSavedDecks(merged)
+      saveLocalDecks(uid, merged)
+    } catch {
+      setDeckStoreReady(false)
+      setSavedDecks(localDecks)
+    }
+  }
 
   useEffect(() => {
     if (mode !== 'meta' || metaDecks.length > 0 || metaLoading) return
@@ -169,6 +271,58 @@ export default function DeckBuilderPage() {
     return () => window.clearTimeout(timer)
   }, [search])
 
+  useEffect(() => {
+    if (savedDecks.length === 0) {
+      setDeckValues({})
+      return
+    }
+
+    let cancelled = false
+
+    const loadDeckValues = async () => {
+      const uniqueCards = new Map<string, DeckCard>()
+      savedDecks.forEach(deck => {
+        if (deck.leader) uniqueCards.set(deck.leader.card_id, deck.leader)
+        deck.cards.forEach(card => uniqueCards.set(card.card_id, card))
+      })
+
+      try {
+        const res = await fetch('/api/cards/prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cards: [...uniqueCards.values()].map(card => ({
+              cardId: card.card_id,
+              name: card.name
+            }))
+          })
+        })
+        const data = await res.json()
+        const prices = (data?.prices || {}) as Record<string, LivePriceResult | null>
+        const valueMap = Object.fromEntries(
+          savedDecks.map(deck => {
+            const value = deck.cards.reduce((sum, card) => {
+              const live = prices[card.card_id]
+              const price = live?.marketPrice ?? live?.midPrice ?? live?.lowPrice ?? card.market_price ?? card.inventory_price ?? 0
+              return sum + Number(price || 0) * Number(card.quantity || 0)
+            }, 0)
+            return [deck.id, value > 0 ? value : null]
+          })
+        )
+
+        if (!cancelled) setDeckValues(valueMap)
+      } catch {
+        if (!cancelled) setDeckValues({})
+      }
+    }
+
+    loadDeckValues()
+
+    return () => {
+      cancelled = true
+    }
+  }, [savedDecks])
+
   const mainCount = deckCards.reduce((sum, card) => sum + card.quantity, 0)
   const leaderColors = parseColors(leader?.card_color)
   const baseCounts = deckCards.reduce<Record<string, number>>((acc, card) => {
@@ -186,15 +340,31 @@ export default function DeckBuilderPage() {
   const isValid = Boolean(leader) && mainCount === 50 && overLimit.length === 0 && offColor.length === 0
 
   const availableCards = catalogResults
+  const formatPrice = (value?: number | null) =>
+    value == null
+      ? '—'
+      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
 
   const deckCardsExpanded = deckCards.flatMap(card =>
     Array.from({ length: card.quantity }, (_, index) => ({ ...card, copyIndex: index }))
   )
 
-  const saveDecks = (decks: SavedDeck[]) => {
+  const saveDecks = async (decks: SavedDeck[]) => {
     if (!userId) return
     setSavedDecks(decks)
-    window.localStorage.setItem(deckStorageKey(userId), JSON.stringify(decks))
+    saveLocalDecks(userId, decks)
+
+    if (!deckStoreReady) return
+
+    try {
+      const { error } = await supabase
+        .from('user_decks')
+        .upsert(decks.map(deck => deckToRow(deck, userId)), { onConflict: 'user_id,id' })
+
+      if (error) throw error
+    } catch {
+      setDeckStoreReady(false)
+    }
   }
 
   const addMainCard = (card: DeckCard) => {
@@ -223,16 +393,26 @@ export default function DeckBuilderPage() {
     setLeader({ ...card, quantity: 1 })
   }
 
-  const saveCurrentDeck = () => {
+  const startNewDeck = () => {
+    setMode('create')
+    setDeckName('Nuovo deck')
+    setLeader(null)
+    setDeckCards([])
+    setEditingDeckId(null)
+    setOpenDeck(null)
+  }
+
+  const saveCurrentDeck = async () => {
     if (!userId) return
     const deck: SavedDeck = {
-      id: `${Date.now()}`,
+      id: editingDeckId || `${Date.now()}`,
       name: deckName.trim() || 'Deck senza nome',
       leader,
       cards: deckCards,
       updatedAt: new Date().toISOString()
     }
-    saveDecks([deck, ...savedDecks.filter(item => item.name !== deck.name)].slice(0, 24))
+    await saveDecks([deck, ...savedDecks.filter(item => item.id !== deck.id && item.name !== deck.name)].slice(0, 80))
+    setEditingDeckId(deck.id)
     setOpenDeck(deck)
   }
 
@@ -241,12 +421,43 @@ export default function DeckBuilderPage() {
     setDeckName(deck.name)
     setLeader(deck.leader)
     setDeckCards(deck.cards.filter(card => !isDonCard(card)))
+    setEditingDeckId(deck.id)
     setOpenDeck(null)
   }
 
-  const deleteDeck = (deckId: string) => {
-    saveDecks(savedDecks.filter(deck => deck.id !== deckId))
+  const deleteDeck = async (deckId: string) => {
+    if (userId && deckStoreReady) {
+      await supabase.from('user_decks').delete().eq('user_id', userId).eq('id', deckId)
+    }
+    await saveDecks(savedDecks.filter(deck => deck.id !== deckId))
     if (openDeck?.id === deckId) setOpenDeck(null)
+  }
+
+  const saveMetaDeckToMine = async (deck: SavedDeck) => {
+    if (!userId) return
+    const copiedDeck: SavedDeck = {
+      ...deck,
+      id: `${Date.now()}`,
+      name: deck.name,
+      source: undefined,
+      sourceUrl: undefined,
+      player: undefined,
+      placement: undefined,
+      updatedAt: new Date().toISOString()
+    }
+
+    await saveDecks([copiedDeck, ...savedDecks.filter(item => item.name !== copiedDeck.name)].slice(0, 80))
+    setOpenDeck(copiedDeck)
+  }
+
+  const getDeckValue = (deck: SavedDeck) => {
+    const liveValue = deckValues[deck.id]
+    if (liveValue != null) return liveValue
+    const storedValue = deck.cards.reduce((sum, card) => {
+      const price = Number(card.market_price ?? card.inventory_price ?? 0)
+      return sum + price * Number(card.quantity || 0)
+    }, 0)
+    return storedValue > 0 ? storedValue : null
   }
 
   const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
@@ -274,14 +485,23 @@ export default function DeckBuilderPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Leader</p>
             {deck.leader ? (
               <>
-                <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="mt-3 aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
+                <button onClick={() => setSelectedCard(deck.leader)} className="mt-3 block w-full text-left">
+                  <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
+                </button>
                 <p className="mt-2 text-sm font-black text-white">{deck.leader.name}</p>
                 <p className="text-[10px] text-slate-400">{displayCardId(deck.leader.card_id)}</p>
               </>
             ) : <p className="mt-3 text-sm text-slate-400">Nessun leader salvato.</p>}
-            {deck.eurTotal && <p className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-2 text-sm font-black text-emerald-100">{deck.eurTotal}</p>}
+            <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100/70">Valore stimato</p>
+              <p className="mt-1 text-lg font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</p>
+            </div>
             {deck.sourceUrl && <a href={deck.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center text-xs font-black text-cyan-100">Fonte</a>}
-            {!deck.source && <button onClick={() => loadDeck(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Modifica</button>}
+            {deck.id.startsWith('meta-') ? (
+              <button onClick={() => saveMetaDeckToMine(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Salva nei miei deck</button>
+            ) : (
+              <button onClick={() => loadDeck(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Modifica</button>
+            )}
           </aside>
           <section>
             <div className="mb-3 flex items-center justify-between">
@@ -292,7 +512,9 @@ export default function DeckBuilderPage() {
               {deck.cards.filter(card => !isDonCard(card)).map(card => (
                 <div key={card.card_id} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-1.5">
                   <div className="relative">
-                    <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
+                    <button onClick={() => setSelectedCard(card)} className="block w-full text-left">
+                      <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
+                    </button>
                     <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
                   </div>
                   <p className="mt-1 truncate text-xs font-black text-white">{card.name}</p>
@@ -321,7 +543,7 @@ export default function DeckBuilderPage() {
             </div>
             <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
               <button onClick={() => setMode('saved')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'saved' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>I miei deck</button>
-              <button onClick={() => setMode('create')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea deck</button>
+              <button onClick={startNewDeck} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea deck</button>
               <button onClick={() => setMode('meta')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'meta' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Deck meta</button>
             </div>
           </div>
@@ -333,7 +555,7 @@ export default function DeckBuilderPage() {
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
                 <LibraryBig size={15} />I miei deck
               </div>
-              <button onClick={() => setMode('create')} className="rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 active:scale-95">
+              <button onClick={startNewDeck} className="rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 active:scale-95">
                 Crea deck
               </button>
             </div>
@@ -342,7 +564,7 @@ export default function DeckBuilderPage() {
               <div className="rounded-[1.5rem] border border-dashed border-slate-700 bg-slate-950/55 p-5 text-center">
                 <p className="text-lg font-black text-white">Nessun deck salvato</p>
                 <p className="mt-2 text-sm text-slate-400">Crea il primo deck e lo ritroverai qui.</p>
-                <button onClick={() => setMode('create')} className="mt-4 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Crea deck</button>
+                <button onClick={startNewDeck} className="mt-4 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Crea deck</button>
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -363,7 +585,8 @@ export default function DeckBuilderPage() {
                             <p className="mt-1 truncate text-xs text-slate-400">{deck.leader?.name || 'No leader'}</p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{mainCountSaved}/50</span>
-                              <span className="rounded-full bg-white/8 px-2 py-1 text-[10px] font-black text-slate-200">{uniqueCount} uniche</span>
+                              <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[10px] font-black text-slate-200">{uniqueCount} uniche</span>
+                              <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</span>
                             </div>
                             <p className="mt-3 text-[10px] text-slate-500">{new Date(deck.updatedAt).toLocaleDateString('it-IT')}</p>
                           </div>
@@ -408,7 +631,9 @@ export default function DeckBuilderPage() {
                   return (
                     <div key={card.card_id} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
                       {copies > 0 && <div className="absolute right-3 top-3 z-10 rounded-full border border-cyan-100/40 bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg">x{copies}</div>}
-                      <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-900" />
+                      <button onClick={() => setSelectedCard(card)} className="block w-full text-left">
+                        <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-900" />
+                      </button>
                       <p className="mt-2 truncate text-xs font-black text-white">{card.name}</p>
                       <p className="text-[10px] text-slate-500">{displayCardId(card.card_id)}</p>
                       <div className="mt-2 grid grid-cols-2 gap-1">
@@ -463,7 +688,7 @@ export default function DeckBuilderPage() {
                         <p className="mt-1 truncate text-xs text-slate-400">{deck.player || 'Limitless'}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50</span>
-                          {deck.eurTotal && <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{deck.eurTotal}</span>}
+                          <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</span>
                         </div>
                       </div>
                     </div>
@@ -512,6 +737,43 @@ export default function DeckBuilderPage() {
       )}
 
       {openDeck && renderDeckModal(openDeck)}
+      {selectedCard ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedCard(null)}>
+          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 p-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
+                <h3 className="truncate text-lg font-black text-white">{selectedCard.name || selectedCard.card_id}</h3>
+              </div>
+              <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr]">
+              <CardImage src={selectedCard.image_url} cardId={selectedCard.card_id} alt={selectedCard.name || selectedCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950" />
+              <div className="space-y-3">
+                <div>
+                  <p className="text-2xl font-black text-white">{selectedCard.name || 'Carta'}</p>
+                  <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedCard.card_id)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['Rarita', selectedCard.rarity || '-'],
+                    ['Colore', selectedCard.card_color || '-'],
+                    ['Tipo', selectedCard.card_type || '-'],
+                    ['Prezzo', formatPrice(selectedCard.market_price ?? selectedCard.inventory_price)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+                      <p className="mt-1 text-sm font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

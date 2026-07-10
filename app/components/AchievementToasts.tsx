@@ -53,7 +53,8 @@ export default function AchievementToasts() {
                 Badge sbloccato
               </div>
               <p className="mt-1 truncate text-sm font-black text-white">{badge.title}</p>
-              <p className="mt-0.5 line-clamp-1 text-xs text-cyan-100/80">+{badge.xp} EXP</p>
+              <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-cyan-100/80">{badge.description}</p>
+              <p className="mt-1 text-xs font-black text-amber-100">+{badge.xp} EXP</p>
             </div>
           </div>
         </div>

@@ -70,8 +70,6 @@ const parseDeckDetail = (html: string, summary: { id: string; title: string; pla
 
   const leader = cards[0] || null
   const mainCards = cards.slice(1)
-  const eurTotal = decodeHtml(html.match(/<\/a>\s*([0-9.,]+€)\s*<\/div>/)?.[1] || '')
-
   return {
     id: `meta-${summary.id}`,
     name: summary.title,
@@ -79,7 +77,6 @@ const parseDeckDetail = (html: string, summary: { id: string; title: string; pla
     placement: summary.placement,
     sourceUrl: summary.url,
     source: 'Limitless',
-    eurTotal,
     leader,
     cards: mainCards,
     updatedAt: new Date().toISOString()

@@ -129,7 +129,7 @@ export default function Dashboard() {
     setCards(loadedCards)
     evaluateProgress(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
-    void syncEuPricesForCards(uid, loadedCards)
+    void syncLivePricesForCards(uid, loadedCards)
   }
 
   useEffect(() => {
@@ -196,13 +196,13 @@ export default function Dashboard() {
   const formatPrice = (value?: number | null) =>
     value == null
       ? '—'
-      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+      : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'USD' }).format(value)
   const displayCardId = (value?: string | null) =>
     (value || '')
       .replace(/_p\d+$/i, '')
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
-    if (!price || (price.originalCurrency !== 'EUR' && price.currency !== 'EUR')) return null
+    if (!price) return null
     return price.marketPrice ?? price.midPrice ?? price.lowPrice ?? null
   }
 
@@ -232,7 +232,7 @@ export default function Dashboard() {
     return allPrices
   }
 
-  const syncEuPricesForCards = async (uid: string, cardsToSync: UserCard[]) => {
+  const syncLivePricesForCards = async (uid: string, cardsToSync: UserCard[]) => {
     if (cardsToSync.length === 0) return
 
     const prices = await fetchLivePricesForCards(cardsToSync)
@@ -746,14 +746,16 @@ export default function Dashboard() {
   )}
 </div>
 
-                <CardImage
-                  src={item.image_url}
-                  cardId={item.card_id}
-                  alt={item.name || item.card_id}
-                  className="w-full aspect-[3/4] overflow-hidden rounded-md bg-black"
-                  imgClassName="h-full w-full object-contain"
-                  fallbackClassName="flex h-full w-full items-center justify-center text-[10px] text-gray-400"
-                />
+                <button onClick={() => openCollectionCard(item)} className="block w-full text-left">
+                  <CardImage
+                    src={item.image_url}
+                    cardId={item.card_id}
+                    alt={item.name || item.card_id}
+                    className="w-full aspect-[3/4] overflow-hidden rounded-md bg-black"
+                    imgClassName="h-full w-full object-contain"
+                    fallbackClassName="flex h-full w-full items-center justify-center text-[10px] text-gray-400"
+                  />
+                </button>
 
                 <p className="font-bold mt-1 sm:mt-2 text-[10px] sm:text-xs line-clamp-2">{item.name || 'Unknown'}</p>
                 <p className="text-[8px] sm:text-[10px] text-gray-400">{item.rarity || '?'}</p>
@@ -972,12 +974,14 @@ export default function Dashboard() {
             </div>
             {topSavedCard ? (
               <div className="mt-3 grid grid-cols-[76px_1fr] gap-3">
-                <CardImage
-                  src={topSavedCard.image_url}
-                  cardId={topSavedCard.card_id}
-                  alt={topSavedCard.name || 'Carta'}
-                  className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950"
-                />
+                <button onClick={() => openCollectionCard(topSavedCard)} className="block text-left">
+                  <CardImage
+                    src={topSavedCard.image_url}
+                    cardId={topSavedCard.card_id}
+                    alt={topSavedCard.name || 'Carta'}
+                    className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950"
+                  />
+                </button>
                 <div className="min-w-0">
                   <p className="line-clamp-2 text-sm font-bold text-white">{topSavedCard.name}</p>
                   <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(topSavedCard.card_id)}</p>
@@ -1003,10 +1007,10 @@ export default function Dashboard() {
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-400">
-              {analyticsLoading ? 'Aggiorno i prezzi live...' : `Campione live: ${analyticsCandidates.length} carte principali`}
+              {analyticsLoading ? 'Aggiorno i prezzi live...' : `Prezzi aggiornati: ${analyticsCandidates.length} carte principali`}
             </p>
             <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Valore campione live</p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Valore aggiornato carte principali</p>
               <p className="mt-1 text-xl font-black text-cyan-200">{formatPrice(liveSampleValue)}</p>
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -1099,7 +1103,7 @@ export default function Dashboard() {
             </p>
             <div className="mb-3 grid gap-2 sm:grid-cols-3">
               <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live EUR</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Live USD</p>
                 <p className="mt-1 text-xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">

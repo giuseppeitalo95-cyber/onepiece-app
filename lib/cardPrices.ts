@@ -438,14 +438,15 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
 }
 
 export const getLiveCardPrice = async (input: PriceLookupInput) => {
-  const cardmarketPrice = await getCardmarketApiPrice(input)
-  if (cardmarketPrice) return cardmarketPrice
+  const useEuPrices = process.env.PRICE_MARKET === 'EU'
 
-  const optcgPrice = await getOptcgPrice(input)
-  if (optcgPrice) return optcgPrice
+  if (useEuPrices) {
+    const cardmarketPrice = await getCardmarketApiPrice(input)
+    if (cardmarketPrice) return cardmarketPrice
 
-  const allowUsFallback = process.env.ALLOW_US_PRICE_FALLBACK === 'true' && process.env.EU_PRICES_ONLY === 'false'
-  if (!allowUsFallback) return null
+    const optcgPrice = await getOptcgPrice(input)
+    if (optcgPrice) return optcgPrice
+  }
 
   const groups = await selectGroups(input)
   let best: { product: TcgProduct; price: TcgPrice | null; score: number; group: TcgGroup } | null = null
@@ -478,24 +479,23 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
   if (!best) return null
 
   const price = best.price
-  const usdToEur = await getUsdToEurRate()
 
   return {
     source: 'TCGplayer',
     provider: 'TCGCSV',
-    currency: 'EUR',
+    currency: 'USD',
     originalCurrency: 'USD',
-    exchangeRate: usdToEur,
+    exchangeRate: 1,
     productId: best.product.productId,
     productUrl: best.product.url || null,
     productImageUrl: best.product.imageUrl || null,
     productName: best.product.name,
     groupName: best.group.name,
-    marketPrice: convertUsdToEur(price?.marketPrice, usdToEur),
-    lowPrice: convertUsdToEur(price?.lowPrice, usdToEur),
-    midPrice: convertUsdToEur(price?.midPrice, usdToEur),
-    highPrice: convertUsdToEur(price?.highPrice, usdToEur),
-    directLowPrice: convertUsdToEur(price?.directLowPrice, usdToEur),
+    marketPrice: price?.marketPrice ?? null,
+    lowPrice: price?.lowPrice ?? null,
+    midPrice: price?.midPrice ?? null,
+    highPrice: price?.highPrice ?? null,
+    directLowPrice: price?.directLowPrice ?? null,
     originalMarketPrice: price?.marketPrice ?? null,
     originalLowPrice: price?.lowPrice ?? null,
     originalMidPrice: price?.midPrice ?? null,
