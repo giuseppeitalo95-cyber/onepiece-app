@@ -1132,7 +1132,7 @@ export default function ScanPage() {
       scanSessionRef.current = false
       setCameraActive(false)
       setCameraReady(false)
-      setCameraError('Non è stato possibile avviare la camera. Prova a ricaricare la pagina e a consentire l’accesso dalla richiesta del browser.')
+      setCameraError('Funzionalità non disponibile su versione Desktop, utilizzare un dispositivo mobile. ')
     }
   }
 
