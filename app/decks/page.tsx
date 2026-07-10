@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Crown, Eye, LibraryBig, Minus, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
@@ -172,6 +172,7 @@ export default function DeckBuilderPage() {
   const [deckStoreReady, setDeckStoreReady] = useState(true)
   const [collectionSavingDeckId, setCollectionSavingDeckId] = useState<string | null>(null)
   const [collectionMessage, setCollectionMessage] = useState('')
+  const collectionSaveLock = useRef<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -459,7 +460,7 @@ export default function DeckBuilderPage() {
   }
 
   const addDeckToCollection = async (deck: SavedDeck) => {
-    if (!userId || collectionSavingDeckId) return
+    if (!userId || collectionSavingDeckId || collectionSaveLock.current) return
 
     const cardsToAdd = [
       ...(deck.leader ? [{ ...deck.leader, quantity: 1 }] : []),
@@ -471,6 +472,7 @@ export default function DeckBuilderPage() {
       return
     }
 
+    collectionSaveLock.current = deck.id
     setCollectionSavingDeckId(deck.id)
     setCollectionMessage('Aggiungo le carte alla collezione...')
 
@@ -478,9 +480,10 @@ export default function DeckBuilderPage() {
       const grouped = new Map<string, { card: DeckCard; quantity: number }>()
       for (const card of cardsToAdd) {
         const current = grouped.get(card.card_id)
+        const quantity = Math.max(1, Number(card.quantity || 1))
         grouped.set(card.card_id, {
           card,
-          quantity: (current?.quantity || 0) + Number(card.quantity || 1)
+          quantity: Math.max(current?.quantity || 0, quantity)
         })
       }
 
@@ -547,6 +550,7 @@ export default function DeckBuilderPage() {
       setCollectionMessage('Non sono riuscito ad aggiungere il deck. Riprova quando Supabase torna stabile.')
     }
 
+    collectionSaveLock.current = null
     setCollectionSavingDeckId(null)
   }
 
