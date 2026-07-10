@@ -94,6 +94,26 @@ const baseCardId = (value?: string | null) => {
   return direct ? direct.toUpperCase() : ''
 }
 
+const cardPrefix = (value?: string | null) =>
+  baseCardId(value).match(/^([A-Z]+[0-9]{2})-/)?.[1] || ''
+
+// Cardmarket keeps separate products for English/EU, Asia-region/legal, reprints,
+// and some special releases even when the printed card code is identical.
+// Prefer the regular EU expansion when a code exists in multiple expansions.
+const preferredExpansionIdsByPrefix: Record<string, number[]> = {
+  EB03: [6449, 6379],
+  OP13: [6187, 6277]
+}
+
+const expansionPreferenceScore = (row: PriceRow, input: LookupInput) => {
+  const priority = preferredExpansionIdsByPrefix[cardPrefix(input.cardId)]
+  if (!priority || !row.expansion_id) return 0
+
+  const index = priority.indexOf(row.expansion_id)
+  if (index === -1) return -35
+  return (priority.length - index) * 35
+}
+
 const variantRank = (value?: string | null) => {
   const match = (value || '').match(/(?:_p|p)(\d+)$/i)
   return match ? Number(match[1]) : 0
@@ -137,6 +157,8 @@ const scoreRow = (row: PriceRow, input: LookupInput) => {
   if (row.variant_rank === wantedVariant) score += 50
   else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 20
   else if (row.variant_rank > 0) score -= 18
+
+  score += expansionPreferenceScore(row, input)
 
   const price = rowPrice(row)
   if (price != null && price > 0) score += 12
