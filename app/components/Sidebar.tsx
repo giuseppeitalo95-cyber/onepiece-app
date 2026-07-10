@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
+import { House, Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 type NavItem = {
@@ -13,6 +13,7 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
+  { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
   { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
   { label: 'Collezione', href: '/dashboard', key: 'collezione', Icon: Layers3 },
   { label: 'Deck', href: '/decks', key: 'decks', Icon: LibraryBig },
@@ -21,16 +22,17 @@ const navItems: NavItem[] = [
 ]
 
 const getPageKey = (pathname: string) => {
+  if (pathname.startsWith('/bacheca')) return 'bacheca'
   if (pathname.startsWith('/dashboard')) return 'collezione'
   if (pathname.startsWith('/decks')) return 'decks'
   if (pathname.startsWith('/friends')) return 'amici'
   if (pathname.startsWith('/profile')) return 'profilo'
-  return 'scan'
+  return 'bacheca'
 }
 
 export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
-  const currentPage = getPageKey(pathname || '/scan') || activePage || 'scan'
+  const currentPage = getPageKey(pathname || '/bacheca') || activePage || 'bacheca'
 
   return (
     <nav
@@ -45,14 +47,14 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
             key={key}
             href={href}
             prefetch
-            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-0.5 py-2 text-[9px] font-black leading-none transition min-[390px]:text-[10px] sm:flex-row sm:gap-2 sm:px-2 sm:text-xs ${active
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-0.5 py-2 text-[8px] font-black leading-none transition min-[390px]:text-[9px] sm:flex-row sm:gap-1.5 sm:px-1.5 sm:text-xs ${active
               ? 'op-nav-active text-slate-950'
               : 'text-slate-300 hover:bg-white/[0.08] hover:text-cyan-50'}`}
             aria-label={label}
           >
             {active && <span className="pointer-events-none absolute inset-0 rounded-[1.15rem] bg-gradient-to-r from-cyan-300 to-rose-300" />}
-            <span className={`relative flex h-6 w-6 items-center justify-center rounded-full ${active ? 'op-nav-icon bg-white/30' : ''}`}>
-              <Icon size={active ? 19 : 18} strokeWidth={active ? 2.9 : 2.2} />
+            <span className={`relative flex h-5 w-5 items-center justify-center rounded-full sm:h-6 sm:w-6 ${active ? 'op-nav-icon bg-white/30' : ''}`}>
+              <Icon size={active ? 18 : 17} strokeWidth={active ? 2.9 : 2.2} />
             </span>
             <span className="relative max-w-full whitespace-nowrap">{label}</span>
           </Link>

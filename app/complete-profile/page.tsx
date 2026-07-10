@@ -31,7 +31,7 @@ export default function CompleteProfilePage() {
         .maybeSingle()
 
       if (profile?.username) {
-        router.replace('/scan')
+        router.replace('/bacheca')
         return
       }
 
@@ -85,7 +85,7 @@ export default function CompleteProfilePage() {
       return
     }
 
-    router.replace('/scan')
+    router.replace('/bacheca')
   }
 
   if (loading) {

@@ -173,7 +173,7 @@ export default function Profile() {
     setFirstAccess(false)
     setSavingUsername(false)
     if (shouldOpenScanner) {
-      router.replace('/scan')
+      router.replace('/bacheca')
     }
   }
 
