@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Megaphone, Search, Send, Sparkles } from 'lucide-react'
+import { Bell, Megaphone, Search, Send, Sparkles, Trash2 } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
+import { isAdminAccount } from '@/lib/admin'
 
 type ProfileItem = {
   id: string
@@ -68,6 +69,8 @@ export default function BachecaPage() {
   const [selectedPostCard, setSelectedPostCard] = useState<CatalogCard | null>(null)
   const [cardSearchLoading, setCardSearchLoading] = useState(false)
   const [status, setStatus] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [deletingPostId, setDeletingPostId] = useState('')
 
   const visibleUserIds = useMemo(() => userId ? [userId, ...friendIds] : [], [userId, friendIds])
 
@@ -118,7 +121,9 @@ export default function BachecaPage() {
           }))
         )
 
-        setProfiles(Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile])))
+        const profileMap = Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile]))
+        setProfiles(profileMap)
+        setIsAdmin(isAdminAccount(session.user, profileMap[uid]))
       }
 
       await loadPosts(allIds)
@@ -270,6 +275,46 @@ export default function BachecaPage() {
 
   const openBoardProfile = (profileId: string) => {
     router.push(profileId === userId ? '/profile' : `/friends?profile=${profileId}`)
+  }
+
+  const canDeletePost = (post: BoardPost) =>
+    Boolean(userId && (post.user_id === userId || isAdmin))
+
+  const deletePost = async (post: BoardPost) => {
+    if (!userId || deletingPostId || !canDeletePost(post)) return
+
+    const confirmed = window.confirm(
+      post.user_id === userId
+        ? 'Vuoi cancellare questo annuncio dalla bacheca?'
+        : 'Vuoi cancellare questo annuncio come admin?'
+    )
+    if (!confirmed) return
+
+    setDeletingPostId(post.id)
+    setStatus('')
+
+    let query = supabase
+      .from('board_posts')
+      .delete()
+      .eq('id', post.id)
+
+    if (!isAdmin) {
+      query = query.eq('user_id', userId)
+    }
+
+    const { error } = await query
+
+    setDeletingPostId('')
+
+    if (error) {
+      setStatus(isAdmin
+        ? 'Non sono riuscito a cancellare il post. Se era di un altro utente, serve abilitare la policy admin su Supabase.'
+        : 'Non sono riuscito a cancellare questo annuncio.')
+      return
+    }
+
+    setPosts(current => current.filter(item => item.id !== post.id))
+    setStatus('Annuncio cancellato.')
   }
 
   return (
@@ -426,6 +471,18 @@ export default function BachecaPage() {
                           </button>
                           <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Nuovo</span>
                           <span className="text-[10px] text-slate-500">{timeLabel(post.created_at)}</span>
+                          {canDeletePost(post) ? (
+                            <button
+                              type="button"
+                              onClick={() => deletePost(post)}
+                              disabled={deletingPostId === post.id}
+                              className="ml-auto inline-flex items-center gap-1 rounded-full border border-rose-300/25 bg-rose-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-rose-100 transition hover:bg-rose-400/18 disabled:opacity-50"
+                              aria-label="Cancella annuncio"
+                            >
+                              <Trash2 size={11} />
+                              {deletingPostId === post.id ? '...' : 'Elimina'}
+                            </button>
+                          ) : null}
                         </div>
                         <p className="mt-2 text-base font-black text-white">{post.title}</p>
                         {(post.card_name || post.card_code) && (

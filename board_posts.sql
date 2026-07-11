@@ -31,6 +31,7 @@ drop policy if exists "Friends can view board posts" on public.board_posts;
 drop policy if exists "Users can insert own board posts" on public.board_posts;
 drop policy if exists "Users can update own board posts" on public.board_posts;
 drop policy if exists "Users can delete own board posts" on public.board_posts;
+drop policy if exists "Admin can delete board posts" on public.board_posts;
 
 create policy "Users can view own board posts"
 on public.board_posts for select
@@ -63,6 +64,10 @@ with check (auth.uid() = user_id);
 create policy "Users can delete own board posts"
 on public.board_posts for delete
 using (auth.uid() = user_id);
+
+create policy "Admin can delete board posts"
+on public.board_posts for delete
+using (auth.uid() = 'fcade84e-6413-4009-91df-a8c839a170cc');
 
 create index if not exists board_posts_user_created_idx
 on public.board_posts (user_id, created_at desc);
