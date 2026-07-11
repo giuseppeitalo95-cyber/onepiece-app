@@ -35,6 +35,8 @@ type PriceExport = {
 type OptcgCard = {
   card_set_id?: string | null
   card_image_id?: string | null
+  card_name?: string | null
+  rarity?: string | null
   market_price?: number | string | null
   inventory_price?: number | string | null
 }
@@ -115,6 +117,9 @@ const variantRank = (value?: string | null) => {
   const match = (value || '').match(/(?:_p|p)(\d+)$/i)
   return match ? Number(match[1]) : 0
 }
+
+const variantHintText = (value?: string | null) =>
+  /\b(alternate|parallel|special|manga|treasure|wanted|winner|super\s*parallel|anniversary|don!!)\b/i.test(value || '')
 
 const parseProductCardId = (name?: string | null) =>
   (name || '').match(/\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})\)/i)?.[1]?.toUpperCase() || ''
@@ -252,7 +257,7 @@ const getVariantReferences = async () => {
   const results = await Promise.all(OPTCG_CARD_URLS.map(url =>
     fetchJson<OptcgCard[]>(url).catch(() => [])
   ))
-  const references = new Map<string, VariantReference[]>()
+  const staged = new Map<string, VariantReference[]>()
 
   for (const card of results.flat()) {
     const imageId = card.card_image_id || card.card_set_id || ''
@@ -260,10 +265,49 @@ const getVariantReferences = async () => {
     const price = toNumber(card.market_price) ?? toNumber(card.inventory_price)
     if (!cardId || price == null || price <= 0) continue
 
-    const rank = variantRank(imageId)
-    const current = references.get(cardId) || []
-    const withoutDuplicate = current.filter(item => item.rank !== rank)
-    references.set(cardId, [...withoutDuplicate, { rank, price }].sort((a, b) => a.rank - b.rank))
+    const explicitRank = variantRank(imageId)
+    const hint = [card.card_name, card.rarity, imageId].filter(Boolean).join(' ')
+    const looksLikeVariant = explicitRank > 0 || variantHintText(hint)
+    const rank = explicitRank === 0 && looksLikeVariant ? -1 : explicitRank
+    staged.set(cardId, [...(staged.get(cardId) || []), { rank, price }])
+  }
+
+  const references = new Map<string, VariantReference[]>()
+  for (const [cardId, items] of staged) {
+    const fixed = new Map<number, VariantReference>()
+    const unassigned: VariantReference[] = []
+
+    for (const item of items) {
+      if (item.rank < 0) {
+        unassigned.push(item)
+        continue
+      }
+
+      const current = fixed.get(item.rank)
+      if (!current) {
+        fixed.set(item.rank, item)
+        continue
+      }
+
+      if (item.rank === 0) {
+        const base = item.price < current.price ? item : current
+        const extra = item.price < current.price ? current : item
+        fixed.set(0, base)
+        unassigned.push(extra)
+      } else if (priceDistance(item.price, current.price) > Math.log(2.2)) {
+        unassigned.push(item)
+      }
+    }
+
+    let nextRank = Math.max(0, ...fixed.keys()) + 1
+    for (const item of unassigned.sort((a, b) => a.price - b.price)) {
+      const rank = nextRank++
+      fixed.set(rank, { rank, price: item.price })
+    }
+
+    references.set(cardId, [...fixed.entries()]
+      .map(([rank, item]) => ({ rank, price: item.price }))
+      .sort((a, b) => a.rank - b.rank))
   }
 
   return references
