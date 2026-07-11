@@ -4,8 +4,8 @@
   "description": "Gestisci la tua collezione di carte One Piece",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#061116",
-  "theme_color": "#061116",
+  "background_color": "#123039",
+  "theme_color": "#123039",
   "icons": [
     {
       "src": "/icon-192.png",
