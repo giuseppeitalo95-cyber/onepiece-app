@@ -1,20 +1,29 @@
-'use client'
-
 type AppLogoProps = {
   compact?: boolean
-  className?: string
 }
 
-export default function AppLogo({ compact = false, className = '' }: AppLogoProps) {
+export default function AppLogo({ compact = false }: AppLogoProps) {
   return (
-    <div className={`opv-logo ${compact ? 'opv-logo-compact' : ''} ${className}`}>
-      <div className="opv-hat-wrap">
-        <img src="/luffyhatlogo.webp" alt="OPV" className="opv-hat" />
-      </div>
-      <div className="opv-logo-mark">
-        <span className="opv-logo-text">OPV</span>
-        <span className="opv-logo-shine" />
-      </div>
+    <div className="flex flex-col items-center justify-center leading-none">
+      <img
+        src="/luffyhatlogo.webp"
+        alt="Cappello di Luffy"
+        className={
+          compact
+            ? 'h-7 w-auto shrink-0 object-contain'
+            : 'h-12 w-auto shrink-0 object-contain'
+        }
+      />
+
+      <span
+        className={
+          compact
+            ? 'mt-0.5 whitespace-nowrap bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 bg-clip-text text-base font-extrabold tracking-[0.18em] text-transparent'
+            : 'mt-1 whitespace-nowrap bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 bg-clip-text text-2xl font-extrabold tracking-[0.25em] text-transparent'
+        }
+      >
+        OPV
+      </span>
     </div>
   )
 }
