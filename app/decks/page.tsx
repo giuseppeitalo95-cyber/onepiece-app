@@ -317,7 +317,7 @@ export default function DeckBuilderPage() {
           savedDecks.map(deck => {
             const value = deck.cards.reduce((sum, card) => {
               const live = prices[card.card_id]
-              const price = live?.directLowPrice ?? live?.lowPrice ?? live?.marketPrice ?? live?.midPrice ?? card.market_price ?? card.inventory_price ?? 0
+              const price = live?.marketPrice ?? live?.midPrice ?? live?.directLowPrice ?? live?.lowPrice ?? card.market_price ?? card.inventory_price ?? 0
               return sum + Number(price || 0) * Number(card.quantity || 0)
             }, 0)
             return [deck.id, value > 0 ? value : null]
@@ -360,7 +360,7 @@ export default function DeckBuilderPage() {
       : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
     if (!price) return null
-    return price.directLowPrice ?? price.lowPrice ?? price.marketPrice ?? price.midPrice ?? null
+    return price.marketPrice ?? price.midPrice ?? price.directLowPrice ?? price.lowPrice ?? null
   }
 
   const deckCardsExpanded = deckCards.flatMap(card =>

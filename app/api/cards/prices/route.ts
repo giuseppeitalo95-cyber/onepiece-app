@@ -10,7 +10,7 @@ type PriceRequestCard = {
 }
 
 const priceValue = (price: Awaited<ReturnType<typeof getLiveCardPrice>>) =>
-  price?.directLowPrice ?? price?.lowPrice ?? price?.marketPrice ?? price?.midPrice ?? null
+  price?.marketPrice ?? price?.midPrice ?? price?.directLowPrice ?? price?.lowPrice ?? null
 
 export async function POST(req: Request) {
   try {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     return Response.json({
       prices,
       market: 'EU',
-      sourcePriority: ['Cardmarket Data Export', 'Cardmarket EU', 'OPTCGAPI daily EUR'],
+      sourcePriority: ['Cardmarket Data Export', 'Cardmarket EU'],
       usFallbackEnabled: process.env.PRICE_ALLOW_US_FALLBACK === 'true'
     })
   } catch (error) {

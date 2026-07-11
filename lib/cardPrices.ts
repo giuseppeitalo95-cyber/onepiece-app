@@ -279,7 +279,7 @@ const getCardmarketApiPrice = async (input: PriceLookupInput) => {
         const euLowPrice = toNumberOrNull(cardmarket.lowest_near_mint)
         const sevenDayAverage = toNumberOrNull(cardmarket['7d_average'])
         const thirtyDayAverage = toNumberOrNull(cardmarket['30d_average'])
-        const marketPrice = euLowPrice ?? italyPrice ?? sevenDayAverage ?? thirtyDayAverage
+        const marketPrice = sevenDayAverage ?? thirtyDayAverage ?? euLowPrice ?? italyPrice
         if (marketPrice == null) continue
 
         return {
@@ -449,9 +449,6 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
   if (useEuPrices) {
     const cardmarketPrice = await getCardmarketApiPrice(input)
     if (cardmarketPrice) return cardmarketPrice
-
-    const optcgPrice = await getOptcgPrice(input)
-    if (optcgPrice) return optcgPrice
 
     if (!allowUsFallback) return null
   }

@@ -119,7 +119,7 @@ useEffect(() => {
       const res = await fetch(`/api/cards/price?${params.toString()}`)
       const data = await res.json()
       const price = data?.price
-      livePriceForSave = price?.directLowPrice ?? price?.lowPrice ?? price?.marketPrice ?? price?.midPrice ?? null
+      livePriceForSave = price?.marketPrice ?? price?.midPrice ?? price?.directLowPrice ?? price?.lowPrice ?? null
     } catch {
       livePriceForSave = null
     }

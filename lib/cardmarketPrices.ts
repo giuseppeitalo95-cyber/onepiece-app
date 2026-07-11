@@ -120,8 +120,59 @@ const fetchJson = async <T>(url: string): Promise<T> => {
   return res.json() as Promise<T>
 }
 
-const rowPrice = (row: Pick<PriceRow, 'price_trend' | 'price_low' | 'price_avg'>) =>
-  row.price_low ?? row.price_avg ?? row.price_trend ?? null
+const rowMarketPrice = (row: Pick<PriceRow, 'price_trend' | 'price_avg_7' | 'price_avg_30' | 'price_avg'>) =>
+  row.price_trend ?? row.price_avg_7 ?? row.price_avg_30 ?? row.price_avg ?? null
+
+const rowReferencePrice = (row: PriceRow) =>
+  rowMarketPrice(row) ?? row.price_low ?? null
+
+const priceDistance = (left: number | null, right: number | null) => {
+  if (left == null || right == null || left <= 0 || right <= 0) return Number.POSITIVE_INFINITY
+  return Math.abs(Math.log(left / right))
+}
+
+const inferVariantRanks = (rows: PriceRow[]) => {
+  const byExpansion = new Map<string, PriceRow[]>()
+  for (const row of rows) {
+    const key = String(row.expansion_id ?? `product-${row.product_id}`)
+    byExpansion.set(key, [...(byExpansion.get(key) || []), row])
+  }
+
+  const groups = [...byExpansion.values()].map(group => group.sort((a, b) => {
+    const dateA = new Date(a.product_date_added || 0).getTime()
+    const dateB = new Date(b.product_date_added || 0).getTime()
+    return dateA - dateB || a.product_id - b.product_id
+  }))
+  const maxVariants = Math.max(1, ...groups.map(group => group.length))
+  const anchor = groups
+    .filter(group => group.length === maxVariants)
+    .sort((a, b) => {
+      const dateA = new Date(a[0]?.product_date_added || 0).getTime()
+      const dateB = new Date(b[0]?.product_date_added || 0).getTime()
+      return dateA - dateB
+    })[0] || []
+
+  const inferred = new Map<number, number>()
+  for (const group of groups) {
+    if (group.length === maxVariants) {
+      group.forEach((row, index) => inferred.set(row.product_id, index))
+      continue
+    }
+
+    const availableRanks = new Set(anchor.map((_, index) => index))
+    for (const row of group) {
+      const reference = rowReferencePrice(row)
+      const closest = [...availableRanks]
+        .map(rank => ({ rank, distance: priceDistance(reference, rowReferencePrice(anchor[rank])) }))
+        .sort((a, b) => a.distance - b.distance || a.rank - b.rank)[0]
+      const rank = closest?.rank ?? Math.min(row.variant_rank, maxVariants - 1)
+      inferred.set(row.product_id, rank)
+      availableRanks.delete(rank)
+    }
+  }
+
+  return inferred
+}
 
 const scoreRow = (row: PriceRow, input: LookupInput) => {
   const wantedCardId = baseCardId(input.cardId)
@@ -138,7 +189,7 @@ const scoreRow = (row: PriceRow, input: LookupInput) => {
   else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 28
   else if (row.variant_rank > 0) score -= 35 + row.variant_rank * 10
 
-  const price = rowPrice(row)
+  const price = rowReferencePrice(row)
   if (price != null && price > 0) score += 12
 
   return score
@@ -178,24 +229,29 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   }
 
   const wantedVariant = variantRank(input.cardId)
+  const inferredRanks = inferVariantRanks(rows)
 
   const best = rows
-    .map(row => ({ row, score: scoreRow(row, input) }))
+    .map(row => {
+      const inferredRank = inferredRanks.get(row.product_id) ?? row.variant_rank
+      const rankedRow = inferredRank === row.variant_rank ? row : { ...row, variant_rank: inferredRank }
+      return { row: rankedRow, score: scoreRow(rankedRow, input) }
+    })
     .filter(item => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
       if (a.row.variant_rank !== b.row.variant_rank) {
         return Math.abs(a.row.variant_rank - wantedVariant) - Math.abs(b.row.variant_rank - wantedVariant)
       }
-      const aPrice = rowPrice(a.row) ?? Number.POSITIVE_INFINITY
-      const bPrice = rowPrice(b.row) ?? Number.POSITIVE_INFINITY
-      if (aPrice !== bPrice) return aPrice - bPrice
+      const aDate = new Date(a.row.product_date_added || 0).getTime()
+      const bDate = new Date(b.row.product_date_added || 0).getTime()
+      if (aDate !== bDate) return bDate - aDate
       return a.row.product_id - b.row.product_id
     })[0]
 
   if (!best) return null
 
-  const marketPrice = rowPrice(best.row)
+  const marketPrice = rowMarketPrice(best.row) ?? best.row.price_low
   if (marketPrice == null) return null
 
   return {

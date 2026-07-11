@@ -311,7 +311,7 @@ export default function FriendsPage() {
     : null
   const getLivePriceNumber = (price?: LivePriceResult | null) => {
     if (!price) return null
-    return price.directLowPrice ?? price.lowPrice ?? price.marketPrice ?? price.midPrice ?? null
+    return price.marketPrice ?? price.midPrice ?? price.directLowPrice ?? price.lowPrice ?? null
   }
   const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null }>) => {
     try {
