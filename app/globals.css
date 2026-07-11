@@ -259,17 +259,17 @@
   position: relative;
   display: grid;
   z-index: 2;
-  height: 31px;
-  width: 84px;
-  margin-bottom: -4px;
+  height: 28px;
+  width: 76px;
+  margin-bottom: 4px;
   place-items: center;
   transform: translateY(0);
 }
 
 .opv-logo-compact .opv-hat-wrap {
-  height: 27px;
-  width: 74px;
-  margin-bottom: -4px;
+  height: 24px;
+  width: 68px;
+  margin-bottom: 3px;
 }
 
 .opv-hat {
@@ -316,12 +316,7 @@
 }
 
 .opv-logo-shine {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.16) 42%, transparent 64%);
-  transform: translateX(-80%);
-  animation: opv-shine 5.8s ease-in-out infinite;
-  pointer-events: none;
+  display: none;
 }
 
 @keyframes opv-shine {
