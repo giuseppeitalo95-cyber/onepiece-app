@@ -242,33 +242,34 @@
 .opv-logo {
   position: relative;
   display: inline-grid;
-  min-width: 112px;
+  min-width: 116px;
   align-items: center;
   justify-content: center;
-  padding: 0.32rem 0.72rem 0.42rem;
+  justify-items: center;
+  padding: 0.2rem 0.72rem 0.34rem;
   overflow: visible;
 }
 
 .opv-logo-compact {
-  min-width: 98px;
-  padding: 0.12rem 0.56rem 0.32rem;
+  min-width: 104px;
+  padding: 0.08rem 0.52rem 0.26rem;
 }
 
 .opv-hat-wrap {
   position: relative;
   display: grid;
   z-index: 2;
-  height: 42px;
-  width: 86px;
-  margin-bottom: -0.92rem;
+  height: 30px;
+  width: 88px;
+  margin-bottom: -1px;
   place-items: center;
-  transform: translateY(-0.38rem);
+  transform: translateY(0);
 }
 
 .opv-logo-compact .opv-hat-wrap {
-  height: 36px;
-  width: 76px;
-  margin-bottom: -0.82rem;
+  height: 26px;
+  width: 78px;
+  margin-bottom: -1px;
 }
 
 .opv-hat {
@@ -281,8 +282,8 @@
 .opv-logo-mark {
   position: relative;
   display: grid;
-  min-height: 34px;
-  min-width: 100px;
+  min-height: 32px;
+  min-width: 104px;
   place-items: center;
   overflow: hidden;
   border: 1px solid rgba(185, 242, 251, 0.24);
@@ -297,8 +298,8 @@
 }
 
 .opv-logo-compact .opv-logo-mark {
-  min-height: 30px;
-  min-width: 88px;
+  min-height: 28px;
+  min-width: 92px;
   border-radius: 0.88rem;
 }
 
