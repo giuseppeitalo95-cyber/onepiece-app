@@ -1248,7 +1248,7 @@ export default function ScanPage() {
 
     const { data: existing, error: lookupError } = await supabase
       .from('user_cards')
-      .select('id, quantity')
+      .select('id, quantity, market_price, inventory_price')
       .eq('user_id', userId)
       .eq('card_id', card.card_id)
       .maybeSingle()
@@ -1270,11 +1270,15 @@ export default function ScanPage() {
     }
 
     if (existing) {
+      const savedPrice = card.market_price ?? card.inventory_price ?? null
+      const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && savedPrice != null
       const { error } = await supabase
         .from('user_cards')
         .update({
           quantity: existing.quantity + 1,
-          ...payload
+          ...payload,
+          market_price: shouldBackfillPrice ? savedPrice : existing.market_price ?? null,
+          inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
         })
         .eq('id', existing.id)
 
@@ -1307,7 +1311,7 @@ export default function ScanPage() {
 
     const { data: existingCards, error: lookupError } = await supabase
       .from('user_cards')
-      .select('id, card_id, quantity')
+      .select('id, card_id, quantity, market_price, inventory_price')
       .eq('user_id', userId)
       .in('card_id', cardIds)
 
@@ -1334,11 +1338,15 @@ export default function ScanPage() {
       const existing = existingById.get(cardId)
 
       if (existing) {
+        const savedPrice = card.market_price ?? card.inventory_price ?? null
+        const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && savedPrice != null
         operations.push(
           Promise.resolve(supabase
             .from('user_cards')
             .update({
               ...payload,
+              market_price: shouldBackfillPrice ? savedPrice : existing.market_price ?? null,
+              inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
               quantity: Number(existing.quantity || 0) + quantity
             })
             .eq('id', existing.id))

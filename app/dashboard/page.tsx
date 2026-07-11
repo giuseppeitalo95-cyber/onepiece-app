@@ -247,6 +247,29 @@ export default function Dashboard() {
       return live == null ? card : { ...card, market_price: live, inventory_price: null }
     })
     evaluateProgress(uid, progressCards, { claimDaily: true })
+
+    const missingSavedPrices = cardsToSync
+      .filter(card => getSavedPrice(card) == null && liveMap[card.card_id] != null)
+      .map(card => ({
+        card_id: card.card_id,
+        market_price: liveMap[card.card_id] as number
+      }))
+
+    if (missingSavedPrices.length > 0) {
+      await Promise.all(missingSavedPrices.slice(0, 80).map(card =>
+        supabase
+          .from('user_cards')
+          .update({ market_price: card.market_price, inventory_price: null })
+          .eq('user_id', uid)
+          .eq('card_id', card.card_id)
+          .is('market_price', null)
+      ))
+
+      setCards(prev => prev.map(card => {
+        const backfilled = missingSavedPrices.find(item => item.card_id === card.card_id)
+        return backfilled ? { ...card, market_price: backfilled.market_price, inventory_price: null } : card
+      }))
+    }
   }
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
@@ -312,7 +335,7 @@ export default function Dashboard() {
 
     const { data: existing } = await supabase
       .from('user_cards')
-      .select('id, quantity')
+      .select('id, quantity, market_price, inventory_price')
       .eq('user_id', userId)
       .eq('card_id', card.id)
       .maybeSingle()
@@ -335,11 +358,14 @@ export default function Dashboard() {
     }
 
     if (existing) {
+      const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && currentCardLivePrice != null
       await supabase
         .from('user_cards')
         .update({
           quantity: existing.quantity + 1,
-          ...payload
+          ...payload,
+          market_price: shouldBackfillPrice ? currentCardLivePrice : existing.market_price ?? null,
+          inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
         })
         .eq('id', existing.id)
     } else {

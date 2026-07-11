@@ -126,7 +126,7 @@ useEffect(() => {
 
     const { data: existing } = await supabase
       .from('user_cards')
-      .select('id, quantity')
+      .select('id, quantity, market_price, inventory_price')
       .eq('user_id', userId)
       .eq('card_id', card.id)
       .maybeSingle()
@@ -148,11 +148,14 @@ useEffect(() => {
     }
 
     if (existing) {
+      const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && livePriceForSave != null
       await supabase
         .from('user_cards')
         .update({
           quantity: existing.quantity + 1,
-          ...payload
+          ...payload,
+          market_price: shouldBackfillPrice ? livePriceForSave : existing.market_price ?? null,
+          inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
         })
         .eq('id', existing.id)
     } else {

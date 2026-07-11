@@ -174,6 +174,7 @@ export default function DeckBuilderPage() {
   const [metaQuery, setMetaQuery] = useState('')
   const [metaLoading, setMetaLoading] = useState(false)
   const [deckValues, setDeckValues] = useState<Record<string, number | null>>({})
+  const [liveCardPrices, setLiveCardPrices] = useState<Record<string, number | null>>({})
   const [deckStoreReady, setDeckStoreReady] = useState(true)
   const [collectionSavingDeckId, setCollectionSavingDeckId] = useState<string | null>(null)
   const [collectionMessage, setCollectionMessage] = useState('')
@@ -286,7 +287,8 @@ export default function DeckBuilderPage() {
   }, [search])
 
   useEffect(() => {
-    if (savedDecks.length === 0) {
+    const decksToPrice = [...savedDecks, ...metaDecks]
+    if (decksToPrice.length === 0) {
       setDeckValues({})
       return
     }
@@ -295,26 +297,18 @@ export default function DeckBuilderPage() {
 
     const loadDeckValues = async () => {
       const uniqueCards = new Map<string, DeckCard>()
-      savedDecks.forEach(deck => {
+      decksToPrice.forEach(deck => {
         if (deck.leader) uniqueCards.set(deck.leader.card_id, deck.leader)
         deck.cards.forEach(card => uniqueCards.set(card.card_id, card))
       })
 
       try {
-        const res = await fetch('/api/cards/prices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cards: [...uniqueCards.values()].map(card => ({
-              cardId: card.card_id,
-              name: card.name
-            }))
-          })
-        })
-        const data = await res.json()
-        const prices = (data?.prices || {}) as Record<string, LivePriceResult | null>
+        const prices = await fetchLivePriceMap([...uniqueCards.values()])
+        const liveMap = Object.fromEntries(
+          [...uniqueCards.values()].map(card => [card.card_id, getLivePriceNumber(prices[card.card_id])] as const)
+        )
         const valueMap = Object.fromEntries(
-          savedDecks.map(deck => {
+          decksToPrice.map(deck => {
             const value = deck.cards.reduce((sum, card) => {
               const live = prices[card.card_id]
               const price = live?.marketPrice ?? live?.midPrice ?? live?.directLowPrice ?? live?.lowPrice ?? card.market_price ?? card.inventory_price ?? 0
@@ -324,7 +318,10 @@ export default function DeckBuilderPage() {
           })
         )
 
-        if (!cancelled) setDeckValues(valueMap)
+        if (!cancelled) {
+          setLiveCardPrices(prev => ({ ...prev, ...liveMap }))
+          setDeckValues(valueMap)
+        }
       } catch {
         if (!cancelled) setDeckValues({})
       }
@@ -335,7 +332,7 @@ export default function DeckBuilderPage() {
     return () => {
       cancelled = true
     }
-  }, [savedDecks])
+  }, [savedDecks, metaDecks])
 
   const mainCount = deckCards.reduce((sum, card) => sum + card.quantity, 0)
   const leaderColors = parseColors(leader?.card_color)
@@ -362,6 +359,43 @@ export default function DeckBuilderPage() {
     if (!price) return null
     return price.marketPrice ?? price.midPrice ?? price.directLowPrice ?? price.lowPrice ?? null
   }
+
+  const fetchLivePriceMap = async (cardsToPrice: DeckCard[]) => {
+    const uniqueCards = new Map<string, DeckCard>()
+    cardsToPrice
+      .filter(card => card.card_id && !isDonCard(card))
+      .forEach(card => uniqueCards.set(card.card_id, card))
+
+    if (uniqueCards.size === 0) return {} as Record<string, LivePriceResult | null>
+
+    const allPrices: Record<string, LivePriceResult | null> = {}
+    for (let index = 0; index < uniqueCards.size; index += 120) {
+      const chunk = [...uniqueCards.values()].slice(index, index + 120)
+      const res = await fetch('/api/cards/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cards: chunk.map(card => ({
+            cardId: card.card_id,
+            name: card.name
+          }))
+        })
+      })
+      const data = await res.json()
+      Object.assign(allPrices, (data?.prices || {}) as Record<string, LivePriceResult | null>)
+    }
+
+    return allPrices
+  }
+
+  const priceNumberFromMap = (prices: Record<string, LivePriceResult | null>, card: DeckCard) =>
+    getLivePriceNumber(prices[card.card_id]) ?? card.market_price ?? card.inventory_price ?? null
+
+  const withSavedPrice = (card: DeckCard, prices: Record<string, LivePriceResult | null>) => ({
+    ...card,
+    market_price: priceNumberFromMap(prices, card),
+    inventory_price: null
+  })
 
   const deckCardsExpanded = deckCards.flatMap(card =>
     Array.from({ length: card.quantity }, (_, index) => ({ ...card, copyIndex: index }))
@@ -478,10 +512,13 @@ export default function DeckBuilderPage() {
 
   const saveMetaDeckToMine = async (deck: SavedDeck) => {
     if (!userId) return
+    const prices = await fetchLivePriceMap([...(deck.leader ? [deck.leader] : []), ...deck.cards])
     const copiedDeck: SavedDeck = {
       ...deck,
       id: `${Date.now()}`,
       name: deck.name,
+      leader: deck.leader ? withSavedPrice(deck.leader, prices) : null,
+      cards: deck.cards.map(card => withSavedPrice(card, prices)),
       source: undefined,
       sourceUrl: undefined,
       player: undefined,
@@ -524,7 +561,7 @@ export default function DeckBuilderPage() {
       const cardIds = [...grouped.keys()]
       const { data: existingCards, error: lookupError } = await supabase
         .from('user_cards')
-        .select('id, card_id, quantity')
+        .select('id, card_id, quantity, market_price, inventory_price')
         .eq('user_id', userId)
         .in('card_id', cardIds)
 
@@ -533,8 +570,10 @@ export default function DeckBuilderPage() {
       const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
       const inserts: Array<Record<string, unknown>> = []
       const updates: Array<Promise<{ error: unknown }>> = []
+      const livePrices = await fetchLivePriceMap([...grouped.values()].map(item => item.card))
 
       grouped.forEach(({ card, quantity }, cardId) => {
+        const savedPrice = priceNumberFromMap(livePrices, card)
         const payload = {
           user_id: userId,
           card_id: card.card_id,
@@ -545,17 +584,20 @@ export default function DeckBuilderPage() {
           card_type: card.card_type ?? null,
           card_cost: card.card_cost ?? null,
           card_power: card.card_power ?? null,
-          market_price: card.market_price ?? null,
-          inventory_price: card.inventory_price ?? null,
+          market_price: savedPrice,
+          inventory_price: null,
         }
         const existing = existingById.get(cardId)
 
         if (existing) {
+          const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && savedPrice != null
           updates.push(Promise.resolve(
             supabase
               .from('user_cards')
               .update({
                 ...payload,
+                market_price: shouldBackfillPrice ? savedPrice : existing.market_price ?? null,
+                inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
                 quantity: Number(existing.quantity || 0) + quantity
               })
               .eq('id', existing.id)
@@ -597,6 +639,9 @@ export default function DeckBuilderPage() {
     }, 0)
     return storedValue > 0 ? storedValue : null
   }
+
+  const getDeckCardDisplayPrice = (card: DeckCard) =>
+    liveCardPrices[card.card_id] ?? card.market_price ?? card.inventory_price ?? null
 
   const filteredMetaDecks = metaDecks.filter(deck => {
     const query = metaQuery.trim().toLowerCase()
@@ -675,7 +720,10 @@ export default function DeckBuilderPage() {
                     <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
                   </div>
                   <p className="mt-1 truncate text-xs font-black text-white">{card.name}</p>
-                  <p className="text-[10px] text-slate-500">{displayCardId(card.card_id)}</p>
+                  <div className="mt-0.5 flex items-center justify-between gap-1">
+                    <p className="truncate text-[10px] text-slate-500">{displayCardId(card.card_id)}</p>
+                    <p className="shrink-0 text-[10px] font-black text-emerald-100">{formatPrice(getDeckCardDisplayPrice(card))}</p>
+                  </div>
                 </div>
               ))}
             </div>
