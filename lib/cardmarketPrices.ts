@@ -3,6 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const PRODUCT_CATALOG_URL = 'https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_18.json'
 const PRICE_GUIDE_URL = 'https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_18.json'
+const OPTCG_CARD_URLS = [
+  'https://www.optcgapi.com/api/allSetCards/',
+  'https://www.optcgapi.com/api/allSTCards/',
+  'https://www.optcgapi.com/api/allPromoCards/'
+]
 
 type ProductExport = {
   idProduct: number
@@ -25,6 +30,18 @@ type PriceExport = {
   avg30?: number | null
   'low-foil'?: number | null
   'trend-foil'?: number | null
+}
+
+type OptcgCard = {
+  card_set_id?: string | null
+  card_image_id?: string | null
+  market_price?: number | string | null
+  inventory_price?: number | string | null
+}
+
+type VariantReference = {
+  rank: number
+  price: number
 }
 
 type PriceRow = {
@@ -131,49 +148,6 @@ const priceDistance = (left: number | null, right: number | null) => {
   return Math.abs(Math.log(left / right))
 }
 
-const inferVariantRanks = (rows: PriceRow[]) => {
-  const byExpansion = new Map<string, PriceRow[]>()
-  for (const row of rows) {
-    const key = String(row.expansion_id ?? `product-${row.product_id}`)
-    byExpansion.set(key, [...(byExpansion.get(key) || []), row])
-  }
-
-  const groups = [...byExpansion.values()].map(group => group.sort((a, b) => {
-    const dateA = new Date(a.product_date_added || 0).getTime()
-    const dateB = new Date(b.product_date_added || 0).getTime()
-    return dateA - dateB || a.product_id - b.product_id
-  }))
-  const maxVariants = Math.max(1, ...groups.map(group => group.length))
-  const anchor = groups
-    .filter(group => group.length === maxVariants)
-    .sort((a, b) => {
-      const dateA = new Date(a[0]?.product_date_added || 0).getTime()
-      const dateB = new Date(b[0]?.product_date_added || 0).getTime()
-      return dateA - dateB
-    })[0] || []
-
-  const inferred = new Map<number, number>()
-  for (const group of groups) {
-    if (group.length === maxVariants) {
-      group.forEach((row, index) => inferred.set(row.product_id, index))
-      continue
-    }
-
-    const availableRanks = new Set(anchor.map((_, index) => index))
-    for (const row of group) {
-      const reference = rowReferencePrice(row)
-      const closest = [...availableRanks]
-        .map(rank => ({ rank, distance: priceDistance(reference, rowReferencePrice(anchor[rank])) }))
-        .sort((a, b) => a.distance - b.distance || a.rank - b.rank)[0]
-      const rank = closest?.rank ?? Math.min(row.variant_rank, maxVariants - 1)
-      inferred.set(row.product_id, rank)
-      availableRanks.delete(rank)
-    }
-  }
-
-  return inferred
-}
-
 const scoreRow = (row: PriceRow, input: LookupInput) => {
   const wantedCardId = baseCardId(input.cardId)
   const wantedVariant = variantRank(input.cardId)
@@ -229,14 +203,8 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   }
 
   const wantedVariant = variantRank(input.cardId)
-  const inferredRanks = inferVariantRanks(rows)
-
   const best = rows
-    .map(row => {
-      const inferredRank = inferredRanks.get(row.product_id) ?? row.variant_rank
-      const rankedRow = inferredRank === row.variant_rank ? row : { ...row, variant_rank: inferredRank }
-      return { row: rankedRow, score: scoreRow(rankedRow, input) }
-    })
+    .map(row => ({ row, score: scoreRow(row, input) }))
     .filter(item => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
@@ -280,13 +248,86 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   }
 }
 
+const getVariantReferences = async () => {
+  const results = await Promise.all(OPTCG_CARD_URLS.map(url =>
+    fetchJson<OptcgCard[]>(url).catch(() => [])
+  ))
+  const references = new Map<string, VariantReference[]>()
+
+  for (const card of results.flat()) {
+    const imageId = card.card_image_id || card.card_set_id || ''
+    const cardId = baseCardId(imageId)
+    const price = toNumber(card.market_price) ?? toNumber(card.inventory_price)
+    if (!cardId || price == null || price <= 0) continue
+
+    const rank = variantRank(imageId)
+    const current = references.get(cardId) || []
+    const withoutDuplicate = current.filter(item => item.rank !== rank)
+    references.set(cardId, [...withoutDuplicate, { rank, price }].sort((a, b) => a.rank - b.rank))
+  }
+
+  return references
+}
+
+const assignReferenceVariantRanks = (rows: PriceRow[], references: Map<string, VariantReference[]>) => {
+  const rowsByCard = new Map<string, PriceRow[]>()
+  for (const row of rows) {
+    rowsByCard.set(row.card_id, [...(rowsByCard.get(row.card_id) || []), row])
+  }
+
+  for (const [cardId, cardRows] of rowsByCard) {
+    const cardReferences = references.get(cardId)
+    if (!cardReferences?.length) continue
+
+    const available = new Set(cardRows.map(row => row.product_id))
+    const assigned = new Map<number, number>()
+
+    for (const reference of [...cardReferences].sort((a, b) => b.rank - a.rank)) {
+      const closest = cardRows
+        .filter(row => available.has(row.product_id))
+        .map(row => ({ row, distance: priceDistance(rowReferencePrice(row), reference.price) }))
+        .sort((a, b) => a.distance - b.distance || b.row.product_id - a.row.product_id)[0]
+      if (!closest) continue
+      assigned.set(closest.row.product_id, reference.rank)
+      available.delete(closest.row.product_id)
+    }
+
+    let nextRank = Math.max(...cardReferences.map(reference => reference.rank), 0) + 1
+    const leftovers = cardRows
+      .filter(row => available.has(row.product_id))
+      .sort((a, b) => (rowReferencePrice(a) ?? 0) - (rowReferencePrice(b) ?? 0))
+
+    for (const row of leftovers) {
+      const closest = cardReferences
+        .map(reference => ({
+          reference,
+          distance: priceDistance(rowReferencePrice(row), reference.price)
+        }))
+        .sort((a, b) => a.distance - b.distance || a.reference.rank - b.reference.rank)[0]
+
+      if (closest && closest.distance <= Math.log(2.2)) {
+        assigned.set(row.product_id, closest.reference.rank)
+      } else {
+        assigned.set(row.product_id, nextRank++)
+      }
+    }
+
+    for (const row of cardRows) {
+      row.variant_rank = assigned.get(row.product_id) ?? row.variant_rank
+    }
+  }
+
+  return rows
+}
+
 export const syncCardmarketExports = async () => {
   const supabase = adminClient()
   if (!supabase) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
 
-  const [catalog, guide] = await Promise.all([
+  const [catalog, guide, variantReferences] = await Promise.all([
     fetchJson<{ version: number; createdAt: string; products: ProductExport[] }>(PRODUCT_CATALOG_URL),
-    fetchJson<{ version: number; createdAt: string; priceGuides: PriceExport[] }>(PRICE_GUIDE_URL)
+    fetchJson<{ version: number; createdAt: string; priceGuides: PriceExport[] }>(PRICE_GUIDE_URL),
+    getVariantReferences()
   ])
 
   const priceByProduct = new Map<number, PriceExport>()
@@ -344,6 +385,8 @@ export const syncCardmarketExports = async () => {
         })
       })
   })
+
+  assignReferenceVariantRanks(rows, variantReferences)
 
   let saved = 0
   for (let index = 0; index < rows.length; index += 500) {
