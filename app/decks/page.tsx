@@ -1022,7 +1022,7 @@ export default function DeckBuilderPage() {
                     ['Rarita', selectedCard.rarity || '-'],
                     ['Colore', selectedCard.card_color || '-'],
                     ['Tipo', selectedCard.card_type || '-'],
-                    ['Prezzo live', selectedCardPriceLoading ? '...' : formatPrice(selectedCardPrice ?? selectedCard.market_price ?? selectedCard.inventory_price)],
+                    ['Prezzo Medio Cardmarket', selectedCardPriceLoading ? '...' : formatPrice(selectedCardPrice ?? selectedCard.market_price ?? selectedCard.inventory_price)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>

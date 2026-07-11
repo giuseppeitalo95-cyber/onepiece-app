@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
 
 const getPageKey = (pathname: string) => {
   if (pathname.startsWith('/bacheca')) return 'bacheca'
+  if (pathname.startsWith('/scan')) return 'scan'
   if (pathname.startsWith('/dashboard')) return 'collezione'
   if (pathname.startsWith('/decks')) return 'decks'
   if (pathname.startsWith('/friends')) return 'amici'

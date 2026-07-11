@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Megaphone, Search, Send, Sparkles, Users } from 'lucide-react'
+import { Bell, Megaphone, Search, Send, Sparkles } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -50,7 +50,7 @@ const timeLabel = (value?: string | null) => {
   return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
 }
 
-const avatarInitial = (profile?: ProfileItem) =>
+  const avatarInitial = (profile?: ProfileItem) =>
   (profile?.username || 'U').charAt(0).toUpperCase()
 
 export default function BachecaPage() {
@@ -70,6 +70,17 @@ export default function BachecaPage() {
   const [status, setStatus] = useState('')
 
   const visibleUserIds = useMemo(() => userId ? [userId, ...friendIds] : [], [userId, friendIds])
+
+  const getAvatarPublicUrl = async (avatarPath: string | null) => {
+    if (!avatarPath) return ''
+    if (avatarPath.startsWith('http')) return avatarPath
+
+    const { data } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(avatarPath)
+
+    return data?.publicUrl ?? ''
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -100,7 +111,14 @@ export default function BachecaPage() {
           .select('id, username, avatar_url')
           .in('id', allIds)
 
-        setProfiles(Object.fromEntries((profileData || []).map((profile: ProfileItem) => [profile.id, profile])))
+        const resolvedProfiles = await Promise.all(
+          (profileData || []).map(async (profile: ProfileItem) => ({
+            ...profile,
+            avatar_url: await getAvatarPublicUrl(profile.avatar_url)
+          }))
+        )
+
+        setProfiles(Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile])))
       }
 
       await loadPosts(allIds)
@@ -250,12 +268,9 @@ export default function BachecaPage() {
     await loadPosts(visibleUserIds)
   }
 
-  const lookingPosts = posts.filter(post => post.type === 'looking').length
-  const stats: Array<{ label: string; value: string; Icon: typeof Users }> = [
-    { label: 'Amici', value: friendIds.length.toString(), Icon: Users },
-    { label: 'Annunci', value: posts.length.toString(), Icon: Bell },
-    { label: 'Cerco', value: lookingPosts.toString(), Icon: Search },
-  ]
+  const openBoardProfile = (profileId: string) => {
+    router.push(profileId === userId ? '/profile' : `/friends?profile=${profileId}`)
+  }
 
   return (
     <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
@@ -264,7 +279,7 @@ export default function BachecaPage() {
 
       <main className="mx-auto max-w-7xl px-3 pb-32 pt-4 sm:px-6 lg:px-8">
         <section className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">
                 <Sparkles size={13} />
@@ -277,20 +292,6 @@ export default function BachecaPage() {
               <p className="mt-1 text-xs font-semibold text-slate-500">
                 Restano visibili gli ultimi {BOARD_MAX_POSTS} annunci degli ultimi {BOARD_RETENTION_DAYS} giorni.
               </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {stats.map(({ label, value, Icon }) => {
-                const StatIcon = Icon
-                return (
-                  <div key={String(label)} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.055] p-3">
-                    <div className="flex items-center gap-1.5 text-cyan-100">
-                      <StatIcon size={14} />
-                      <span className="truncate text-[9px] font-black uppercase tracking-[0.16em]">{label}</span>
-                    </div>
-                    <p className="mt-1 truncate text-sm font-black text-white sm:text-base">{String(value)}</p>
-                  </div>
-                )
-              })}
             </div>
           </div>
         </section>
@@ -406,12 +407,23 @@ export default function BachecaPage() {
                 return (
                   <article key={post.id} className="rounded-3xl border border-slate-700 bg-slate-950/65 p-3">
                     <div className="flex gap-3">
-                      <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-slate-800 text-sm font-black text-cyan-100">
+                      <button
+                        type="button"
+                        onClick={() => openBoardProfile(post.user_id)}
+                        className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-slate-800 text-sm font-black text-cyan-100 transition hover:border-cyan-200 hover:brightness-110 active:scale-95"
+                        aria-label={`Apri profilo di ${profile?.username || 'Giocatore'}`}
+                      >
                         {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.username || 'Avatar'} className="h-full w-full object-cover" /> : avatarInitial(profile)}
-                      </div>
+                      </button>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-black text-white">{profile?.username || 'Giocatore'}</span>
+                          <button
+                            type="button"
+                            onClick={() => openBoardProfile(post.user_id)}
+                            className="text-sm font-black text-white transition hover:text-cyan-100 active:scale-[0.98]"
+                          >
+                            {profile?.username || 'Giocatore'}
+                          </button>
                           <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Nuovo</span>
                           <span className="text-[10px] text-slate-500">{timeLabel(post.created_at)}</span>
                         </div>

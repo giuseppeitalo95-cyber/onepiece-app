@@ -82,6 +82,7 @@ export default function FriendsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [openedProfileFromQuery, setOpenedProfileFromQuery] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -175,6 +176,19 @@ export default function FriendsPage() {
     if (!searchTerm.trim()) return true
     return profile.username?.toLowerCase().includes(searchTerm.trim().toLowerCase())
   })
+
+  useEffect(() => {
+    const profileId = typeof window === 'undefined'
+      ? ''
+      : new URLSearchParams(window.location.search).get('profile') || ''
+    if (!profileId || openedProfileFromQuery === profileId || allProfiles.length === 0) return
+
+    const profile = allProfiles.find(item => item.id === profileId)
+    if (!profile) return
+
+    setOpenedProfileFromQuery(profileId)
+    void openProfile(profile)
+  }, [allProfiles, openedProfileFromQuery])
 
   const sendFriendRequest = async (profileId: string) => {
     if (!userId || busy) return
@@ -707,13 +721,6 @@ export default function FriendsPage() {
                         style={{ width: `${selectedProgress.progressPercent}%` }}
                       />
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {selectedProgress.badges.filter(badge => badge.unlocked).slice(0, 6).map((badge) => (
-                        <span key={badge.id} className="rounded-full border border-white/12 bg-white/10 px-2 py-1 text-[10px] font-black text-cyan-50">
-                          {badge.code}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 ) : null}
 
@@ -965,7 +972,7 @@ export default function FriendsPage() {
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
                     ['Rarita', selectedFriendCard.rarity || '-'],
-                    ['Prezzo live', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
+                    ['Prezzo Medio Cardmarket', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
                     ['Copie', selectedFriendCard.quantity || 1],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
