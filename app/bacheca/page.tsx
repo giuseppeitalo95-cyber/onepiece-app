@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Megaphone, Search, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Bell, Megaphone, Search, Send, Sparkles, Trash2, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -34,6 +34,20 @@ type CatalogCard = {
   name: string
   image_url: string | null
   rarity: string | null
+}
+
+type BoardCardDetail = {
+  id: string
+  name: string
+  image_url: string | null
+  rarity: string | null
+}
+
+type LivePriceResult = {
+  marketPrice?: number | null
+  midPrice?: number | null
+  lowPrice?: number | null
+  directLowPrice?: number | null
 }
 
 const BOARD_MAX_POSTS = 30
@@ -71,6 +85,9 @@ export default function BachecaPage() {
   const [status, setStatus] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState('')
+  const [selectedBoardCard, setSelectedBoardCard] = useState<BoardCardDetail | null>(null)
+  const [selectedBoardCardPrice, setSelectedBoardCardPrice] = useState<number | null>(null)
+  const [selectedBoardCardPriceLoading, setSelectedBoardCardPriceLoading] = useState(false)
 
   const visibleUserIds = useMemo(() => userId ? [userId, ...friendIds] : [], [userId, friendIds])
 
@@ -275,6 +292,33 @@ export default function BachecaPage() {
 
   const openBoardProfile = (profileId: string) => {
     router.push(profileId === userId ? '/profile' : `/friends?profile=${profileId}`)
+  }
+
+  const formatPrice = (value?: number | null) =>
+    value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
+
+  const getLivePriceNumber = (price?: LivePriceResult | null) => {
+    if (!price) return null
+    return price.marketPrice ?? price.midPrice ?? price.directLowPrice ?? price.lowPrice ?? null
+  }
+
+  const openBoardCard = async (card: BoardCardDetail) => {
+    setSelectedBoardCard(card)
+    setSelectedBoardCardPrice(null)
+    setSelectedBoardCardPriceLoading(true)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('cardId', card.id)
+      params.set('name', card.name)
+      const res = await fetch(`/api/cards/price?${params.toString()}`)
+      const data = await res.json()
+      setSelectedBoardCardPrice(getLivePriceNumber(data?.price))
+    } catch {
+      setSelectedBoardCardPrice(null)
+    }
+
+    setSelectedBoardCardPriceLoading(false)
   }
 
   const canDeletePost = (post: BoardPost) =>
@@ -486,7 +530,16 @@ export default function BachecaPage() {
                         </div>
                         <p className="mt-2 text-base font-black text-white">{post.title}</p>
                         {(post.card_name || post.card_code) && (
-                          <div className="mt-2 grid grid-cols-[58px_minmax(0,1fr)] gap-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.06] p-2">
+                          <button
+                            type="button"
+                            onClick={() => openBoardCard({
+                              id: post.card_id || post.card_code || '',
+                              name: post.card_name || 'Carta',
+                              image_url: post.card_image_url,
+                              rarity: post.card_rarity
+                            })}
+                            className="mt-2 grid w-full grid-cols-[58px_minmax(0,1fr)] gap-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.06] p-2 text-left transition hover:border-cyan-200/45 hover:bg-cyan-300/[0.1] active:scale-[0.99]"
+                          >
                             <CardImage
                               src={post.card_image_url}
                               cardId={post.card_id || post.card_code || ''}
@@ -498,7 +551,7 @@ export default function BachecaPage() {
                               <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{post.card_code}</p>
                               {post.card_rarity && <p className="mt-1 text-[10px] font-black text-cyan-100">{post.card_rarity}</p>}
                             </div>
-                          </div>
+                          </button>
                         )}
                         {post.message && <p className="mt-2 text-sm leading-6 text-slate-300">{post.message}</p>}
                       </div>
@@ -510,6 +563,60 @@ export default function BachecaPage() {
           )}
         </section>
       </main>
+
+      {selectedBoardCard ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/74 p-2 backdrop-blur-md sm:items-center sm:p-4"
+          onClick={() => {
+            setSelectedBoardCard(null)
+            setSelectedBoardCardPrice(null)
+          }}
+        >
+          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-800 p-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta annuncio</p>
+                <h3 className="truncate text-lg font-black text-white">{selectedBoardCard.name}</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedBoardCard(null)
+                  setSelectedBoardCardPrice(null)
+                }}
+                className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100"
+                aria-label="Chiudi carta"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr] lg:grid-cols-[360px_1fr] lg:gap-6 lg:p-5 xl:grid-cols-[420px_1fr]">
+              <CardImage
+                src={selectedBoardCard.image_url}
+                cardId={selectedBoardCard.id}
+                alt={selectedBoardCard.name}
+                className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950 lg:max-h-[70vh]"
+              />
+              <div className="space-y-3">
+                <div>
+                  <p className="text-2xl font-black text-white">{selectedBoardCard.name}</p>
+                  <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedBoardCard.id)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 lg:gap-3">
+                  {[
+                    ['Rarita', selectedBoardCard.rarity || '-'],
+                    ['Prezzo Medio Cardmarket', selectedBoardCardPriceLoading ? '...' : formatPrice(selectedBoardCardPrice)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
+                      <p className="mt-1 text-sm font-black text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
