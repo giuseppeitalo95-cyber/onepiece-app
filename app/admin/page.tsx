@@ -31,6 +31,15 @@ type ScanUsage = {
   error?: string
 }
 
+type PriceSyncResult = {
+  ok?: boolean
+  updated?: number
+  matched?: number
+  skipped?: number
+  syncedAt?: string
+  error?: string
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -39,6 +48,8 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [scanUsage, setScanUsage] = useState<ScanUsage | null>(null)
+  const [priceSyncing, setPriceSyncing] = useState(false)
+  const [priceSyncResult, setPriceSyncResult] = useState<PriceSyncResult | null>(null)
 
   const testDatabaseConnection = async () => {
     console.log('🧪 [ADMIN] Testing database connection...')
@@ -93,6 +104,31 @@ export default function AdminPage() {
 
   const refreshData = async () => {
     await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage()])
+  }
+
+  const syncPricesNow = async () => {
+    if (priceSyncing) return
+
+    setPriceSyncing(true)
+    setPriceSyncResult(null)
+    setActionMessage('Aggiornamento prezzi in corso...')
+
+    try {
+      const res = await fetch('/api/cardmarket/sync', { method: 'POST' })
+      const data = await res.json()
+      setPriceSyncResult(data)
+
+      if (!res.ok || !data?.ok) {
+        setActionMessage(`Aggiornamento prezzi fallito: ${data?.error || 'errore sconosciuto'}`)
+      } else {
+        setActionMessage('Prezzi aggiornati correttamente.')
+      }
+    } catch {
+      setPriceSyncResult({ ok: false, error: 'Impossibile avviare il sync prezzi.' })
+      setActionMessage('Impossibile avviare il sync prezzi.')
+    }
+
+    setPriceSyncing(false)
   }
 
   const fetchScanUsage = async () => {
@@ -432,6 +468,32 @@ export default function AdminPage() {
                 Rimaste {Math.max((scanUsage?.scansLimit ?? 1000) - (scanUsage?.scansUsed ?? 0), 0)}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Prezzi</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Aggiornamento manuale</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Il cron automatico gira 1 volta al giorno. Da qui puoi aggiornare manualmente quando vuoi.
+              </p>
+              {priceSyncResult ? (
+                <p className={`mt-2 text-sm ${priceSyncResult.ok ? 'text-emerald-200' : 'text-red-300'}`}>
+                  {priceSyncResult.ok
+                    ? `Ultimo sync: ${priceSyncResult.updated ?? 0} prezzi aggiornati${priceSyncResult.syncedAt ? ` · ${new Date(priceSyncResult.syncedAt).toLocaleString('it-IT')}` : ''}`
+                    : priceSyncResult.error || 'Sync fallito'}
+                </p>
+              ) : null}
+            </div>
+            <button
+              onClick={syncPricesNow}
+              disabled={priceSyncing}
+              className="rounded-2xl border border-cyan-200/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {priceSyncing ? 'Aggiorno...' : 'Aggiorna prezzi ora'}
+            </button>
           </div>
         </div>
 
