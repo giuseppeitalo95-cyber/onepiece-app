@@ -276,8 +276,31 @@ export default function ChatPage() {
     }
 
     setText('')
+    void sendPushNotification(selectedFriendId, cleanText)
     await loadMessages(userId)
     setSending(false)
+  }
+
+  const sendPushNotification = async (receiverId: string, body: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          receiverId,
+          title: 'Nuovo messaggio su OPV',
+          body,
+          url: `/chat?user=${userId}`
+        })
+      })
+    } catch {
+    }
   }
 
   const toggleBlock = async () => {

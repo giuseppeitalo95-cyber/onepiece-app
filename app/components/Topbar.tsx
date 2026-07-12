@@ -8,7 +8,7 @@ import {
   evaluateProgressSynced,
   type ProgressSummary,
 } from '@/lib/progression'
-import { Crown, MessageCircle, ShieldCheck, Sparkle } from 'lucide-react'
+import { Bell, Crown, MessageCircle, ShieldCheck, Sparkle } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
@@ -21,6 +21,8 @@ export default function Topbar() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
   const [chatUnread, setChatUnread] = useState(0)
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
+  const [pushBusy, setPushBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
@@ -34,6 +36,52 @@ export default function Topbar() {
       ? 'Premium'
       : 'Free'
   const TierIcon = premiumTier === 'admin' ? ShieldCheck : premiumTier === 'free' ? Sparkle : Crown
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+    for (let i = 0; i < rawData.length; i += 1) {
+      outputArray[i] = rawData.charCodeAt(i)
+    }
+    return outputArray
+  }
+
+  const enablePushNotifications = async () => {
+    if (pushBusy || !vapidPublicKey) return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushPermission('unsupported')
+      return
+    }
+
+    setPushBusy(true)
+    try {
+      const permission = await Notification.requestPermission()
+      setPushPermission(permission)
+      if (permission !== 'granted') return
+
+      const registration = await navigator.serviceWorker.register('/opv-sw.js')
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+      })
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ subscription })
+      })
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -130,11 +178,21 @@ export default function Topbar() {
     }
 
     window.addEventListener('opv:chat-unread-changed', onChatChanged)
+    const supportsPush = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    setPushPermission(supportsPush ? Notification.permission : 'unsupported')
+
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'opv:navigate' && event.data?.url) {
+        router.push(event.data.url)
+      }
+    }
+    navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
 
     return () => {
       cancelled = true
       window.clearInterval(timer)
       window.removeEventListener('opv:chat-unread-changed', onChatChanged)
+      navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
     }
   }, [pathname, router])
 
@@ -174,6 +232,22 @@ export default function Topbar() {
               </span>
             ) : null}
           </button>
+          {pushPermission !== 'unsupported' && vapidPublicKey ? (
+            <button
+              type="button"
+              onClick={enablePushNotifications}
+              disabled={pushBusy || pushPermission === 'denied'}
+              className={`relative grid h-10 w-10 place-items-center rounded-full border transition active:scale-95 disabled:opacity-45 ${
+                pushPermission === 'granted'
+                  ? 'border-emerald-200/35 bg-emerald-300/12 text-emerald-100 shadow-[0_0_16px_rgba(110,231,183,0.18)]'
+                  : 'border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-cyan-50'
+              }`}
+              aria-label={pushPermission === 'granted' ? 'Notifiche attive' : 'Attiva notifiche'}
+              title={pushPermission === 'granted' ? 'Notifiche attive' : 'Attiva notifiche'}
+            >
+              <Bell size={16} className={pushBusy ? 'animate-pulse' : ''} />
+            </button>
+          ) : null}
         </div>
 
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">
