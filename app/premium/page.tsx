@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Crown, Infinity, X } from 'lucide-react'
+import { Check, Crown, Infinity, Settings, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
@@ -29,6 +29,7 @@ export default function PremiumPage() {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<PremiumProfile | null>(null)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [portalLoading, setPortalLoading] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function PremiumPage() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, is_premium, premium_until, premium_since, premium_source, is_vip, vip_since')
+        .select('id, username, is_premium, premium_until, premium_since, premium_source, stripe_customer_id, stripe_subscription_id, is_vip, vip_since')
         .eq('id', session.user.id)
         .maybeSingle()
 
@@ -64,6 +65,7 @@ export default function PremiumPage() {
 
   const tier = getPremiumTier(profile, { id: profile?.id, email: profile?.email })
   const activeLabel = premiumLabel(tier)
+  const hasStripeSubscription = tier === 'premium' && Boolean(profile?.stripe_customer_id)
 
   const startCheckout = async () => {
     if (checkoutLoading) return
@@ -91,6 +93,35 @@ export default function PremiumPage() {
       setMessage('Non sono riuscito ad aprire il pagamento.')
     } finally {
       setCheckoutLoading(false)
+    }
+  }
+
+  const openBillingPortal = async () => {
+    if (portalLoading) return
+    setPortalLoading(true)
+    setMessage('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/premium/portal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : ''
+        }
+      })
+      const data = await res.json()
+
+      if (!res.ok || !data?.url) {
+        setMessage(data?.error || 'Non sono riuscito ad aprire la gestione abbonamento.')
+        return
+      }
+
+      window.location.href = data.url
+    } catch {
+      setMessage('Non sono riuscito ad aprire la gestione abbonamento.')
+    } finally {
+      setPortalLoading(false)
     }
   }
 
@@ -168,23 +199,38 @@ export default function PremiumPage() {
           </div>
 
           <div className="border-t border-slate-800 p-4 sm:p-6">
-            <button
-              onClick={startCheckout}
-              disabled={checkoutLoading || loading || tier !== 'free'}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {tier === 'free' ? (
-                <>
-                  <Crown size={18} />
-                  {checkoutLoading ? 'Apro pagamento...' : 'Attiva Premium'}
-                </>
-              ) : (
-                <>
-                  <Infinity size={18} />
-                  Premium gia attivo
-                </>
-              )}
-            </button>
+            {tier === 'free' ? (
+              <button
+                onClick={startCheckout}
+                disabled={checkoutLoading || loading}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Crown size={18} />
+                {checkoutLoading ? 'Apro pagamento...' : 'Attiva Premium'}
+              </button>
+            ) : hasStripeSubscription ? (
+              <button
+                onClick={openBillingPortal}
+                disabled={portalLoading || loading}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Settings size={18} />
+                {portalLoading ? 'Apro gestione...' : 'Gestisci o annulla abbonamento'}
+              </button>
+            ) : (
+              <button
+                disabled
+                className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-black text-slate-950 opacity-70 shadow-lg shadow-cyan-950/20"
+              >
+                <Infinity size={18} />
+                Premium gia attivo
+              </button>
+            )}
+            {hasStripeSubscription ? (
+              <p className="mt-2 text-center text-xs leading-5 text-slate-400">
+                Da qui puoi annullare il rinnovo. Il mese gia pagato resta attivo fino alla scadenza Stripe.
+              </p>
+            ) : null}
             {message ? <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{message}</p> : null}
           </div>
         </section>

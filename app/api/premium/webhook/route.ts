@@ -65,6 +65,31 @@ const deactivatePremiumBySubscription = async (subscriptionId: string) => {
     .eq('is_vip', false)
 }
 
+const syncPremiumSubscription = async (subscription: any) => {
+  if (!adminSupabase) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+
+  const subscriptionId = subscription?.id
+  if (!subscriptionId) return
+
+  const active = ['active', 'trialing'].includes(subscription?.status)
+  const periodEnd = Number(subscription?.current_period_end || 0)
+  const premiumUntil = subscription?.cancel_at_period_end && periodEnd > 0
+    ? new Date(periodEnd * 1000).toISOString()
+    : null
+
+  await adminSupabase
+    .from('profiles')
+    .update({
+      is_premium: active,
+      premium_until: premiumUntil,
+      premium_source: 'stripe',
+      stripe_customer_id: subscription?.customer || null,
+      stripe_subscription_id: subscriptionId
+    })
+    .eq('stripe_subscription_id', subscriptionId)
+    .eq('is_vip', false)
+}
+
 export async function POST(req: Request) {
   const payload = await req.text()
   const signature = req.headers.get('stripe-signature') || ''
@@ -86,6 +111,10 @@ export async function POST(req: Request) {
 
     if (event.type === 'customer.subscription.deleted') {
       if (object?.id) await deactivatePremiumBySubscription(object.id)
+    }
+
+    if (event.type === 'customer.subscription.updated') {
+      await syncPremiumSubscription(object)
     }
 
     return Response.json({ ok: true })

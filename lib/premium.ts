@@ -10,6 +10,8 @@ export type PremiumProfile = {
   premium_until?: string | null
   premium_since?: string | null
   premium_source?: string | null
+  stripe_customer_id?: string | null
+  stripe_subscription_id?: string | null
   is_vip?: boolean | null
   vip_since?: string | null
   vip_granted_by?: string | null
