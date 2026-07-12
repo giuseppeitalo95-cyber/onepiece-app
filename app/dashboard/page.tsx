@@ -143,6 +143,7 @@ export default function Dashboard() {
   const [analyticsLivePrices, setAnalyticsLivePrices] = useState<Record<string, number | null>>({})
   const [soldOpen, setSoldOpen] = useState(false)
   const [soldCards, setSoldCards] = useState<SoldCard[]>([])
+  const [soldLivePrices, setSoldLivePrices] = useState<Record<string, number | null>>({})
   const [soldLoading, setSoldLoading] = useState(false)
   const [soldReady, setSoldReady] = useState(true)
   const [sellingCard, setSellingCard] = useState<UserCard | null>(null)
@@ -423,15 +424,22 @@ export default function Dashboard() {
       return
     }
 
-    setSoldCards((data || []).map(card => ({
+    const mappedCards = (data || []).map(card => ({
       ...card,
       rarity: card.rarity === 'Unknown' ? null : card.rarity,
       card_color: card.card_color === 'Unknown' ? null : card.card_color,
       market_price: card.market_price == null ? null : Number(card.market_price),
       inventory_price: card.inventory_price == null ? null : Number(card.inventory_price),
       sale_price: Number(card.sale_price || 0)
-    })))
+    }))
+    setSoldCards(mappedCards)
     setSoldLoading(false)
+
+    const prices = await fetchLivePricesForCards(mappedCards)
+    const liveMap = Object.fromEntries(
+      mappedCards.map(card => [card.id, getLivePriceNumber(prices[card.card_id])] as const)
+    )
+    setSoldLivePrices(liveMap)
   }
 
   const openSoldCards = () => {
@@ -1367,29 +1375,52 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="space-y-2">
-            {soldCards.map(card => (
-              <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)_auto] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2">
-                <CardImage
-                  src={card.image_url}
-                  cardId={card.card_id}
-                  alt={card.name || card.card_id}
-                  className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-white">{card.name || card.card_id}</p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500">{displayCardId(card.card_id)}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    x{card.quantity} - {new Date(card.sold_at).toLocaleDateString('it-IT')}
-                  </p>
+            {soldCards.map(card => {
+              const currentPrice = soldLivePrices[card.id] ?? card.market_price ?? card.inventory_price ?? null
+              const delta = currentPrice == null ? null : card.sale_price - currentPrice
+
+              return (
+                <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2 sm:grid-cols-[60px_minmax(0,1fr)_minmax(150px,auto)]">
+                  <CardImage
+                    src={card.image_url}
+                    cardId={card.card_id}
+                    alt={card.name || card.card_id}
+                    className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-white">{card.name || card.card_id}</p>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500">{displayCardId(card.card_id)}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Venduta il {new Date(card.sold_at).toLocaleDateString('it-IT')} - x{card.quantity}
+                    </p>
+                  </div>
+                  <div className="col-span-2 grid grid-cols-3 gap-1.5 text-right sm:col-span-1">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5">
+                      <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Venduta</p>
+                      <p className="mt-0.5 text-xs font-black text-emerald-200">{formatPrice(card.sale_price)}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5">
+                      <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Ora</p>
+                      <p className="mt-0.5 text-xs font-black text-cyan-100">{formatPrice(currentPrice)}</p>
+                    </div>
+                    <div className={`rounded-xl border px-2 py-1.5 ${
+                      delta == null
+                        ? 'border-white/10 bg-white/[0.045]'
+                        : delta >= 0
+                        ? 'border-emerald-300/25 bg-emerald-300/10'
+                        : 'border-rose-300/25 bg-rose-300/10'
+                    }`}>
+                      <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Diff.</p>
+                      <p className={`mt-0.5 text-xs font-black ${
+                        delta == null ? 'text-slate-300' : delta >= 0 ? 'text-emerald-200' : 'text-rose-200'
+                      }`}>
+                        {delta == null ? '-' : formatDelta(delta)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-emerald-200">{formatPrice(card.sale_price)}</p>
-                  {card.quantity > 1 ? (
-                    <p className="text-[10px] text-slate-500">tot. {formatPrice(card.sale_price * card.quantity)}</p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
