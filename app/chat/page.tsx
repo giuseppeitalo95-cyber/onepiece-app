@@ -316,12 +316,12 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
+    <div className="h-dvh overflow-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
       <Topbar />
       <Sidebar activePage="chat" />
 
-      <main className="mx-auto grid max-w-7xl gap-3 px-3 pb-32 pt-4 sm:px-6 lg:grid-cols-[340px_1fr] lg:gap-4 lg:px-8">
-        <aside className={`${selectedFriendId ? 'hidden lg:block' : 'block'} rounded-[1.65rem] border border-white/10 bg-slate-900/76 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-4 lg:h-fit`}>
+      <main className="mx-auto grid h-[calc(100dvh-4.4rem-env(safe-area-inset-bottom))] max-w-7xl gap-3 overflow-hidden px-3 pb-20 pt-3 sm:px-6 sm:pb-24 lg:grid-cols-[340px_1fr] lg:gap-4 lg:px-8">
+        <aside className={`${selectedFriendId ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-4`}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Scambi</p>
@@ -361,7 +361,7 @@ export default function ChatPage() {
             />
           </label>
 
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {conversations.length > 0 ? (
               conversations.map(({ friend, last, unread }) => {
                 const tier = getPremiumTier(friend, { id: friend.id })
@@ -406,7 +406,7 @@ export default function ChatPage() {
               <UserPlus size={13} />
               Nuova chat
             </div>
-            <div className="max-h-[34dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-56">
+            <div className="max-h-[26dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-52">
               {loading ? (
                 <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Carico amici...</p>
               ) : filteredFriends.length === 0 ? (
@@ -430,7 +430,7 @@ export default function ChatPage() {
           </div>
         </aside>
 
-        <section className={`${selectedFriendId ? 'flex' : 'hidden lg:flex'} min-h-[calc(100dvh-9.5rem)] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 shadow-2xl shadow-black/20 backdrop-blur-xl lg:min-h-[66dvh]`}>
+        <section className={`${selectedFriendId ? 'flex' : 'hidden lg:flex'} min-h-0 flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 shadow-2xl shadow-black/20 backdrop-blur-xl`}>
           {selectedFriend ? (
             <>
               <header className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/55 p-3 sm:p-4">
