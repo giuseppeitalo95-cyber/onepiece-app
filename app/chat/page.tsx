@@ -315,7 +315,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           receiverId,
-          title: `Nuovo messaggio su OPV da ${currentUsername}`,
+          title: `Nuovo messaggio da ${currentUsername}`,
           body,
           url: `/chat?user=${userId}`
         })
