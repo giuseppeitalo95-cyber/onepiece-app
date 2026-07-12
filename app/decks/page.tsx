@@ -76,6 +76,7 @@ type LivePriceResult = {
 }
 
 type Mode = 'saved' | 'create' | 'meta'
+type DeckSearchSource = 'global' | 'collection'
 
 const compact = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const baseCardId = (value?: string | null) => {
@@ -168,6 +169,8 @@ export default function DeckBuilderPage() {
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([])
   const [search, setSearch] = useState('')
   const [catalogResults, setCatalogResults] = useState<DeckCard[]>([])
+  const [deckSearchSource, setDeckSearchSource] = useState<DeckSearchSource>('global')
+  const [collectionCards, setCollectionCards] = useState<DeckCard[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
   const deckSearchRunRef = useRef(0)
   const [openDeck, setOpenDeck] = useState<SavedDeck | null>(null)
@@ -269,6 +272,48 @@ export default function DeckBuilderPage() {
   }, [mode, metaDecks.length, metaLoading])
 
   useEffect(() => {
+    if (!userId) return
+
+    let cancelled = false
+
+    const loadCollectionCards = async () => {
+      const { data, error } = await supabase
+        .from('user_cards')
+        .select('card_id, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price, quantity')
+        .eq('user_id', userId)
+        .order('name', { ascending: true })
+
+      if (cancelled) return
+      if (error) {
+        setCollectionCards([])
+        return
+      }
+
+      setCollectionCards((data || [])
+        .map(card => ({
+          card_id: String(card.card_id || ''),
+          name: card.name || 'Carta',
+          image_url: card.image_url || null,
+          rarity: card.rarity || '-',
+          card_color: card.card_color ?? null,
+          card_type: card.card_type ?? null,
+          card_cost: card.card_cost ?? null,
+          card_power: card.card_power ?? null,
+          market_price: card.market_price ?? null,
+          inventory_price: card.inventory_price ?? null,
+          quantity: Math.max(1, Number(card.quantity || 1))
+        }))
+        .filter(card => card.card_id && !isDonCard(card)))
+    }
+
+    loadCollectionCards()
+
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
+  useEffect(() => {
     if (!search.trim()) {
       deckSearchRunRef.current += 1
       setCatalogResults([])
@@ -280,6 +325,17 @@ export default function DeckBuilderPage() {
       const runId = ++deckSearchRunRef.current
       setLoadingSearch(true)
       try {
+        if (deckSearchSource === 'collection') {
+          const normalizedSearch = compact(search)
+          const data = collectionCards
+            .filter(card => compact(card.name).includes(normalizedSearch) || compact(displayCardId(card.card_id)).includes(normalizedSearch) || compact(card.card_id).includes(normalizedSearch))
+            .slice(0, 32)
+
+          if (runId !== deckSearchRunRef.current) return
+          setCatalogResults(data)
+          return
+        }
+
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(search.trim())}`)
         const data = await res.json()
         if (runId !== deckSearchRunRef.current) return
@@ -294,7 +350,7 @@ export default function DeckBuilderPage() {
     }, 240)
 
     return () => window.clearTimeout(timer)
-  }, [search])
+  }, [search, deckSearchSource, collectionCards])
 
   useEffect(() => {
     const decksToPrice = [...savedDecks, ...metaDecks]
@@ -484,7 +540,8 @@ export default function DeckBuilderPage() {
 
     const key = baseCardId(card.card_id)
     const currentCopies = deckCards.reduce((sum, item) => sum + (baseCardId(item.card_id) === key ? item.quantity : 0), 0)
-    if (currentCopies >= 4 || mainCount >= 50) return
+    const sourceLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : 4
+    if (currentCopies >= Math.min(4, sourceLimit) || mainCount >= 50) return
 
     setDeckCards(prev => {
       const existing = prev.find(item => item.card_id === card.card_id)
@@ -873,13 +930,30 @@ export default function DeckBuilderPage() {
         ) : mode === 'create' ? (
           <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
             <section className="rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black">
+                <button
+                  type="button"
+                  onClick={() => setDeckSearchSource('global')}
+                  className={`rounded-xl px-3 py-2 transition active:scale-95 ${deckSearchSource === 'global' ? 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/20' : 'text-slate-300 hover:bg-white/[0.06]'}`}
+                >
+                  Carte globali
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeckSearchSource('collection')}
+                  className={`rounded-xl px-3 py-2 transition active:scale-95 ${deckSearchSource === 'collection' ? 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/20' : 'text-slate-300 hover:bg-white/[0.06]'}`}
+                >
+                  Mie carte
+                </button>
+              </div>
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cerca nel catalogo carte"
+                    placeholder={deckSearchSource === 'collection' ? 'Cerca tra le mie carte' : 'Cerca nel catalogo carte'}
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-10 py-3 text-sm text-white outline-none focus:border-cyan-300"
                   />
                 </div>
@@ -889,15 +963,23 @@ export default function DeckBuilderPage() {
                 {loadingSearch ? (
                   <p className="col-span-full rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Ricerca...</p>
                 ) : !search.trim() ? (
-                  <p className="col-span-full rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Cerca una carta per aggiungerla al deck.</p>
+                  <p className="col-span-full rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">
+                    {deckSearchSource === 'collection' ? 'Cerca tra le carte che hai in collezione.' : 'Cerca una carta per aggiungerla al deck.'}
+                  </p>
+                ) : availableCards.length === 0 ? (
+                  <p className="col-span-full rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">
+                    {deckSearchSource === 'collection' ? 'Nessuna carta nella tua collezione per questa ricerca.' : 'Nessuna carta trovata nel catalogo.'}
+                  </p>
                 ) : availableCards.map(card => {
                   const isLeader = (card.card_type || '').toLowerCase().includes('leader')
                   const copies = baseCounts[baseCardId(card.card_id)] || 0
-                  const canAdd = !isLeader && !isDonCard(card) && copies < 4 && mainCount < 50
+                  const ownedLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : 4
+                  const canAdd = !isLeader && !isDonCard(card) && copies < Math.min(4, ownedLimit) && mainCount < 50
 
                   return (
                     <div key={card.card_id} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
                       {copies > 0 && <div className="absolute right-3 top-3 z-10 rounded-full border border-cyan-100/40 bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg">x{copies}</div>}
+                      {deckSearchSource === 'collection' && <div className="absolute left-3 top-3 z-10 rounded-full border border-emerald-100/40 bg-emerald-300 px-2 py-1 text-[10px] font-black text-slate-950 shadow-lg">hai x{card.quantity}</div>}
                       <button onClick={() => openCardDetail(card)} className="block w-full text-left">
                         <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-900" />
                       </button>
@@ -1015,12 +1097,28 @@ export default function DeckBuilderPage() {
               <span className="hidden sm:inline">Salva</span>
             </button>
           </div>
+          <div className="mb-2 grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-slate-950/50 p-1 text-[11px] font-black">
+            <button
+              type="button"
+              onClick={() => setDeckSearchSource('global')}
+              className={`rounded-xl px-2 py-2 transition active:scale-95 ${deckSearchSource === 'global' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}
+            >
+              Carte globali
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeckSearchSource('collection')}
+              className={`rounded-xl px-2 py-2 transition active:scale-95 ${deckSearchSource === 'collection' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}
+            >
+              Mie carte
+            </button>
+          </div>
           <label className="relative mb-2 block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Cerca carta da aggiungere"
+              placeholder={deckSearchSource === 'collection' ? 'Cerca tra le mie carte' : 'Cerca carta da aggiungere'}
               className="w-full rounded-2xl border border-white/10 bg-slate-950/55 py-2.5 pl-10 pr-3 text-sm text-white outline-none focus:border-cyan-200"
             />
           </label>
