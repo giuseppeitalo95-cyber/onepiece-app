@@ -583,7 +583,7 @@ export default function DeckBuilderPage() {
 
     collectionSaveLock.current = deck.id
     setCollectionSavingDeckId(deck.id)
-    setCollectionMessage('Aggiungo le carte alla collezione...')
+    setCollectionMessage('Controllo le carte già presenti...')
 
     try {
       const grouped = new Map<string, { card: DeckCard; quantity: number }>()
@@ -606,8 +606,18 @@ export default function DeckBuilderPage() {
       if (lookupError) throw lookupError
 
       const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
+      const existingDeckCards = [...grouped.entries()]
+        .filter(([cardId]) => existingById.has(cardId))
+        .map(([, item]) => item.card)
+      const addExistingCards = existingDeckCards.length === 0 || window.confirm(
+        `Hai già ${existingDeckCards.length} carte di questo deck nella collezione.\n\n` +
+        `${existingDeckCards.slice(0, 8).map(card => `- ${card.name || card.card_id}`).join('\n')}` +
+        `${existingDeckCards.length > 8 ? `\n- altre ${existingDeckCards.length - 8}` : ''}\n\n` +
+        'Vuoi aggiungerle comunque aumentando le quantità?\n\nOK = aggiungi comunque\nAnnulla = aggiungi solo le carte mancanti'
+      )
       const inserts: Array<Record<string, unknown>> = []
       const updates: Array<Promise<{ error: unknown }>> = []
+      let addedQuantity = 0
       const detailEntries = await Promise.all(
         [...grouped.entries()].map(async ([cardId, item]) => [cardId, {
           ...item,
@@ -635,7 +645,10 @@ export default function DeckBuilderPage() {
         const existing = existingById.get(cardId)
 
         if (existing) {
+          if (!addExistingCards) return
+
           const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && savedPrice != null
+          addedQuantity += quantity
           updates.push(Promise.resolve(
             supabase
               .from('user_cards')
@@ -652,6 +665,7 @@ export default function DeckBuilderPage() {
             ...payload,
             quantity
           })
+          addedQuantity += quantity
         }
       })
 
@@ -660,12 +674,15 @@ export default function DeckBuilderPage() {
         operations.push(Promise.resolve(supabase.from('user_cards').insert(inserts)))
       }
 
-      const results = await Promise.all(operations)
-      const errorResult = results.find(result => result.error)
-      if (errorResult?.error) throw errorResult.error
+      if (operations.length === 0) {
+        setCollectionMessage('Nessuna carta nuova da aggiungere: le avevi già tutte.')
+      } else {
+        const results = await Promise.all(operations)
+        const errorResult = results.find(result => result.error)
+        if (errorResult?.error) throw errorResult.error
 
-      const totalQuantity = [...grouped.values()].reduce((sum, item) => sum + item.quantity, 0)
-      setCollectionMessage(`${totalQuantity} carte aggiunte alla collezione.`)
+        setCollectionMessage(`${addedQuantity} carte aggiunte alla collezione.`)
+      }
     } catch (error) {
       console.error('Deck collection save error:', error)
       setCollectionMessage('Non sono riuscito ad aggiungere il deck. Riprova quando Supabase torna stabile.')
