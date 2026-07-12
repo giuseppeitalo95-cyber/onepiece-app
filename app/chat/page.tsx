@@ -52,6 +52,7 @@ export default function ChatPage() {
   const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [userId, setUserId] = useState('')
+  const [currentUsername, setCurrentUsername] = useState('Giocatore')
   const [friends, setFriends] = useState<ProfileItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedFriendId, setSelectedFriendId] = useState('')
@@ -179,6 +180,14 @@ export default function ChatPage() {
 
       const uid = session.user.id
       setUserId(uid)
+      const { data: ownProfile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', uid)
+        .single()
+      setCurrentUsername(
+        String(ownProfile?.username || session.user.email?.split('@')[0] || 'Giocatore').trim()
+      )
       void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
       const loadedFriends = await loadFriends(uid)
@@ -306,7 +315,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           receiverId,
-          title: 'Nuovo messaggio su OPV',
+          title: `Nuovo messaggio su OPV da ${currentUsername}`,
           body,
           url: `/chat?user=${userId}`
         })
