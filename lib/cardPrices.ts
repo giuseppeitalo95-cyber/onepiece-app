@@ -1,9 +1,33 @@
 import { getCardmarketExportPrice } from './cardmarketPrices'
+import { getAllCards } from './cardData'
 
 type PriceLookupInput = {
   cardId?: string | null
   name?: string | null
   setName?: string | null
+}
+
+const compactCardId = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const enrichLookupInput = async (input: PriceLookupInput): Promise<PriceLookupInput> => {
+  if (input.setName && input.name) return input
+
+  try {
+    const wanted = compactCardId(input.cardId)
+    if (!wanted) return input
+
+    const cards = await getAllCards()
+    const match = cards.find((card: any) => compactCardId(card.card_id || card.id) === wanted)
+    if (!match) return input
+
+    return {
+      ...input,
+      name: input.name || match.card_name || match.name || null,
+      setName: input.setName || match.set_name || null
+    }
+  } catch {
+    return input
+  }
 }
 
 type TcgGroup = {
@@ -440,20 +464,21 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
 }
 
 export const getLiveCardPrice = async (input: PriceLookupInput) => {
-  const cardmarketExportPrice = await getCardmarketExportPrice(input)
+  const enrichedInput = await enrichLookupInput(input)
+  const cardmarketExportPrice = await getCardmarketExportPrice(enrichedInput)
   if (cardmarketExportPrice) return cardmarketExportPrice
 
   const useEuPrices = process.env.PRICE_MARKET !== 'US'
   const allowUsFallback = process.env.PRICE_ALLOW_US_FALLBACK === 'true'
 
   if (useEuPrices) {
-    const cardmarketPrice = await getCardmarketApiPrice(input)
+    const cardmarketPrice = await getCardmarketApiPrice(enrichedInput)
     if (cardmarketPrice) return cardmarketPrice
 
     if (!allowUsFallback) return null
   }
 
-  const groups = await selectGroups(input)
+  const groups = await selectGroups(enrichedInput)
   let best: { product: TcgProduct; price: TcgPrice | null; score: number; group: TcgGroup } | null = null
 
   for (const group of groups) {
@@ -464,7 +489,7 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
       )
 
       for (const product of data.products) {
-        const score = scoreProduct(product, input)
+        const score = scoreProduct(product, enrichedInput)
         if (score <= 0) continue
 
         if (!best || score > best.score) {

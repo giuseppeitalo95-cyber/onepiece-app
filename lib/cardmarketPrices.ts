@@ -119,7 +119,15 @@ const variantRank = (value?: string | null) => {
 }
 
 const variantHintText = (value?: string | null) =>
-  /\b(alternate|parallel|special|manga|treasure|wanted|winner|super\s*parallel|anniversary|don!!)\b/i.test(value || '')
+  /\b(alternate|parallel|special|manga|treasure|wanted|winner|judge|super\s*parallel|anniversary|don!!)\b/i.test(value || '')
+
+const specialVariantKind = (input: LookupInput) => {
+  const text = normalize([input.cardId, input.name, input.setName].filter(Boolean).join(' '))
+  if (/\bwinner\b/.test(text)) return 'winner'
+  if (/\bjudge\b/.test(text)) return 'judge'
+  if (/\bdon\b/.test(text)) return 'don'
+  return null
+}
 
 const parseProductCardId = (name?: string | null) =>
   (name || '').match(/\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})\)/i)?.[1]?.toUpperCase() || ''
@@ -155,7 +163,8 @@ const priceDistance = (left: number | null, right: number | null) => {
 
 const scoreRow = (row: PriceRow, input: LookupInput) => {
   const wantedCardId = baseCardId(input.cardId)
-  const wantedVariant = variantRank(input.cardId)
+  const specialKind = specialVariantKind(input)
+  const wantedVariant = specialKind ? 0 : variantRank(input.cardId)
   const wantedName = normalize(input.name)
   const rowName = normalize(row.clean_name || row.product_name)
   let score = 0
@@ -166,10 +175,14 @@ const scoreRow = (row: PriceRow, input: LookupInput) => {
 
   if (row.variant_rank === wantedVariant) score += wantedVariant > 0 ? 70 : 55
   else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 28
-  else if (row.variant_rank > 0) score -= 35 + row.variant_rank * 10
+  else if (row.variant_rank > 0) score -= specialKind ? 6 + row.variant_rank * 2 : 35 + row.variant_rank * 10
 
   const price = rowReferencePrice(row)
   if (price != null && price > 0) score += 12
+  if (specialKind && price != null && price > 0) {
+    score += Math.min(90, Math.log10(price + 1) * 58)
+  }
+  if (specialKind && rowName.includes(specialKind)) score += 80
 
   return score
 }
