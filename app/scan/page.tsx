@@ -77,6 +77,7 @@ export default function ScanPage() {
   const summarySwipeTimerRef = useRef<number | null>(null)
   const scanGenerationRef = useRef(0)
   const scanCooldownUntilRef = useRef(0)
+  const lastFocusPulseRef = useRef(0)
   const scanSessionRef = useRef(false)
   const showSummaryRef = useRef(false)
   const pendingRecognitionSignatureRef = useRef<number[] | null>(null)
@@ -202,7 +203,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 450)
+    }, 260)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -221,11 +222,15 @@ export default function ScanPage() {
         focusMode?: string[]
         exposureMode?: string[]
         whiteBalanceMode?: string[]
+        torch?: boolean
+        zoom?: { min?: number; max?: number; step?: number }
       }
-      const advanced: Record<string, string>[] = []
+      const advanced: Record<string, string | boolean | number>[] = []
 
       if (capabilities.focusMode?.includes('continuous')) {
         advanced.push({ focusMode: 'continuous' })
+      } else if (capabilities.focusMode?.includes('single-shot')) {
+        advanced.push({ focusMode: 'single-shot' })
       }
       if (capabilities.exposureMode?.includes('continuous')) {
         advanced.push({ exposureMode: 'continuous' })
@@ -233,12 +238,42 @@ export default function ScanPage() {
       if (capabilities.whiteBalanceMode?.includes('continuous')) {
         advanced.push({ whiteBalanceMode: 'continuous' })
       }
+      if (capabilities.zoom?.min != null && capabilities.zoom?.max != null) {
+        const zoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, 1.15))
+        advanced.push({ zoom })
+      }
 
       if (advanced.length > 0) {
-        await track.applyConstraints({ advanced } as MediaTrackConstraints)
+        await track.applyConstraints({ advanced } as unknown as MediaTrackConstraints)
       }
     } catch {
       // Alcuni browser Android espongono le capability ma rifiutano i constraint.
+    }
+  }
+
+  const pulseCameraFocus = async () => {
+    const now = Date.now()
+    if (now - lastFocusPulseRef.current < 1600) return
+    lastFocusPulseRef.current = now
+
+    const [track] = streamRef.current?.getVideoTracks() || []
+    if (!track?.getCapabilities || !track.applyConstraints) return
+
+    try {
+      const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+        focusMode?: string[]
+      }
+
+      if (capabilities.focusMode?.includes('single-shot')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] } as unknown as MediaTrackConstraints)
+        window.setTimeout(() => {
+          track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints).catch(() => undefined)
+        }, 450)
+      } else if (capabilities.focusMode?.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints)
+      }
+    } catch {
+      // Android/WebView spesso ignora il fuoco manuale: in quel caso lasciamo continuous.
     }
   }
 
@@ -260,6 +295,7 @@ export default function ScanPage() {
         width: videoRef.current.videoWidth || 1,
         height: videoRef.current.videoHeight || 1
       })
+      window.setTimeout(() => void pulseCameraFocus(), 350)
     } catch {
       videoRef.current.onloadedmetadata = () => {
         setVideoSize({
@@ -267,6 +303,7 @@ export default function ScanPage() {
           height: videoRef.current?.videoHeight || 1
         })
         videoRef.current?.play().catch(() => undefined)
+        window.setTimeout(() => void pulseCameraFocus(), 350)
       }
     }
   }
@@ -617,7 +654,7 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.7)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.62)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -1031,9 +1068,10 @@ export default function ScanPage() {
     const ctx = canvas.getContext('2d')
 
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
+    void pulseCameraFocus()
 
-    canvas.width = 900
-    canvas.height = 1200
+    canvas.width = 820
+    canvas.height = 1094
     setVideoSize({ width: canvas.width, height: canvas.height })
 
     const targetAspect = canvas.width / canvas.height
@@ -1075,7 +1113,7 @@ export default function ScanPage() {
     const frameSignature = frameSignatureFromCanvas(canvas, rect)
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) < 12) {
       setRecognitionMessage('Carta già aggiunta. Cambiala o muovila per continuare.')
-      scanCooldownUntilRef.current = Date.now() + 80
+      scanCooldownUntilRef.current = Date.now() + 45
       return
     }
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) >= 12) {
@@ -1173,7 +1211,7 @@ export default function ScanPage() {
     if (!isScanStillActive(generation)) return
     if (!isFrameStillCurrent(frameSignature)) {
       recognitionStreakRef.current = null
-      scanCooldownUntilRef.current = Date.now() + 80
+      scanCooldownUntilRef.current = Date.now() + 45
       setRecognitionMessage('Immagine cambiata durante la lettura. Riprovo sul frame attuale.')
       return
     }
@@ -1203,7 +1241,7 @@ export default function ScanPage() {
 
       if (!isFrameStillCurrent(frameSignature)) {
         recognitionStreakRef.current = null
-        scanCooldownUntilRef.current = Date.now() + 80
+        scanCooldownUntilRef.current = Date.now() + 45
         setRecognitionMessage('Risultato scartato: la carta non è più inquadrata. Riprovo.')
         return
       }
@@ -1268,10 +1306,19 @@ export default function ScanPage() {
       const constraintsList: MediaStreamConstraints[] = [
         {
           video: {
+            facingMode: { exact: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 60, min: 24 }
+          },
+          audio: false
+        },
+        {
+          video: {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
+            frameRate: { ideal: 60, min: 24 }
           },
           audio: false
         },
@@ -1280,7 +1327,7 @@ export default function ScanPage() {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1280 },
             height: { ideal: 720 },
-            frameRate: { ideal: 30 }
+            frameRate: { ideal: 45, min: 24 }
           },
           audio: false
         },
