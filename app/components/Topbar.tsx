@@ -67,6 +67,8 @@ export default function Topbar() {
         )
         .eq('user_id', session.user.id)
 
+      await touchLastSeen(session.user.id)
+
       if (cancelled) return
 
       setProgress(
@@ -94,11 +96,23 @@ export default function Topbar() {
       if (!cancelled) setChatUnread(count || 0)
     }
 
+    const touchLastSeen = async (uid: string) => {
+      await supabase
+        .from('profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', uid)
+    }
+
     loadProfile()
 
     const timer = window.setInterval(async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) await loadChatUnread(session.user.id)
+      if (session?.user) {
+        await Promise.all([
+          loadChatUnread(session.user.id),
+          touchLastSeen(session.user.id),
+        ])
+      }
     }, 30000)
 
     const onChatChanged = async () => {

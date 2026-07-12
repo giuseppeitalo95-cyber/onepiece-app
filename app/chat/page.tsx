@@ -7,6 +7,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
+import { isProfileOnline } from '@/lib/onlineStatus'
 
 type ProfileItem = {
   id: string
@@ -15,6 +16,7 @@ type ProfileItem = {
   is_premium?: boolean | null
   premium_until?: string | null
   is_vip?: boolean | null
+  last_seen_at?: string | null
 }
 
 type ChatMessage = {
@@ -87,7 +89,7 @@ export default function ChatPage() {
 
     const { data: profileData, error } = await supabase
       .from('profiles')
-      .select('id, username, avatar_url, is_premium, premium_until, is_vip')
+        .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
       .in('id', friendIds)
 
     if (error) {
@@ -202,6 +204,7 @@ export default function ChatPage() {
 
     const timer = window.setInterval(() => {
       void loadMessages(userId)
+      void loadFriends(userId)
     }, 8000)
 
     return () => window.clearInterval(timer)
@@ -384,7 +387,13 @@ export default function ChatPage() {
                         <span className={`truncate text-sm font-black text-white ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</span>
                         {label ? <span className="rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase text-cyan-100">{label}</span> : null}
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-400">{last?.body}</span>
+                      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-xs">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
+                        <span className={`shrink-0 font-semibold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                          {isProfileOnline(friend) ? 'Ora online' : 'Offline'}
+                        </span>
+                        <span className="truncate text-slate-400">- {last?.body}</span>
+                      </span>
                     </span>
                     {unread > 0 ? (
                       <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black text-white">
@@ -422,7 +431,13 @@ export default function ChatPage() {
                     <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-800 text-xs font-black text-cyan-100">
                       {friend.avatar_url ? <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" /> : (friend.username || 'U').charAt(0).toUpperCase()}
                     </div>
-                    <span className={`truncate text-sm font-bold text-white ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</span>
+                    <span className="min-w-0">
+                      <span className={`block truncate text-sm font-bold text-white ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</span>
+                      <span className={`mt-0.5 block text-[10px] font-bold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                        <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
+                        {isProfileOnline(friend) ? 'Ora online' : 'Offline'}
+                      </span>
+                    </span>
                   </button>
                 )
               })}
@@ -455,8 +470,17 @@ export default function ChatPage() {
                         {selectedFriend.username || 'Giocatore'}
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-[11px] text-cyan-100/76 sm:text-xs">
-                        <ShieldCheck size={13} />
-                        Solo amici - 24H
+                        {isProfileOnline(selectedFriend) ? (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]" />
+                            <span className="font-bold text-emerald-300">Ora online</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck size={13} />
+                            Solo amici - 24H
+                          </>
+                        )}
                       </span>
                     </span>
                   </button>

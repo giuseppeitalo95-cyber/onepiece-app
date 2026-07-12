@@ -9,6 +9,7 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
+import { isProfileOnline } from '@/lib/onlineStatus'
 
 type ProfileItem = {
   id: string
@@ -17,6 +18,7 @@ type ProfileItem = {
   is_premium?: boolean | null
   premium_until?: string | null
   is_vip?: boolean | null
+  last_seen_at?: string | null
 }
 
 type UserCard = {
@@ -107,7 +109,7 @@ export default function FriendsPage() {
           .single(),
         supabase
           .from('profiles')
-          .select('id, username, avatar_url, is_premium, premium_until, is_vip')
+          .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
           .neq('id', user.id),
         supabase
           .from('friend_requests')
@@ -140,6 +142,36 @@ export default function FriendsPage() {
 
     load()
   }, [router])
+
+  useEffect(() => {
+    if (allProfiles.length === 0) return
+
+    const refreshOnlineStatus = async () => {
+      const ids = allProfiles.map(profile => profile.id)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, last_seen_at')
+        .in('id', ids)
+
+      if (error || !data) return
+
+      const lastSeenById = new Map((data as Array<{ id: string; last_seen_at?: string | null }>).map(profile => [profile.id, profile.last_seen_at ?? null]))
+      setAllProfiles(current => current.map(profile => (
+        lastSeenById.has(profile.id)
+          ? { ...profile, last_seen_at: lastSeenById.get(profile.id) ?? null }
+          : profile
+      )))
+      setSelectedProfile(current => (
+        current && lastSeenById.has(current.id)
+          ? { ...current, last_seen_at: lastSeenById.get(current.id) ?? null }
+          : current
+      ))
+    }
+
+    const timer = window.setInterval(refreshOnlineStatus, 30000)
+    void refreshOnlineStatus()
+    return () => window.clearInterval(timer)
+  }, [allProfiles.length])
 
   const getAvatarPublicUrl = async (avatarPath: string | null) => {
     if (!avatarPath) return ''
@@ -535,7 +567,10 @@ export default function FriendsPage() {
                                 <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</p>
                                 {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                               </div>
-                              <p className="text-xs text-slate-500">Tuo Amico</p>
+                              <p className={`text-xs font-semibold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                                <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
+                                {isProfileOnline(friend) ? 'Ora online' : 'Tuo Amico'}
+                              </p>
                             </div>
                           </button>
                         )
@@ -581,7 +616,10 @@ export default function FriendsPage() {
                                     <p className={`truncate font-semibold text-white ${premiumClassName(tier)}`}>{sender?.username || 'Giocatore'}</p>
                                     {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                                   </div>
-                                  <p className="text-xs text-slate-500">Ti ha inviato una richiesta di amicizia.</p>
+                                  <p className={`text-xs font-semibold ${isProfileOnline(sender) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                                    <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(sender) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
+                                    {isProfileOnline(sender) ? 'Ora online' : 'Ti ha inviato una richiesta di amicizia.'}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex shrink-0 gap-2">
@@ -644,8 +682,11 @@ export default function FriendsPage() {
                             <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{profile.username || 'Giocatore'}</p>
                             {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {status === 'friend'
+                          <p className={`text-[11px] font-semibold truncate ${isProfileOnline(profile) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                            <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(profile) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
+                            {isProfileOnline(profile)
+                              ? 'Ora online'
+                              : status === 'friend'
                               ? 'Già tuo amico'
                               : status === 'sent'
                               ? 'Richiesta inviata'
@@ -739,7 +780,10 @@ export default function FriendsPage() {
                       <span>{(selectedProfile.username || 'U').charAt(0).toUpperCase()}</span>
                     )}
                   </div>
-                  <p className="text-sm uppercase tracking-[0.25em] text-slate-500">{isFriend ? 'Amico' : 'Profilo pubblico'}</p>
+                  <p className={`text-sm uppercase tracking-[0.25em] ${isProfileOnline(selectedProfile) ? 'text-emerald-300' : 'text-slate-500'}`}>
+                    <span className={`mr-2 inline-block h-2 w-2 rounded-full ${isProfileOnline(selectedProfile) ? 'bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.8)]' : 'bg-slate-600'}`} />
+                    {isProfileOnline(selectedProfile) ? 'Ora online' : isFriend ? 'Amico' : 'Profilo pubblico'}
+                  </p>
                   <div className="inline-flex items-center gap-2 rounded-full bg-slate-800/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">
                     <Heart size={14} />
                     {isFriend ? 'Visualizza le carte del tuo amico' : selectedRequest?.status === 'incoming' ? 'Richiesta in arrivo' : 'Invia amicizia per vedere le carte'}

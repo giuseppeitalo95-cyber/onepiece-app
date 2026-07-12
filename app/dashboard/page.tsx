@@ -567,6 +567,10 @@ export default function Dashboard() {
   const topSavedCard = [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
     .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null
+  const topSavedCardPrice = topSavedCard ? getAnalyticsPrice(topSavedCard) : null
+  const topSavedCardTotal = topSavedCard && topSavedCardPrice != null
+    ? topSavedCardPrice * topSavedCard.quantity
+    : null
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
@@ -780,6 +784,49 @@ export default function Dashboard() {
           )}
 
           <div className="mt-4 space-y-5">
+            {topSavedCard && (
+              <section>
+                <div className="mb-2 flex items-center gap-3">
+                  <p className="shrink-0 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">Top carta</p>
+                  <div className="h-px flex-1 bg-gradient-to-r from-cyan-300/30 to-transparent" />
+                  <span className="text-[10px] font-bold text-slate-500">Valore piu alto</span>
+                </div>
+
+                <div className="grid grid-cols-[minmax(94px,0.42fr)_minmax(0,1fr)] gap-2 rounded-lg border border-cyan-300/25 bg-slate-900 p-1.5 shadow-[0_18px_45px_rgba(8,47,73,0.22)] sm:max-w-xl sm:grid-cols-[130px_minmax(0,1fr)] sm:gap-3 sm:p-2">
+                  <button onClick={() => openCollectionCard(topSavedCard)} className="block w-full text-left">
+                    <CardImage
+                      src={topSavedCard.image_url}
+                      cardId={topSavedCard.card_id}
+                      alt={topSavedCard.name || topSavedCard.card_id}
+                      className="aspect-[3/4] overflow-hidden rounded-md bg-black"
+                      imgClassName="h-full w-full object-contain"
+                      fallbackClassName="flex h-full w-full items-center justify-center text-[10px] text-gray-400"
+                    />
+                  </button>
+
+                  <div className="flex min-w-0 flex-col justify-between py-1 pr-1">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-white sm:text-base">{topSavedCard.name || topSavedCard.card_id}</p>
+                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{displayCardId(topSavedCard.card_id)}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{topSavedCard.rarity || '-'}</p>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {[
+                        ['Prezzo', formatPrice(topSavedCardPrice)],
+                        ['Copie', `x${topSavedCard.quantity}`],
+                        ['Totale', formatPrice(topSavedCardTotal)],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-xl border border-white/10 bg-white/[0.055] px-2 py-1.5">
+                          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                          <p className="mt-0.5 truncate text-[10px] font-black text-cyan-100 sm:text-xs">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
             {collectionGroups.map(group => (
               <section key={group.setCode}>
