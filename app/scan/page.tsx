@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
-import { evaluateProgress } from '@/lib/progression'
+import { evaluateProgressSynced } from '@/lib/progression'
 
 type ScannedCard = {
   id: string
@@ -1512,7 +1512,7 @@ export default function ScanPage() {
       .select('card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
       .eq('user_id', userId)
 
-    evaluateProgress(userId, data || [], { claimDaily: true })
+    void evaluateProgressSynced(userId, data || [], { claimDaily: true })
   }
 
   const discardScanResults = () => {

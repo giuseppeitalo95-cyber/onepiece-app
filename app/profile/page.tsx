@@ -7,7 +7,7 @@ import { ArrowLeft, Award, Bell, Camera, Flame, LockKeyhole, ShieldCheck, Trophy
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { isAdminAccount } from '@/lib/admin'
-import { emptyProgressSummary, evaluateProgress, type ProgressSummary } from '@/lib/progression'
+import { emptyProgressSummary, evaluateProgressSynced, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
 
 export default function Profile() {
@@ -76,7 +76,7 @@ export default function Profile() {
       setFirstAccess(isFirstAccess)
       setIsAdmin(isAdminUser)
       setPremiumTier(tier)
-      setProgress(evaluateProgress(user.id, cardData || [], { claimDaily: true }))
+      setProgress(await evaluateProgressSynced(user.id, cardData || [], { claimDaily: true }))
 
       if (isAdminUser) {
         await fetchAdminNotifications()

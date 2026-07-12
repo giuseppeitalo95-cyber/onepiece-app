@@ -7,7 +7,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { useRouter } from 'next/navigation'
-import { evaluateProgress } from '@/lib/progression'
+import { evaluateProgressSynced } from '@/lib/progression'
 
 type UserCard = {
   card_id: string
@@ -188,7 +188,7 @@ export default function Dashboard() {
       inventory_price: card.inventory_price ? Number(card.inventory_price) : null
     }))
     setCards(loadedCards)
-    evaluateProgress(uid, loadedCards, { claimDaily: true })
+    void evaluateProgressSynced(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
     void syncLivePricesForCards(uid, loadedCards)
   }
@@ -314,7 +314,7 @@ export default function Dashboard() {
       const live = liveMap[card.card_id]
       return live == null ? card : { ...card, market_price: live, inventory_price: null }
     })
-    evaluateProgress(uid, progressCards, { claimDaily: true })
+    void evaluateProgressSynced(uid, progressCards, { claimDaily: true })
 
     const missingSavedPrices = cardsToSync
       .filter(card => getSavedPrice(card) == null && liveMap[card.card_id] != null)

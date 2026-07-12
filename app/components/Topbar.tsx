@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {
   emptyProgressSummary,
-  evaluateProgress,
+  evaluateProgressSynced,
   type ProgressSummary,
 } from '@/lib/progression'
 import { Crown, MessageCircle } from 'lucide-react'
@@ -70,7 +70,7 @@ export default function Topbar() {
       if (cancelled) return
 
       setProgress(
-        evaluateProgress(session.user.id, cardData || [], {
+        await evaluateProgressSynced(session.user.id, cardData || [], {
           claimDaily: true,
         })
       )

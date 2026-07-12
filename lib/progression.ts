@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export type ProgressCard = {
   card_id: string
   quantity: number
@@ -133,6 +135,48 @@ const saveProgressData = (userId: string, data: ProgressData) => {
     unlockedBadgeIds: [...new Set(data.unlockedBadgeIds)],
     updatedAt: new Date().toISOString()
   }))
+}
+
+const cleanProgressData = (data: ProgressData): ProgressData => ({
+  dailyClaimDates: [...new Set(data.dailyClaimDates)].sort(),
+  unlockedBadgeIds: [...new Set(data.unlockedBadgeIds)],
+  updatedAt: data.updatedAt
+})
+
+const mergeProgressData = (...items: ProgressData[]): ProgressData => cleanProgressData({
+  dailyClaimDates: items.flatMap(item => item.dailyClaimDates || []),
+  unlockedBadgeIds: items.flatMap(item => item.unlockedBadgeIds || []),
+  updatedAt: new Date().toISOString()
+})
+
+const loadRemoteProgressData = async (userId: string): Promise<ProgressData | null> => {
+  const { data, error } = await supabase
+    .from('user_progress')
+    .select('daily_claim_dates, unlocked_badge_ids, updated_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) return null
+
+  return {
+    dailyClaimDates: Array.isArray(data?.daily_claim_dates) ? data.daily_claim_dates : [],
+    unlockedBadgeIds: Array.isArray(data?.unlocked_badge_ids) ? data.unlocked_badge_ids : [],
+    updatedAt: data?.updated_at
+  }
+}
+
+const saveRemoteProgressData = async (userId: string, data: ProgressData) => {
+  const clean = cleanProgressData(data)
+  const { error } = await supabase
+    .from('user_progress')
+    .upsert({
+      user_id: userId,
+      daily_claim_dates: clean.dailyClaimDates,
+      unlocked_badge_ids: clean.unlockedBadgeIds,
+      updated_at: new Date().toISOString()
+    })
+
+  return !error
 }
 
 const getDailyStreak = (dates: string[]) => {
@@ -443,6 +487,16 @@ export const evaluateProgress = (
   options: { claimDaily?: boolean } = {}
 ): ProgressSummary => {
   const progress = loadProgressData(userId)
+  return evaluateProgressWithData(userId, cards, progress, options, true)
+}
+
+const evaluateProgressWithData = (
+  userId: string,
+  cards: ProgressCard[],
+  progress: ProgressData,
+  options: { claimDaily?: boolean } = {},
+  persistLocal = true
+): ProgressSummary => {
   const today = todayKey()
   let dailyClaimedToday = progress.dailyClaimDates.includes(today)
 
@@ -463,7 +517,7 @@ export const evaluateProgress = (
   }
 
   progress.unlockedBadgeIds = [...unlocked]
-  saveProgressData(userId, progress)
+  if (persistLocal) saveProgressData(userId, progress)
 
   const xp = progress.dailyClaimDates.length * DAILY_LOGIN_XP +
     BADGES.reduce((sum, badge) => sum + (unlocked.has(badge.id) ? badgeXp(badge) : 0), 0)
@@ -492,6 +546,32 @@ export const evaluateProgress = (
     badges: orderedBadges,
     newlyUnlocked: scaledNewlyUnlocked
   }
+}
+
+export const evaluateProgressSynced = async (
+  userId: string,
+  cards: ProgressCard[],
+  options: { claimDaily?: boolean } = {}
+): Promise<ProgressSummary> => {
+  const localProgress = loadProgressData(userId)
+  const remoteProgress = await loadRemoteProgressData(userId)
+
+  if (!remoteProgress) {
+    return evaluateProgress(userId, cards, options)
+  }
+
+  const mergedProgress = mergeProgressData(remoteProgress, localProgress)
+  const summary = evaluateProgressWithData(userId, cards, mergedProgress, options, true)
+
+  const saved = await saveRemoteProgressData(userId, {
+    dailyClaimDates: summary.dailyClaimedToday
+      ? [...new Set([...mergedProgress.dailyClaimDates, todayKey()])]
+      : mergedProgress.dailyClaimDates,
+    unlockedBadgeIds: summary.badges.filter(badge => badge.unlocked).map(badge => badge.id)
+  })
+
+  if (!saved) return evaluateProgress(userId, cards, options)
+  return summary
 }
 
 export const summarizeProgress = (
