@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Award, Camera, Flame, LockKeyhole, Trophy, UploadCloud } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
+import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import { isAdminAccount } from '@/lib/admin'
 import { emptyProgressSummary, evaluateProgressSynced, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
@@ -403,6 +404,11 @@ export default function Profile() {
                 ))}
               </div>
             </div>
+            {!firstAccess && (
+              <div className="mt-4">
+                <PushNotificationPrompt mode="profile" />
+              </div>
+            )}
             {!firstAccess && (
               <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                 <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 text-xs font-bold text-slate-300">

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
+import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
 
@@ -854,6 +855,8 @@ export default function Dashboard() {
                 />
               </label>
             </div>
+
+            <PushNotificationPrompt hideWhenGranted />
 
             {filtersOpen && (
               <div className="absolute right-0 top-full z-30 mt-2 w-full rounded-[1.75rem] border border-slate-700 bg-slate-950/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-xl sm:w-[380px]">
