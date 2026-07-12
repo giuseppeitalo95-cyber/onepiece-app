@@ -407,6 +407,34 @@ export default function DeckBuilderPage() {
     inventory_price: null
   })
 
+  const fillMissingDeckCardDetails = async (card: DeckCard): Promise<DeckCard> => {
+    if (card.rarity && card.card_color && card.card_type && card.image_url) return card
+
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(card.card_id)}`)
+      const data = await res.json()
+      const match = Array.isArray(data)
+        ? data.find((item: SearchCardResponse) => compact(String(item.card_id ?? item.id ?? '')) === compact(card.card_id)) || data[0]
+        : null
+
+      if (!match) return card
+
+      const detail = toDeckCard(match, card.quantity)
+      return {
+        ...card,
+        name: card.name || detail.name,
+        image_url: card.image_url || detail.image_url,
+        rarity: card.rarity || detail.rarity,
+        card_color: card.card_color ?? detail.card_color ?? null,
+        card_type: card.card_type ?? detail.card_type ?? null,
+        card_cost: card.card_cost ?? detail.card_cost ?? null,
+        card_power: card.card_power ?? detail.card_power ?? null
+      }
+    } catch {
+      return card
+    }
+  }
+
   const deckCardsExpanded = deckCards.flatMap(card =>
     Array.from({ length: card.quantity }, (_, index) => ({ ...card, copyIndex: index }))
   )
@@ -580,9 +608,16 @@ export default function DeckBuilderPage() {
       const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
       const inserts: Array<Record<string, unknown>> = []
       const updates: Array<Promise<{ error: unknown }>> = []
-      const livePrices = await fetchLivePriceMap([...grouped.values()].map(item => item.card))
+      const detailEntries = await Promise.all(
+        [...grouped.entries()].map(async ([cardId, item]) => [cardId, {
+          ...item,
+          card: await fillMissingDeckCardDetails(item.card)
+        }] as const)
+      )
+      const detailedGrouped = new Map(detailEntries)
+      const livePrices = await fetchLivePriceMap([...detailedGrouped.values()].map(item => item.card))
 
-      grouped.forEach(({ card, quantity }, cardId) => {
+      detailedGrouped.forEach(({ card, quantity }, cardId) => {
         const savedPrice = priceNumberFromMap(livePrices, card)
         const payload = {
           user_id: userId,

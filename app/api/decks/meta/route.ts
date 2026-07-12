@@ -1,3 +1,5 @@
+import { getAllCards } from '@/lib/cardData'
+
 type MetaDeckCard = {
   card_id: string
   name: string
@@ -6,6 +8,8 @@ type MetaDeckCard = {
   rarity: string | null
   card_color: string | null
   card_type: string | null
+  card_cost: number | null
+  card_power: number | null
 }
 
 const LIMITLESS_BASE = 'https://onepiece.limitlesstcg.com'
@@ -24,6 +28,11 @@ const decodeHtml = (value: string) =>
 
 const cardImageUrl = (cardId: string) =>
   `https://en.onepiece-cardgame.com/images/cardlist/card/${cardId}.png`
+
+const compactCardId = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const findCatalogCard = (catalogById: Map<string, any>, cardId: string) =>
+  catalogById.get(compactCardId(cardId)) || catalogById.get(compactCardId(cardId).replace(/p\d+$/i, ''))
 
 const parseDeckSummary = (html: string) => {
   const decks: Array<{ id: string; title: string; player: string; placement: string; url: string }> = []
@@ -46,7 +55,11 @@ const parseDeckSummary = (html: string) => {
   return decks
 }
 
-const parseDeckDetail = (html: string, summary: { id: string; title: string; player: string; placement: string; url: string }) => {
+const parseDeckDetail = (
+  html: string,
+  summary: { id: string; title: string; player: string; placement: string; url: string },
+  catalogById: Map<string, any>
+) => {
   const cards: MetaDeckCard[] = []
   const cardRegex = /<div class="decklist-card" data-count="(\d+)" data-id="([^"]+)"[\s\S]*?<span class="card-name">([^<]+)<\/span>[\s\S]*?<\/div>/g
   let match: RegExpExecArray | null
@@ -56,15 +69,18 @@ const parseDeckDetail = (html: string, summary: { id: string; title: string; pla
     const quantity = Number(countRaw || 1)
     const name = decodeHtml(rawName.replace(/\s*\([^)]*\)\s*$/, ''))
     const isLeader = cards.length === 0
+    const catalogCard = findCatalogCard(catalogById, cardId)
 
     cards.push({
-      card_id: cardId,
-      name,
+      card_id: String(catalogCard?.card_id || catalogCard?.id || cardId),
+      name: catalogCard?.card_name || catalogCard?.name || name,
       quantity,
-      image_url: cardImageUrl(cardId),
-      rarity: null,
-      card_color: null,
-      card_type: isLeader ? 'Leader' : null
+      image_url: catalogCard?.card_image || catalogCard?.image_url || cardImageUrl(cardId),
+      rarity: catalogCard?.rarity || null,
+      card_color: catalogCard?.card_color ?? null,
+      card_type: catalogCard?.card_type || (isLeader ? 'Leader' : null),
+      card_cost: catalogCard?.card_cost == null ? null : Number(catalogCard.card_cost),
+      card_power: catalogCard?.card_power == null ? null : Number(catalogCard.card_power)
     })
   }
 
@@ -91,6 +107,12 @@ export async function GET() {
     } as RequestInit & { next: { revalidate: number } })
     const listHtml = await listRes.text()
     const summaries = parseDeckSummary(listHtml)
+    const catalog = await getAllCards()
+    const catalogById = new Map<string, any>()
+    for (const card of catalog) {
+      const id = compactCardId(card.card_id || card.id)
+      if (id && !catalogById.has(id)) catalogById.set(id, card)
+    }
 
     const decks = await Promise.all(
       summaries.slice(0, 28).map(async summary => {
@@ -98,7 +120,7 @@ export async function GET() {
           headers: { 'User-Agent': 'OnePieceVault/1.0' },
           next: { revalidate: 900 }
         } as RequestInit & { next: { revalidate: number } })
-        return parseDeckDetail(await detailRes.text(), summary)
+        return parseDeckDetail(await detailRes.text(), summary, catalogById)
       })
     )
 

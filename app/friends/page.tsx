@@ -280,7 +280,13 @@ export default function FriendsPage() {
         .order('updated_at', { ascending: false })
     ])
 
-    const baseCards = (cards ?? []).map(card => ({ ...card, market_price: null, inventory_price: null }))
+    const baseCards = (cards ?? []).map(card => ({
+      ...card,
+      rarity: card.rarity === 'Unknown' ? null : card.rarity,
+      card_color: card.card_color === 'Unknown' ? null : card.card_color,
+      market_price: null,
+      inventory_price: null
+    }))
     setSelectedCards(baseCards)
     setSelectedProgress(summarizeProgress(baseCards))
 

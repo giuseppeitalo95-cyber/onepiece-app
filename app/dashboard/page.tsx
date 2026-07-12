@@ -182,6 +182,8 @@ export default function Dashboard() {
 
     const loadedCards = (data || []).map(card => ({
       ...card,
+      rarity: card.rarity === 'Unknown' ? null : card.rarity,
+      card_color: card.card_color === 'Unknown' ? null : card.card_color,
       market_price: card.market_price ? Number(card.market_price) : null,
       inventory_price: card.inventory_price ? Number(card.inventory_price) : null
     }))
@@ -498,8 +500,8 @@ export default function Dashboard() {
   }
 
   const searchTermNormalized = searchTerm.trim().toLowerCase()
-  const availableColors = Array.from(new Set(cards.map(card => card.card_color || 'Unknown'))).filter(Boolean)
-  const availableRarities = Array.from(new Set(cards.map(card => card.rarity || 'Unknown'))).filter(Boolean)
+  const availableColors = Array.from(new Set(cards.map(card => card.card_color).filter((value): value is string => Boolean(value && value !== 'Unknown'))))
+  const availableRarities = Array.from(new Set(cards.map(card => card.rarity).filter((value): value is string => Boolean(value && value !== 'Unknown'))))
 
   const filteredCards = cards.filter((item) => {
     const matchesSearch =
@@ -509,11 +511,11 @@ export default function Dashboard() {
 
     const matchesColor =
       filterColor === 'all' ||
-      (item.card_color || 'Unknown').toLowerCase() === filterColor.toLowerCase()
+      (item.card_color || '').toLowerCase() === filterColor.toLowerCase()
 
     const matchesRarity =
       filterRarity === 'all' ||
-      (item.rarity || 'Unknown').toLowerCase() === filterRarity.toLowerCase()
+      (item.rarity || '').toLowerCase() === filterRarity.toLowerCase()
 
     const cost = item.card_cost ?? -1
     let matchesCost = true
@@ -568,7 +570,8 @@ export default function Dashboard() {
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
-      const key = String(card[field] || 'Unknown')
+      const key = String(card[field] || '')
+      if (!key || key === 'Unknown') return acc
       acc[key] = (acc[key] || 0) + card.quantity
       return acc
     }, {})
