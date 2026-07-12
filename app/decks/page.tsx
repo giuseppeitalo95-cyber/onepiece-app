@@ -7,6 +7,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
+import { FREE_DECK_LIMIT, getPremiumTier, hasPremiumAccess, type PremiumProfile } from '@/lib/premium'
 
 type DeckCard = {
   card_id: string
@@ -187,6 +188,7 @@ export default function DeckBuilderPage() {
   const [deckStoreReady, setDeckStoreReady] = useState(true)
   const [collectionSavingDeckId, setCollectionSavingDeckId] = useState<string | null>(null)
   const [collectionMessage, setCollectionMessage] = useState('')
+  const [premiumProfile, setPremiumProfile] = useState<PremiumProfile | null>(null)
   const collectionSaveLock = useRef<string | null>(null)
 
   useEffect(() => {
@@ -198,6 +200,23 @@ export default function DeckBuilderPage() {
       }
 
       setUserId(session.user.id)
+      let { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, is_premium, premium_until, is_vip')
+        .eq('id', session.user.id)
+        .maybeSingle()
+      let safeProfileData = profileData as any
+
+      if (profileError) {
+        const fallback = await supabase
+          .from('profiles')
+          .select('id, username')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        safeProfileData = fallback.data as any
+      }
+
+      setPremiumProfile({ ...safeProfileData, email: session.user.email })
 
       await loadSavedDecks(session.user.id)
     }
@@ -574,6 +593,14 @@ export default function DeckBuilderPage() {
 
   const saveCurrentDeck = async () => {
     if (!userId) return
+    const premiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
+    const isNewDeck = !editingDeckId && !savedDecks.some(deck => deck.name === deckName.trim())
+    if (!premiumAccess && isNewDeck && savedDecks.length >= FREE_DECK_LIMIT) {
+      alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
+      router.push('/premium')
+      return
+    }
+
     const deck: SavedDeck = {
       id: editingDeckId || `${Date.now()}`,
       name: deckName.trim() || 'Deck senza nome',
@@ -774,6 +801,7 @@ export default function DeckBuilderPage() {
   })
 
   const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
+  const premiumTier = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email })
   const pageDescription = mode === 'saved'
     ? 'Tutti i deck salvati, apribili e modificabili.'
     : mode === 'create'

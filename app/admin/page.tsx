@@ -11,6 +11,9 @@ type ProfileItem = {
   username: string | null
   username_locked?: boolean
   is_blocked?: boolean
+  is_premium?: boolean
+  is_vip?: boolean
+  vip_since?: string | null
 }
 
 type MissingCardRequest = {
@@ -153,7 +156,7 @@ export default function AdminPage() {
   const fetchProfiles = async () => {
     console.log('🔍 [ADMIN] Fetching profiles...')
     // Prima prova con tutte le colonne, se fallisce usa solo le colonne base
-    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked')
+    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked, is_premium, is_vip, vip_since')
 
     const { data, error } = await query
 
@@ -176,7 +179,9 @@ export default function AdminPage() {
       const enrichedData = (basicData || []).map(profile => ({
         ...profile,
         username_locked: false,
-        is_blocked: false
+        is_blocked: false,
+        is_premium: false,
+        is_vip: false
       }))
 
       setProfiles(enrichedData)
@@ -292,6 +297,30 @@ export default function AdminPage() {
       console.error(error)
     } else {
       setActionMessage(`Utente ${profile.username || profile.id} aggiornato.`)
+      await fetchProfiles()
+    }
+    setBusy(false)
+  }
+
+  const toggleVipUser = async (profile: ProfileItem) => {
+    if (!profile.id || profile.id === ADMIN_ACCOUNT.id) return
+
+    const nextVip = !profile.is_vip
+    setBusy(true)
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_vip: nextVip,
+        vip_since: nextVip ? new Date().toISOString() : null,
+        vip_granted_by: nextVip ? ADMIN_ACCOUNT.id : null,
+        vip_note: nextVip ? 'VIP assegnato da admin' : null
+      })
+      .eq('id', profile.id)
+
+    if (error) {
+      setActionMessage(`Errore VIP: ${error.message}. Se manca la colonna, esegui premium.sql su Supabase.`)
+    } else {
+      setActionMessage(nextVip ? `VIP attivato per ${profile.username || profile.id}.` : `VIP rimosso da ${profile.username || profile.id}.`)
       await fetchProfiles()
     }
     setBusy(false)
@@ -535,10 +564,26 @@ export default function AdminPage() {
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{profile.username || 'Utente anonimo'}</p>
                     <p className="text-xs text-slate-500">ID: {profile.id}</p>
-                    <p className="text-xs text-slate-400">{profile.username_locked ? 'Nickname bloccato' : 'Nickname modificabile'}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                      <span className="text-slate-400">{profile.username_locked ? 'Nickname bloccato' : 'Nickname modificabile'}</span>
+                      {profile.id === ADMIN_ACCOUNT.id ? (
+                        <span className="rounded-full bg-rose-300/15 px-2 py-0.5 font-black text-rose-100">Admin</span>
+                      ) : profile.is_vip ? (
+                        <span className="rounded-full bg-amber-300/15 px-2 py-0.5 font-black text-amber-100">VIP</span>
+                      ) : profile.is_premium ? (
+                        <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 font-black text-cyan-100">Premium</span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => toggleVipUser(profile)}
+                      disabled={busy || profile.id === ADMIN_ACCOUNT.id}
+                      className={`rounded-2xl px-3 py-2 text-xs font-semibold transition ${profile.is_vip ? 'bg-slate-700 text-slate-200 border border-slate-600 hover:bg-slate-600' : 'bg-amber-300/15 text-amber-100 border border-amber-200/25 hover:bg-amber-300/25'} disabled:opacity-50`}
+                    >
+                      {profile.is_vip ? 'Togli VIP' : 'Dai VIP'}
+                    </button>
                     <button
                       onClick={() => toggleBlockUser(profile)}
                       disabled={busy}

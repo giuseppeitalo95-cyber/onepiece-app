@@ -8,6 +8,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { isAdminAccount } from '@/lib/admin'
 import { emptyProgressSummary, evaluateProgress, type ProgressSummary } from '@/lib/progression'
+import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
 
 export default function Profile() {
   const router = useRouter()
@@ -24,6 +25,7 @@ export default function Profile() {
   const [savingAvatar, setSavingAvatar] = useState(false)
   const [savingUsername, setSavingUsername] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
   const [adminNotifications, setAdminNotifications] = useState(0)
   const [progress, setProgress] = useState<ProgressSummary>(emptyProgressSummary())
 
@@ -40,28 +42,40 @@ export default function Profile() {
       setEmail(user.email ?? '')
       setUserId(user.id)
 
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('username, username_locked, avatar_url')
+        .select('username, username_locked, avatar_url, is_premium, premium_until, is_vip')
         .eq('id', user.id)
         .single()
+      let profileData = data as any
+
+      if (error) {
+        const fallback = await supabase
+          .from('profiles')
+          .select('username, username_locked, avatar_url')
+          .eq('id', user.id)
+          .single()
+        profileData = fallback.data as any
+      }
 
       const { data: cardData } = await supabase
         .from('user_cards')
         .select('card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
         .eq('user_id', user.id)
 
-      const rawAvatarUrl = data?.avatar_url ?? ''
+      const rawAvatarUrl = profileData?.avatar_url ?? ''
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
-      const isFirstAccess = !data?.username
+      const isFirstAccess = !profileData?.username
 
-      const isAdminUser = isAdminAccount(user, data)
+      const isAdminUser = isAdminAccount(user, profileData)
+      const tier = getPremiumTier(profileData as PremiumProfile, user)
 
-      setUsername(data?.username ?? '')
+      setUsername(profileData?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)
       setCanEdit(isFirstAccess)
       setFirstAccess(isFirstAccess)
       setIsAdmin(isAdminUser)
+      setPremiumTier(tier)
       setProgress(evaluateProgress(user.id, cardData || [], { claimDaily: true }))
 
       if (isAdminUser) {
@@ -357,7 +371,14 @@ export default function Profile() {
 
           <div className="mt-10 text-center sm:mt-12">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200">Profilo vault</p>
-            <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">{username || 'Utente'}</h2>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <h2 className={`text-3xl font-black text-white sm:text-4xl ${premiumClassName(premiumTier)}`}>{username || 'Utente'}</h2>
+              {premiumTier !== 'free' ? (
+                <span className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1 text-[10px] font-black uppercase text-cyan-100">
+                  {premiumLabel(premiumTier)}
+                </span>
+              ) : null}
+            </div>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
               {firstAccess
                 ? 'Scegli il nickname: lo userai nel profilo e nella pagina amici. Dopo il salvataggio resta bloccato.'

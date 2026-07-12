@@ -684,15 +684,21 @@ export default function ScanPage() {
 
   const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch('/api/cards/ocr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : ''
+        },
         body: JSON.stringify({ images: canvases.map(canvasToImage) })
       })
       const data = await res.json()
 
       if (!res.ok) {
-        if (data?.scanLimitReached) {
+        if (data?.dailyScanLimitReached) {
+          setRecognitionMessage(`Limite giornaliero free raggiunto: ${data.dailyScansUsed}/${data.dailyScansLimit} scan. Premium sblocca scan illimitate.`)
+        } else if (data?.scanLimitReached) {
           setRecognitionMessage(`Limite mensile globale raggiunto: ${data.scansUsed}/${data.scansLimit} scansioni.`)
         } else if (data?.error) {
           setRecognitionMessage(`OCR non configurato: ${data.error}`)

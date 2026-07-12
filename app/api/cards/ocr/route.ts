@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { FREE_DAILY_SCAN_LIMIT } from '@/lib/premium'
 
 const MONTHLY_SCAN_LIMIT = 1000
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
@@ -27,6 +28,12 @@ type ScanUsageResult = {
   monthly_limit?: number
 }
 
+type DailyScanUsageResult = {
+  allowed?: boolean
+  used?: number
+  daily_limit?: number
+}
+
 const adminSupabase = supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
@@ -39,6 +46,11 @@ const adminSupabase = supabaseServiceRoleKey
 const currentMonthKey = () => {
   const now = new Date()
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+const currentDayKey = () => {
+  const now = new Date()
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
 }
 
 const imageToBase64 = (image: string) => {
@@ -90,6 +102,15 @@ async function reserveMonthlyScan() {
     .single()
 
   if (error) {
+    if (/increment_user_daily_scan_usage|function|schema cache|does not exist|Could not find/i.test(error.message)) {
+      return {
+        allowed: true,
+        used: 0,
+        limit: FREE_DAILY_SCAN_LIMIT,
+        error: null
+      }
+    }
+
     return {
       allowed: false,
       used: 0,
@@ -104,6 +125,63 @@ async function reserveMonthlyScan() {
     allowed: Boolean(usage?.allowed),
     used: Number(usage?.used || 0),
     limit: Number(usage?.monthly_limit || MONTHLY_SCAN_LIMIT),
+    error: null
+  }
+}
+
+async function reserveDailyUserScan(req: NextRequest) {
+  if (!adminSupabase) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
+    }
+  }
+
+  const auth = req.headers.get('authorization') || ''
+  const token = auth.replace(/^Bearer\s+/i, '')
+  if (!token) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: 'Sessione utente mancante'
+    }
+  }
+
+  const { data: { user }, error: userError } = await adminSupabase.auth.getUser(token)
+  if (userError || !user) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: 'Sessione utente non valida'
+    }
+  }
+
+  const { data, error } = await adminSupabase
+    .rpc('increment_user_daily_scan_usage', {
+      p_user_id: user.id,
+      p_day: currentDayKey(),
+      p_limit: FREE_DAILY_SCAN_LIMIT
+    })
+    .single()
+
+  if (error) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: `${error.message}. Esegui premium.sql su Supabase.`
+    }
+  }
+
+  const usage = data as DailyScanUsageResult | null
+  return {
+    allowed: Boolean(usage?.allowed),
+    used: Number(usage?.used || 0),
+    limit: Number(usage?.daily_limit || FREE_DAILY_SCAN_LIMIT),
     error: null
   }
 }
@@ -125,6 +203,20 @@ export async function POST(req: NextRequest) {
 
     if (!googleVisionApiKey) {
       return Response.json({ text: '', error: 'Missing GOOGLE_VISION_API_KEY' }, { status: 503 })
+    }
+
+    const dailyUsage = await reserveDailyUserScan(req)
+    if (!dailyUsage.allowed) {
+      return Response.json(
+        {
+          text: '',
+          error: dailyUsage.error || 'Daily scan limit reached',
+          dailyScanLimitReached: !dailyUsage.error,
+          dailyScansUsed: dailyUsage.used,
+          dailyScansLimit: dailyUsage.limit
+        },
+        { status: dailyUsage.error ? 503 : 429 }
+      )
     }
 
     const usage = await reserveMonthlyScan()

@@ -8,8 +8,10 @@ import {
   evaluateProgress,
   type ProgressSummary,
 } from '@/lib/progression'
+import { Crown } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
+import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
 
 export default function Topbar() {
   const router = useRouter()
@@ -17,6 +19,7 @@ export default function Topbar() {
 
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
@@ -33,13 +36,23 @@ export default function Topbar() {
         return
       }
 
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('username, avatar_url')
+        .select('username, avatar_url, is_premium, premium_until, is_vip')
         .eq('id', session.user.id)
         .maybeSingle()
+      let profileData = data as any
 
-      if (!data?.username && pathname !== '/complete-profile') {
+      if (error) {
+        const fallback = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        profileData = fallback.data as any
+      }
+
+      if (!profileData?.username && pathname !== '/complete-profile') {
         router.replace('/complete-profile')
         return
       }
@@ -57,8 +70,9 @@ export default function Topbar() {
         })
       )
 
-      setUsername(data?.username || 'Utente')
-      setAvatarUrl(data?.avatar_url || '')
+      setUsername(profileData?.username || 'Utente')
+      setAvatarUrl(profileData?.avatar_url || '')
+      setPremiumTier(getPremiumTier(profileData, session.user))
       setLoading(false)
     }
 
@@ -69,7 +83,21 @@ export default function Topbar() {
     <>
       <AchievementToasts />
 
-      <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-end border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
+      <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
+        <button
+          type="button"
+          onClick={() => router.push('/premium')}
+          className={`op-premium-topbar relative z-10 flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
+            premiumTier === 'free'
+              ? 'border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/40 hover:text-cyan-50'
+              : 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
+          }`}
+          aria-label="Premium"
+        >
+          <Crown size={15} />
+          <span className="hidden min-[380px]:inline">Premium</span>
+        </button>
+
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">
           <AppLogo compact />
         </div>
@@ -113,9 +141,20 @@ export default function Topbar() {
               </span>
             </span>
 
-            <span className="hidden max-w-[130px] truncate pr-1 text-xs font-bold text-cyan-50 sm:block">
+            <span className={`hidden max-w-[130px] truncate pr-1 text-xs font-bold text-cyan-50 sm:block ${premiumClassName(premiumTier)}`}>
               {loading ? '...' : username}
             </span>
+            {premiumTier !== 'free' && (
+              <span className={`hidden rounded-full border px-2 py-1 text-[9px] font-black uppercase leading-none sm:inline-flex ${
+                premiumTier === 'admin'
+                  ? 'border-rose-200/40 bg-rose-300/15 text-rose-100'
+                  : premiumTier === 'vip'
+                  ? 'border-amber-200/40 bg-amber-300/15 text-amber-100'
+                  : 'border-cyan-200/40 bg-cyan-300/15 text-cyan-100'
+              }`}>
+                {premiumLabel(premiumTier)}
+              </span>
+            )}
           </button>
         </div>
       </div>

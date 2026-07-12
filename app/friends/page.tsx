@@ -8,11 +8,15 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
+import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 
 type ProfileItem = {
   id: string
   username: string | null
   avatar_url: string | null
+  is_premium?: boolean | null
+  premium_until?: string | null
+  is_vip?: boolean | null
 }
 
 type UserCard = {
@@ -103,7 +107,7 @@ export default function FriendsPage() {
           .single(),
         supabase
           .from('profiles')
-          .select('id, username, avatar_url')
+          .select('id, username, avatar_url, is_premium, premium_until, is_vip')
           .neq('id', user.id),
         supabase
           .from('friend_requests')
@@ -115,7 +119,14 @@ export default function FriendsPage() {
       setUsername(profileData?.username ?? '')
       setRequests(requestData ?? [])
 
-      const profiles = profileListData ?? []
+      let profiles: ProfileItem[] = (profileListData ?? []) as ProfileItem[]
+      if (!profileListData) {
+        const { data: fallbackProfiles } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .neq('id', user.id)
+        profiles = (fallbackProfiles ?? []) as ProfileItem[]
+      }
       const resolvedProfiles = await Promise.all(
         profiles.map(async (profile: ProfileItem) => {
           const resolved = await getAvatarPublicUrl(profile.avatar_url)
@@ -502,25 +513,33 @@ export default function FriendsPage() {
                     </div>
                   ) : (
                     <div className="mt-5 grid gap-3">
-                      {friendProfiles.map((friend) => (
-                        <button
-                          key={friend.id}
-                          onClick={() => openProfile(friend)}
-                          className="group flex items-center gap-4 rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4 text-left transition hover:border-amber-400/50"
-                        >
-                          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-2xl text-amber-300 overflow-hidden">
-                            {friend.avatar_url ? (
-                              <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" />
-                            ) : (
-                              <span>{(friend.username || 'U').charAt(0).toUpperCase()}</span>
-                            )}
-                          </div>
-                          <div className="truncate">
-                            <p className="font-semibold text-white truncate">{friend.username || 'Giocatore'}</p>
-                            <p className="text-xs text-slate-500">Tuo Amico</p>
-                          </div>
-                        </button>
-                      ))}
+                      {friendProfiles.map((friend) => {
+                        const tier = getPremiumTier(friend, { id: friend.id })
+                        const label = premiumLabel(tier)
+
+                        return (
+                          <button
+                            key={friend.id}
+                            onClick={() => openProfile(friend)}
+                            className="group flex items-center gap-4 rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4 text-left transition hover:border-amber-400/50"
+                          >
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-2xl text-amber-300 overflow-hidden">
+                              {friend.avatar_url ? (
+                                <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" />
+                              ) : (
+                                <span>{(friend.username || 'U').charAt(0).toUpperCase()}</span>
+                              )}
+                            </div>
+                            <div className="truncate">
+                              <div className="flex items-center gap-2">
+                                <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</p>
+                                {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
+                              </div>
+                              <p className="text-xs text-slate-500">Tuo Amico</p>
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -544,6 +563,8 @@ export default function FriendsPage() {
                     <div className="mt-5 space-y-3">
                       {incomingRequests.map((request) => {
                         const sender = allProfiles.find((profile) => profile.id === request.requester_id)
+                        const tier = getPremiumTier(sender, { id: sender?.id })
+                        const label = premiumLabel(tier)
                         return (
                           <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-900/80 p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -556,7 +577,10 @@ export default function FriendsPage() {
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="truncate font-semibold text-white">{sender?.username || 'Giocatore'}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className={`truncate font-semibold text-white ${premiumClassName(tier)}`}>{sender?.username || 'Giocatore'}</p>
+                                    {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
+                                  </div>
                                   <p className="text-xs text-slate-500">Ti ha inviato una richiesta di amicizia.</p>
                                 </div>
                               </div>
@@ -600,6 +624,8 @@ export default function FriendsPage() {
               <div className="space-y-4">
                 {peopleToShow.slice(0, 6).map((profile) => {
                   const status = resolvedRequests.get(profile.id)
+                  const tier = getPremiumTier(profile, { id: profile.id })
+                  const label = premiumLabel(tier)
                   return (
                     <div key={profile.id} className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-slate-800/70 bg-slate-900/90 p-3 sm:gap-3 sm:rounded-3xl sm:p-4">
                       <button
@@ -614,7 +640,10 @@ export default function FriendsPage() {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-white truncate">{profile.username || 'Giocatore'}</p>
+                          <div className="flex items-center gap-2">
+                            <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{profile.username || 'Giocatore'}</p>
+                            {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
+                          </div>
                           <p className="text-[11px] text-slate-500 truncate">
                             {status === 'friend'
                               ? 'Già tuo amico'
@@ -667,6 +696,11 @@ export default function FriendsPage() {
       </main>
 
       {selectedProfile ? (
+        (() => {
+          const selectedTier = getPremiumTier(selectedProfile, { id: selectedProfile.id })
+          const selectedLabel = premiumLabel(selectedTier)
+
+          return (
         <div
           className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-2 backdrop-blur-sm sm:p-4"
           onClick={(event) => {
@@ -682,7 +716,10 @@ export default function FriendsPage() {
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-800/70 bg-slate-900/95 p-5 backdrop-blur-xl">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Profilo giocatore</p>
-                <h3 className="text-2xl font-semibold text-white">{selectedProfile.username || 'Giocatore'}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-2xl font-semibold text-white ${premiumClassName(selectedTier)}`}>{selectedProfile.username || 'Giocatore'}</h3>
+                  {selectedLabel ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-1 text-[10px] font-black uppercase text-cyan-100">{selectedLabel}</span> : null}
+                </div>
               </div>
               <button
                 onClick={closeModal}
@@ -883,6 +920,8 @@ export default function FriendsPage() {
             </div>
           </div>
         </div>
+          )
+        })()
       ) : null}
 
       {selectedFriendDeck ? (

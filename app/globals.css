@@ -288,6 +288,25 @@
   width: 70%;
 }
 
+.op-name-premium {
+  color: #cffafe;
+  text-shadow: 0 0 14px rgba(103, 232, 249, 0.5);
+}
+
+.op-name-vip {
+  color: #fde68a;
+  text-shadow: 0 0 14px rgba(251, 191, 36, 0.55);
+}
+
+.op-name-admin {
+  color: #fecdd3;
+  text-shadow: 0 0 16px rgba(251, 113, 133, 0.58);
+}
+
+.op-premium-topbar {
+  isolation: isolate;
+}
+
 /* Enhanced button styles */
 .onepiece-btn-primary {
   @apply bg-gradient-to-r from-cyan-300 to-rose-300 text-slate-950 font-semibold;

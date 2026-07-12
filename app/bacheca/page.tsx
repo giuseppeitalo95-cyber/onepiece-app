@@ -8,11 +8,15 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { isAdminAccount } from '@/lib/admin'
+import { FREE_BOARD_POST_DAYS, PREMIUM_BOARD_POST_DAYS, getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 
 type ProfileItem = {
   id: string
   username: string | null
   avatar_url: string | null
+  is_premium?: boolean | null
+  premium_until?: string | null
+  is_vip?: boolean | null
 }
 
 type BoardPost = {
@@ -51,7 +55,7 @@ type LivePriceResult = {
 }
 
 const BOARD_MAX_POSTS = 30
-const BOARD_RETENTION_DAYS = 30
+const BOARD_RETENTION_DAYS = PREMIUM_BOARD_POST_DAYS
 
 const displayCardId = (value?: string | null) =>
   (value || '')
@@ -129,11 +133,20 @@ export default function BachecaPage() {
       if (allIds.length > 0) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('id, username, avatar_url')
+          .select('id, username, avatar_url, is_premium, premium_until, is_vip')
           .in('id', allIds)
 
+        let safeProfileData: ProfileItem[] = (profileData || []) as ProfileItem[]
+        if (!profileData) {
+          const fallback = await supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .in('id', allIds)
+          safeProfileData = (fallback.data || []) as ProfileItem[]
+        }
+
         const resolvedProfiles = await Promise.all(
-          (profileData || []).map(async (profile: ProfileItem) => ({
+          safeProfileData.map(async (profile: ProfileItem) => ({
             ...profile,
             avatar_url: await getAvatarPublicUrl(profile.avatar_url)
           }))
@@ -142,9 +155,10 @@ export default function BachecaPage() {
         const profileMap = Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile]))
         setProfiles(profileMap)
         setIsAdmin(isAdminAccount(session.user, profileMap[uid]))
+        await loadPosts(allIds, profileMap)
+      } else {
+        await loadPosts(allIds, {})
       }
-
-      await loadPosts(allIds)
 
       setLoading(false)
     }
@@ -194,7 +208,7 @@ export default function BachecaPage() {
     return () => window.clearTimeout(timer)
   }, [cardQuery, selectedPostCard])
 
-  const loadPosts = async (ids: string[]) => {
+  const loadPosts = async (ids: string[], profileMap = profiles) => {
     if (ids.length === 0) return
 
     const cutoff = new Date()
@@ -215,12 +229,21 @@ export default function BachecaPage() {
     }
 
     setBoardReady(true)
-    setPosts((data || []) as BoardPost[])
+    setPosts(((data || []) as BoardPost[]).filter(post => {
+      const profile = profileMap[post.user_id]
+      const tier = getPremiumTier(profile, { id: post.user_id })
+      const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
+      const cutoffForPost = new Date()
+      cutoffForPost.setDate(cutoffForPost.getDate() - days)
+      return new Date(post.created_at).getTime() >= cutoffForPost.getTime()
+    }))
   }
 
   const cleanupOwnPosts = async (uid: string) => {
+    const tier = getPremiumTier(profiles[uid], { id: uid })
+    const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
     const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - BOARD_RETENTION_DAYS)
+    cutoff.setDate(cutoff.getDate() - days)
 
     await supabase
       .from('board_posts')
@@ -499,6 +522,8 @@ export default function BachecaPage() {
             <div className="mt-3 space-y-2">
               {posts.map(post => {
                 const profile = profiles[post.user_id]
+                const tier = getPremiumTier(profile, { id: post.user_id })
+                const label = premiumLabel(tier)
                 return (
                   <article key={post.id} className="rounded-3xl border border-slate-700 bg-slate-950/65 p-3">
                     <div className="flex gap-3">
@@ -515,10 +540,21 @@ export default function BachecaPage() {
                           <button
                             type="button"
                             onClick={() => openBoardProfile(post.user_id)}
-                            className="text-sm font-black text-white transition hover:text-cyan-100 active:scale-[0.98]"
+                            className={`text-sm font-black text-white transition hover:text-cyan-100 active:scale-[0.98] ${premiumClassName(tier)}`}
                           >
                             {profile?.username || 'Giocatore'}
                           </button>
+                          {label ? (
+                            <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                              tier === 'admin'
+                                ? 'border-rose-200/35 bg-rose-300/12 text-rose-100'
+                                : tier === 'vip'
+                                ? 'border-amber-200/35 bg-amber-300/12 text-amber-100'
+                                : 'border-cyan-200/35 bg-cyan-300/12 text-cyan-100'
+                            }`}>
+                              {label}
+                            </span>
+                          ) : null}
                           <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Nuovo</span>
                           <span className="text-[10px] text-slate-500">{timeLabel(post.created_at)}</span>
                           {canDeletePost(post) ? (
