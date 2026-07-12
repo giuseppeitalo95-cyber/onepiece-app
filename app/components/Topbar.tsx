@@ -8,7 +8,7 @@ import {
   evaluateProgressSynced,
   type ProgressSummary,
 } from '@/lib/progression'
-import { Crown, MessageCircle, ShieldCheck } from 'lucide-react'
+import { Crown, MessageCircle, ShieldCheck, Sparkle } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
@@ -25,6 +25,15 @@ export default function Topbar() {
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
   )
+  const tierLabel =
+    premiumTier === 'admin'
+      ? 'Admin'
+      : premiumTier === 'vip'
+      ? 'VIP'
+      : premiumTier === 'premium'
+      ? 'Premium'
+      : 'Free'
+  const TierIcon = premiumTier === 'admin' ? ShieldCheck : premiumTier === 'free' ? Sparkle : Crown
 
   useEffect(() => {
     let cancelled = false
@@ -137,16 +146,20 @@ export default function Topbar() {
         <div className="relative z-10 flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => router.push('/premium')}
+            onClick={() => router.push(premiumTier === 'admin' ? '/admin' : '/premium')}
             className={`op-premium-topbar flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
-              premiumTier === 'free'
-                ? 'border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/40 hover:text-cyan-50'
-                : 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
+              premiumTier === 'admin'
+                ? 'border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] hover:border-amber-100/60 hover:bg-amber-300/22'
+                : premiumTier === 'vip'
+                ? 'border-amber-200/40 bg-amber-300/12 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.18)]'
+                : premiumTier === 'premium'
+                ? 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
+                : 'border-white/10 bg-white/[0.035] text-slate-500 hover:border-cyan-300/25 hover:text-slate-300'
             }`}
-            aria-label="Premium"
+            aria-label={tierLabel}
           >
-            <Crown size={15} />
-            <span className="hidden min-[380px]:inline">Premium</span>
+            <TierIcon size={15} />
+            <span className="hidden min-[380px]:inline">{tierLabel}</span>
           </button>
           <button
             type="button"
@@ -161,16 +174,6 @@ export default function Topbar() {
               </span>
             ) : null}
           </button>
-          {premiumTier === 'admin' && (
-            <button
-              type="button"
-              onClick={() => router.push('/admin')}
-              className="grid h-10 w-10 place-items-center rounded-full border border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] transition hover:border-amber-100/60 hover:bg-amber-300/22 active:scale-95"
-              aria-label="Admin"
-            >
-              <ShieldCheck size={17} />
-            </button>
-          )}
         </div>
 
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">
