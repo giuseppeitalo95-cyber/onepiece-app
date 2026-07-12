@@ -998,7 +998,7 @@ export default function DeckBuilderPage() {
             setSelectedCardPrice(null)
           }}
         >
-          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
+          <div className="max-h-[92dvh] w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
@@ -1015,11 +1015,13 @@ export default function DeckBuilderPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr] lg:grid-cols-[360px_1fr] lg:gap-6 lg:p-5 xl:grid-cols-[420px_1fr]">
-              <CardImage src={selectedCard.image_url} cardId={selectedCard.card_id} alt={selectedCard.name || selectedCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950 lg:max-h-[70vh]" />
-              <div className="space-y-3">
+            <div className="grid max-h-[calc(92dvh-66px)] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-6 lg:p-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+              <div className="mx-auto w-full max-w-[260px] sm:max-w-none">
+                <CardImage src={selectedCard.image_url} cardId={selectedCard.card_id} alt={selectedCard.name || selectedCard.card_id} className="aspect-[3/4] w-full overflow-hidden rounded-3xl bg-slate-950" />
+              </div>
+              <div className="min-w-0 space-y-3">
                 <div>
-                  <p className="text-2xl font-black text-white">{selectedCard.name || 'Carta'}</p>
+                  <p className="break-words text-xl font-black leading-tight text-white sm:text-2xl">{selectedCard.name || 'Carta'}</p>
                   <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedCard.card_id)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
