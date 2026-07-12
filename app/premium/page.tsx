@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Crown, Infinity, ScanLine, Sparkles, Layers3, MessageSquareHeart } from 'lucide-react'
+import { Check, Crown, Infinity, ScanLine, Sparkles, Layers3, MessageSquareHeart, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
@@ -33,6 +33,22 @@ const perks = [
     free: 'Nickname standard',
     premium: 'Nickname e icona Premium illuminati'
   }
+]
+
+const freeFeatures = [
+  `${FREE_DECK_LIMIT} deck salvati`,
+  `${FREE_DAILY_SCAN_LIMIT} scan al giorno`,
+  `Annunci visibili per ${FREE_BOARD_POST_DAYS} giorni`,
+  'Nickname standard',
+  'Supporto base alle funzioni OPV'
+]
+
+const premiumFeatures = [
+  'Deck salvati illimitati',
+  'Scan giornaliere illimitate',
+  `Annunci visibili per ${PREMIUM_BOARD_POST_DAYS} giorni`,
+  'Nickname e icona Premium illuminati',
+  'Supporto diretto al mantenimento del sito'
 ]
 
 export default function PremiumPage() {
@@ -136,7 +152,52 @@ export default function PremiumPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6">
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6">
+            <article className="rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Piano</p>
+                  <h2 className="mt-1 text-2xl font-black text-white">Free</h2>
+                </div>
+                <div className="rounded-2xl border border-slate-700 bg-slate-950/75 px-3 py-2 text-sm font-black text-slate-300">
+                  0€
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {freeFeatures.map(feature => (
+                  <div key={feature} className="flex items-start gap-2 rounded-2xl border border-slate-700 bg-slate-950/62 px-3 py-2 text-sm text-slate-300">
+                    <X size={16} className="mt-0.5 shrink-0 text-slate-500" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="relative overflow-hidden rounded-[1.5rem] border border-cyan-200/35 bg-cyan-300/12 p-4 shadow-xl shadow-cyan-950/20">
+              <div className="absolute right-4 top-4 rounded-full border border-cyan-100/30 bg-cyan-100/15 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-50">
+                Consigliato
+              </div>
+              <div className="flex items-center justify-between gap-3 pr-24">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Piano</p>
+                  <h2 className="mt-1 text-2xl font-black text-white">Premium</h2>
+                </div>
+                <div className="rounded-2xl border border-cyan-100/35 bg-cyan-100/18 px-3 py-2 text-sm font-black text-cyan-50">
+                  1€/mese
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {premiumFeatures.map(feature => (
+                  <div key={feature} className="flex items-start gap-2 rounded-2xl border border-cyan-100/25 bg-slate-950/50 px-3 py-2 text-sm font-bold text-cyan-50">
+                    <Check size={16} className="mt-0.5 shrink-0 text-cyan-200" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 sm:px-6 sm:pb-6">
             {perks.map(({ Icon, title, free, premium }) => (
               <article key={title} className="rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
                 <div className="flex items-center gap-3">

@@ -555,7 +555,6 @@ export default function BachecaPage() {
                               {label}
                             </span>
                           ) : null}
-                          <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">Nuovo</span>
                           <span className="text-[10px] text-slate-500">{timeLabel(post.created_at)}</span>
                           {canDeletePost(post) ? (
                             <button
