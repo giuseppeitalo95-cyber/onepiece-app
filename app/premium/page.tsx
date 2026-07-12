@@ -11,7 +11,7 @@ import { FREE_DAILY_SCAN_LIMIT, FREE_DECK_LIMIT, FREE_BOARD_POST_DAYS, PREMIUM_B
 const freeFeatures = [
   `${FREE_DECK_LIMIT} deck salvati`,
   `${FREE_DAILY_SCAN_LIMIT} scan al giorno`,
-  `Annunci visibili per ${FREE_BOARD_POST_DAYS} giorni`,
+  `Annunci visibili solo agli amici per ${FREE_BOARD_POST_DAYS} giorni`,
   'Nickname standard',
   'Funzioni base OPV'
 ]
@@ -19,7 +19,7 @@ const freeFeatures = [
 const premiumFeatures = [
   'Deck salvati illimitati',
   'Scan giornaliere illimitate',
-  `Annunci visibili a tutti per ${PREMIUM_BOARD_POST_DAYS} giorni`,
+  `Annunci visibili globalmente per ${PREMIUM_BOARD_POST_DAYS} giorni`,
   'Nickname e icona Premium illuminati',
   'Supporto diretto al mantenimento del sito'
 ]
