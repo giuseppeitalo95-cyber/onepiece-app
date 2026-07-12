@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
+import { Archive, BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
@@ -39,6 +39,12 @@ type CatalogCard = {
   set_name?: string | null
   card_text?: string | null
   sub_types?: string | null
+}
+
+type SoldCard = UserCard & {
+  id: string
+  sale_price: number
+  sold_at: string
 }
 
 type LivePriceResult = {
@@ -135,16 +141,25 @@ export default function Dashboard() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsLivePrices, setAnalyticsLivePrices] = useState<Record<string, number | null>>({})
+  const [soldOpen, setSoldOpen] = useState(false)
+  const [soldCards, setSoldCards] = useState<SoldCard[]>([])
+  const [soldLoading, setSoldLoading] = useState(false)
+  const [soldReady, setSoldReady] = useState(true)
+  const [sellingCard, setSellingCard] = useState<UserCard | null>(null)
+  const [salePrice, setSalePrice] = useState('')
+  const [saleQuantity, setSaleQuantity] = useState(1)
+  const [sellingBusy, setSellingBusy] = useState(false)
+  const [saleMessage, setSaleMessage] = useState('')
 
  useEffect(() => {
-  if (addOpen || selectedCard || catalogOpen || analyticsOpen) {
+  if (addOpen || selectedCard || catalogOpen || analyticsOpen || soldOpen || sellingCard) {
     document.body.style.overflow = 'hidden'
     document.documentElement.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = 'auto'
     document.documentElement.style.overflow = 'auto'
   }
-}, [addOpen, selectedCard, catalogOpen, analyticsOpen])
+}, [addOpen, selectedCard, catalogOpen, analyticsOpen, soldOpen, sellingCard])
 
   useEffect(() => {
     const load = async () => {
@@ -390,6 +405,109 @@ export default function Dashboard() {
     void loadLivePrice({ card_id: card.card_id, name: card.name })
   }
 
+  const loadSoldCards = async (uid = userId) => {
+    if (!uid) return
+    setSoldLoading(true)
+    setSoldReady(true)
+
+    const { data, error } = await supabase
+      .from('sold_cards')
+      .select('id, card_id, quantity, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price, sale_price, sold_at')
+      .eq('user_id', uid)
+      .order('sold_at', { ascending: false })
+
+    if (error) {
+      setSoldReady(false)
+      setSoldCards([])
+      setSoldLoading(false)
+      return
+    }
+
+    setSoldCards((data || []).map(card => ({
+      ...card,
+      rarity: card.rarity === 'Unknown' ? null : card.rarity,
+      card_color: card.card_color === 'Unknown' ? null : card.card_color,
+      market_price: card.market_price == null ? null : Number(card.market_price),
+      inventory_price: card.inventory_price == null ? null : Number(card.inventory_price),
+      sale_price: Number(card.sale_price || 0)
+    })))
+    setSoldLoading(false)
+  }
+
+  const openSoldCards = () => {
+    setSoldOpen(true)
+    void loadSoldCards()
+  }
+
+  const startSale = (card: UserCard) => {
+    setSellingCard(card)
+    setSaleQuantity(1)
+    setSalePrice('')
+    setSaleMessage('')
+  }
+
+  const confirmSale = async () => {
+    if (!userId || !sellingCard || sellingBusy) return
+
+    const parsedPrice = Number(salePrice.replace(',', '.'))
+    const quantity = Math.max(1, Math.min(Number(saleQuantity || 1), sellingCard.quantity))
+
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setSaleMessage('Inserisci un prezzo valido.')
+      return
+    }
+
+    setSellingBusy(true)
+    setSaleMessage('')
+
+    const { error: insertError } = await supabase
+      .from('sold_cards')
+      .insert({
+        user_id: userId,
+        card_id: sellingCard.card_id,
+        name: sellingCard.name,
+        image_url: sellingCard.image_url,
+        rarity: sellingCard.rarity,
+        card_color: sellingCard.card_color ?? null,
+        card_type: sellingCard.card_type ?? null,
+        card_cost: sellingCard.card_cost ?? null,
+        card_power: sellingCard.card_power ?? null,
+        market_price: sellingCard.market_price ?? null,
+        inventory_price: sellingCard.inventory_price ?? null,
+        quantity,
+        sale_price: parsedPrice
+      })
+
+    if (insertError) {
+      setSoldReady(false)
+      setSaleMessage('Storico vendute non configurato: esegui sold_cards.sql su Supabase.')
+      setSellingBusy(false)
+      return
+    }
+
+    const remainingQuantity = sellingCard.quantity - quantity
+    if (remainingQuantity > 0) {
+      await supabase
+        .from('user_cards')
+        .update({ quantity: remainingQuantity })
+        .eq('user_id', userId)
+        .eq('card_id', sellingCard.card_id)
+    } else {
+      await supabase
+        .from('user_cards')
+        .delete()
+        .eq('user_id', userId)
+        .eq('card_id', sellingCard.card_id)
+    }
+
+    setSellingBusy(false)
+    setSellingCard(null)
+    setSelectedCard(null)
+    setLivePrice(null)
+    await loadCards(userId)
+    if (soldOpen) await loadSoldCards(userId)
+  }
+
   const openCatalogCard = (card: CatalogCard) => {
     setCatalogSelectedCard(card)
     void loadLivePrice(card)
@@ -606,6 +724,8 @@ export default function Dashboard() {
   const liveSampleValue = analyticsCandidates.reduce((sum, card) => {
     return sum + ((getAnalyticsPrice(card) ?? 0) * card.quantity)
   }, 0)
+  const soldTotalValue = soldCards.reduce((sum, card) => sum + Number(card.sale_price || 0) * Number(card.quantity || 0), 0)
+  const soldTotalQuantity = soldCards.reduce((sum, card) => sum + Number(card.quantity || 0), 0)
 
   return (
     <div className="h-dvh overflow-y-auto text-white onepiece-wave-bg onepiece-clouds">
@@ -639,6 +759,14 @@ export default function Dashboard() {
                     aria-label="Analytics collezione"
                   >
                     <BarChart3 size={18} />
+                  </button>
+                  <button
+                    onClick={openSoldCards}
+                    className="flex h-11 items-center gap-2 rounded-2xl border border-slate-600 bg-slate-800 px-3 text-sm font-black text-slate-200"
+                    aria-label="Carte vendute"
+                  >
+                    <Archive size={17} />
+                    <span className="hidden sm:inline">Vendute</span>
                   </button>
                   <button
                     onClick={() => {
@@ -1199,6 +1327,158 @@ export default function Dashboard() {
     </div>
   </div>
 )}
+{soldOpen && (
+  <div
+    className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4"
+    onClick={(event) => {
+      if (event.target === event.currentTarget) {
+        setSoldOpen(false)
+      }
+    }}
+  >
+    <div
+      className="flex max-h-[88dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 p-3">
+        <div>
+          <h3 className="text-lg font-black text-white">Carte vendute</h3>
+          <p className="text-xs text-slate-400">{soldTotalQuantity} carte - {formatPrice(soldTotalValue)}</p>
+        </div>
+        <button
+          onClick={() => setSoldOpen(false)}
+          className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200"
+          aria-label="Chiudi vendute"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="min-h-0 overflow-y-auto p-3">
+        {!soldReady ? (
+          <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
+            Storico vendute non configurato. Esegui `sold_cards.sql` su Supabase.
+          </div>
+        ) : soldLoading ? (
+          <p className="rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Carico vendute...</p>
+        ) : soldCards.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/70 p-5 text-center text-sm text-slate-400">
+            Nessuna carta venduta registrata.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {soldCards.map(card => (
+              <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)_auto] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2">
+                <CardImage
+                  src={card.image_url}
+                  cardId={card.card_id}
+                  alt={card.name || card.card_id}
+                  className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">{card.name || card.card_id}</p>
+                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500">{displayCardId(card.card_id)}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    x{card.quantity} - {new Date(card.sold_at).toLocaleDateString('it-IT')}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-emerald-200">{formatPrice(card.sale_price)}</p>
+                  {card.quantity > 1 ? (
+                    <p className="text-[10px] text-slate-500">tot. {formatPrice(card.sale_price * card.quantity)}</p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+{sellingCard && (
+  <div
+    className="fixed inset-0 z-[60] flex items-end justify-center bg-black/75 p-2 backdrop-blur-md sm:items-center sm:p-4"
+    onClick={(event) => {
+      if (event.target === event.currentTarget && !sellingBusy) {
+        setSellingCard(null)
+      }
+    }}
+  >
+    <div
+      className="w-full max-w-md rounded-[1.75rem] border border-slate-700 bg-slate-950/97 p-4 shadow-2xl shadow-black/50"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-black text-white">Segna come venduta</h3>
+          <p className="mt-1 text-sm text-slate-400">{sellingCard.name || sellingCard.card_id}</p>
+        </div>
+        <button
+          onClick={() => setSellingCard(null)}
+          disabled={sellingBusy}
+          className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200 disabled:opacity-50"
+          aria-label="Chiudi vendita"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-[88px_minmax(0,1fr)] gap-3">
+        <CardImage
+          src={sellingCard.image_url}
+          cardId={sellingCard.card_id}
+          alt={sellingCard.name || sellingCard.card_id}
+          className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-900"
+        />
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Prezzo vendita</span>
+            <input
+              value={salePrice}
+              onChange={(event) => setSalePrice(event.target.value)}
+              inputMode="decimal"
+              placeholder="Es. 12,50"
+              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white outline-none focus:border-emerald-300"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Quantità</span>
+            <input
+              type="number"
+              min={1}
+              max={sellingCard.quantity}
+              value={saleQuantity}
+              onChange={(event) => setSaleQuantity(Math.max(1, Math.min(Number(event.target.value || 1), sellingCard.quantity)))}
+              className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white outline-none focus:border-emerald-300"
+            />
+          </label>
+        </div>
+      </div>
+
+      {saleMessage ? (
+        <p className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{saleMessage}</p>
+      ) : null}
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setSellingCard(null)}
+          disabled={sellingBusy}
+          className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 disabled:opacity-50"
+        >
+          Annulla
+        </button>
+        <button
+          onClick={confirmSale}
+          disabled={sellingBusy}
+          className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+        >
+          {sellingBusy ? 'Salvo...' : 'Conferma'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 {selectedCard && (
   <div
     className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
@@ -1304,6 +1584,13 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          <button
+            onClick={() => startSale(selectedCard)}
+            className="w-full rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18"
+          >
+            Venduta
+          </button>
 
         </div>
       </div>
