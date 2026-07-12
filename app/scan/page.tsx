@@ -79,6 +79,7 @@ export default function ScanPage() {
   const scanCooldownUntilRef = useRef(0)
   const scanSessionRef = useRef(false)
   const showSummaryRef = useRef(false)
+  const manualSearchRunRef = useRef(0)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -1205,12 +1206,18 @@ export default function ScanPage() {
   }
 
   const searchCard = async (query: string) => {
-    if (!query.trim()) return
+    if (!query.trim()) {
+      manualSearchRunRef.current += 1
+      setSearching(false)
+      return
+    }
 
+    const runId = ++manualSearchRunRef.current
     setSearching(true)
     try {
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
       const results = await res.json()
+      if (runId !== manualSearchRunRef.current) return
 
       if (results.length === 0) {
         alert('Carta non trovata')
@@ -1237,9 +1244,11 @@ export default function ScanPage() {
       setSearchInput('')
       setCarouselIndex(scannedCards.length)
     } catch (err) {
+      if (runId !== manualSearchRunRef.current) return
       console.error('Search error:', err)
       alert('Errore ricerca carta')
     }
+    if (runId !== manualSearchRunRef.current) return
     setSearching(false)
   }
 

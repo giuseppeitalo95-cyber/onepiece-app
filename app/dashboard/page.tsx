@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
@@ -72,6 +72,7 @@ export default function Dashboard() {
   const [catalogSelectedCard, setCatalogSelectedCard] = useState<CatalogCard | null>(null)
   const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null)
   const [catalogMessage, setCatalogMessage] = useState('')
+  const catalogSearchRunRef = useRef(0)
   const [livePrice, setLivePrice] = useState<number | null>(null)
   const [livePriceLoading, setLivePriceLoading] = useState(false)
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
@@ -139,21 +140,27 @@ export default function Dashboard() {
   }, [userId])
 
   useEffect(() => {
-    if (!catalogOpen) return
+    if (!catalogOpen) {
+      catalogSearchRunRef.current += 1
+      return
+    }
 
     const search = async () => {
       const q = catalogQuery.trim()
+      const runId = ++catalogSearchRunRef.current
 
       if (q.length < 2) {
+        catalogSearchRunRef.current += 1
         setCatalogCards([])
         setCatalogLoading(false)
         return
       }
 
-      setCatalogLoading(true)
       try {
+        setCatalogLoading(true)
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
         const data = await res.json()
+        if (runId !== catalogSearchRunRef.current) return
         const seen = new Set<string>()
         const clean: CatalogCard[] = (Array.isArray(data) ? data : [])
           .map((card: any) => ({
@@ -180,8 +187,10 @@ export default function Dashboard() {
 
         setCatalogCards(clean)
       } catch {
+        if (runId !== catalogSearchRunRef.current) return
         setCatalogCards([])
       }
+      if (runId !== catalogSearchRunRef.current) return
       setCatalogLoading(false)
     }
 

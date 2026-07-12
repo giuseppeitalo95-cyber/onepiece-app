@@ -169,6 +169,7 @@ export default function DeckBuilderPage() {
   const [search, setSearch] = useState('')
   const [catalogResults, setCatalogResults] = useState<DeckCard[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
+  const deckSearchRunRef = useRef(0)
   const [openDeck, setOpenDeck] = useState<SavedDeck | null>(null)
   const [selectedCard, setSelectedCard] = useState<DeckCard | null>(null)
   const [selectedCardPrice, setSelectedCardPrice] = useState<number | null>(null)
@@ -269,21 +270,25 @@ export default function DeckBuilderPage() {
 
   useEffect(() => {
     if (!search.trim()) {
+      deckSearchRunRef.current += 1
       setCatalogResults([])
       setLoadingSearch(false)
       return
     }
 
     const timer = window.setTimeout(async () => {
+      const runId = ++deckSearchRunRef.current
       setLoadingSearch(true)
       try {
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(search.trim())}`)
         const data = await res.json()
+        if (runId !== deckSearchRunRef.current) return
         setCatalogResults((Array.isArray(data) ? data : [])
           .map((card: SearchCardResponse) => toDeckCard(card))
           .filter(card => !isDonCard(card))
           .slice(0, 32))
       } finally {
+        if (runId !== deckSearchRunRef.current) return
         setLoadingSearch(false)
       }
     }, 240)

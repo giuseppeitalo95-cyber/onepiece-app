@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import CardImage from '@/app/components/CardImage'
@@ -35,6 +35,7 @@ export default function AddCard() {
   const [reportStatus, setReportStatus] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
+  const searchRunRef = useRef(0)
   const displayCardId = (value?: string | null) =>
     (value || '')
       .replace(/_p\d+$/i, '')
@@ -65,15 +66,19 @@ useEffect(() => {
     const q = query.trim()
 
     if (q.length < 2) {
+      searchRunRef.current += 1
       setCards([])
+      setLoading(false)
       return
     }
 
+    const runId = ++searchRunRef.current
     setLoading(true)
 
     try {
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
       const data = await res.json()
+      if (runId !== searchRunRef.current) return
 
       const clean: Card[] = (data || [])
         .map((c: any) => ({
@@ -95,9 +100,11 @@ useEffect(() => {
       setCards(clean)
 
     } catch {
+      if (runId !== searchRunRef.current) return
       setCards([])
     }
 
+    if (runId !== searchRunRef.current) return
     setLoading(false)
   }
 

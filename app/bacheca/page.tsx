@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Megaphone, Search, Send, Sparkles, Trash2, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
@@ -82,6 +82,7 @@ export default function BachecaPage() {
   const [cardResults, setCardResults] = useState<CatalogCard[]>([])
   const [selectedPostCard, setSelectedPostCard] = useState<CatalogCard | null>(null)
   const [cardSearchLoading, setCardSearchLoading] = useState(false)
+  const cardSearchRunRef = useRef(0)
   const [status, setStatus] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState('')
@@ -154,16 +155,19 @@ export default function BachecaPage() {
   useEffect(() => {
     const query = cardQuery.trim()
     if (query.length < 2 || selectedPostCard) {
+      cardSearchRunRef.current += 1
       setCardResults([])
       setCardSearchLoading(false)
       return
     }
 
     const timer = window.setTimeout(async () => {
+      const runId = ++cardSearchRunRef.current
       setCardSearchLoading(true)
       try {
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
         const data = await res.json()
+        if (runId !== cardSearchRunRef.current) return
         const seen = new Set<string>()
         const cards = (Array.isArray(data) ? data : [])
           .map((card: any) => ({
@@ -180,8 +184,10 @@ export default function BachecaPage() {
           .slice(0, 10)
         setCardResults(cards)
       } catch {
+        if (runId !== cardSearchRunRef.current) return
         setCardResults([])
       }
+      if (runId !== cardSearchRunRef.current) return
       setCardSearchLoading(false)
     }, 220)
 
