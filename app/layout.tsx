@@ -42,6 +42,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <link rel="preconnect" href="https://en.onepiece-cardgame.com" />
+        <link rel="preconnect" href="https://www.optcgapi.com" />
+      </head>
 <body className="min-h-dvh onepiece-bg onepiece-vibrant">{children}</body>
     </html>
   );

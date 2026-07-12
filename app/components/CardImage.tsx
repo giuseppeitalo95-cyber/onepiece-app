@@ -9,10 +9,14 @@ type CardImageProps = {
   className?: string
   imgClassName?: string
   fallbackClassName?: string
+  loading?: 'eager' | 'lazy'
+  fetchPriority?: 'high' | 'low' | 'auto'
 }
 
 const imageProxy = (url: string) =>
   url.startsWith('/') ? url : `/api/cards/recognition-image?url=${encodeURIComponent(url)}`
+
+const failedImageSources = new Set<string>()
 
 const getCardIds = (cardId?: string | null, src?: string | null) => {
   const values = [cardId || '', src || '']
@@ -59,8 +63,10 @@ export default function CardImage({
   className = '',
   imgClassName = 'h-full w-full object-contain',
   fallbackClassName = 'flex h-full w-full items-center justify-center text-[10px] text-slate-500',
+  loading = 'lazy',
+  fetchPriority = 'auto',
 }: CardImageProps) {
-  const sources = useMemo(() => buildSources(src, cardId), [src, cardId])
+  const sources = useMemo(() => buildSources(src, cardId).filter(source => !failedImageSources.has(source)), [src, cardId])
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
@@ -77,7 +83,14 @@ export default function CardImage({
           alt={alt}
           className={imgClassName}
           draggable={false}
-          onError={() => setIndex(prev => prev + 1)}
+          loading={loading}
+          decoding="async"
+          fetchPriority={fetchPriority}
+          referrerPolicy="no-referrer"
+          onError={() => {
+            failedImageSources.add(current)
+            setIndex(prev => prev + 1)
+          }}
         />
       ) : (
         <div className={fallbackClassName}>NO IMAGE</div>
