@@ -8,7 +8,7 @@ import {
   evaluateProgressSynced,
   type ProgressSummary,
 } from '@/lib/progression'
-import { Crown, MessageCircle } from 'lucide-react'
+import { Crown, MessageCircle, ShieldCheck } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
@@ -161,6 +161,16 @@ export default function Topbar() {
               </span>
             ) : null}
           </button>
+          {premiumTier === 'admin' && (
+            <button
+              type="button"
+              onClick={() => router.push('/admin')}
+              className="grid h-10 w-10 place-items-center rounded-full border border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] transition hover:border-amber-100/60 hover:bg-amber-300/22 active:scale-95"
+              aria-label="Admin"
+            >
+              <ShieldCheck size={17} />
+            </button>
+          )}
         </div>
 
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">

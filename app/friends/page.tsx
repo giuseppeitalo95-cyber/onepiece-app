@@ -469,10 +469,7 @@ export default function FriendsPage() {
       <Topbar />
       <div className="mx-3 mt-3 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-3 shadow-lg shadow-black/20 backdrop-blur-xl sm:mx-6 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">Area sociale</p>
-            <h1 className="mt-1 text-2xl font-black text-white">Amici</h1>
-          </div>
+          <h1 className="text-2xl font-black text-white">Amici</h1>
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: 'Amici', value: friendProfiles.length, Icon: Users },
@@ -497,12 +494,7 @@ export default function FriendsPage() {
             <section className="space-y-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-amber-300/70">Il tuo mondo</p>
                   <h2 className="text-2xl font-extrabold text-white sm:text-3xl">Connetti con gli altri giocatori</h2>
-                </div>
-                <div className="min-w-0 rounded-2xl border border-slate-800/70 bg-slate-950/70 px-3 py-3 text-sm text-slate-300 sm:rounded-3xl sm:px-4">
-                  <span className="font-semibold text-amber-200">{username || 'Giocatore'}</span>
-                  <span className="ml-2 text-slate-400">Puoi inviare richieste, gestire amicizie e aprire i profili.</span>
                 </div>
               </div>
 
@@ -720,12 +712,6 @@ export default function FriendsPage() {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4 text-sm text-slate-300">
-                <p className="font-semibold text-white">Stato attività</p>
-                <p className="mt-2 leading-6">
-                  Puoi vedere chi ti ha richiesto l'amicizia e aprire il profilo dei tuoi amici per visualizzare le loro carte.
-                </p>
-              </div>
               {actionMessage ? (
                 <div className="rounded-3xl border border-slate-800/70 bg-emerald-500/10 p-4 text-sm text-emerald-200">
                   {actionMessage}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Award, Bell, Camera, Flame, LockKeyhole, ShieldCheck, Trophy, UploadCloud } from 'lucide-react'
+import { Award, Camera, Flame, LockKeyhole, Trophy, UploadCloud } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { isAdminAccount } from '@/lib/admin'
@@ -302,14 +302,6 @@ export default function Profile() {
       {!firstAccess && <Topbar />}
       <div className={`mx-3 flex items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-4 backdrop-blur-xl ${firstAccess ? 'mt-0' : 'mt-3'}`}>
         <div className="flex items-center gap-3">
-          {!firstAccess && (
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
-            >
-              <ArrowLeft />
-            </button>
-          )}
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
               {firstAccess ? 'Configura il profilo' : 'Area personale'}
@@ -320,20 +312,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {isAdmin && (
-          <button
-            onClick={() => router.push('/admin')}
-            className="inline-flex items-center gap-2 rounded-2xl bg-amber-400/10 border border-amber-300/30 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-400/15"
-          >
-            <Bell size={16} />
-            ADMIN
-            {adminNotifications > 0 && (
-              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-slate-950">
-                {adminNotifications}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
@@ -425,6 +403,19 @@ export default function Profile() {
                 ))}
               </div>
             </div>
+            {!firstAccess && (
+              <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2 text-xs font-bold text-slate-300">
+                  Accesso attivo su questo account
+                </div>
+                <button
+                  onClick={logout}
+                  className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/20"
+                >
+                  Disconnetti Account
+                </button>
+              </div>
+            )}
           </section>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
@@ -434,7 +425,6 @@ export default function Profile() {
                   <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Informazioni</p>
                   <h3 className="mt-2 text-xl font-semibold text-white">Dettagli account</h3>
                 </div>
-                <div className="rounded-2xl bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200">Live</div>
               </div>
 
               <div className="mt-6 space-y-5">
@@ -496,28 +486,7 @@ export default function Profile() {
               </div>
             </section>
 
-            <aside className="space-y-4 rounded-[1.5rem] border border-white/10 bg-slate-950/72 p-4 sm:p-5">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Consigli</p>
-                <ul className="mt-4 space-y-3 text-sm text-slate-300">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-300"><ShieldCheck size={14} /></span>
-                    Usa una foto chiara e ben ritagliata: l'immagine sarà al centro del profilo.
-                  </li>
-                  <li>Il file può essere in formato PNG o JPG.</li>
-                </ul>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Azioni rapide</p>
-                <button
-                  onClick={logout}
-                  className="mt-4 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/20"
-                >
-                  Disconnetti Account
-                </button>
-              </div>
-            </aside>
+            <aside className="hidden lg:block" />
           </div>
 
           <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-slate-950/68 p-4 sm:p-5">

@@ -958,36 +958,7 @@ export default function DeckBuilderPage() {
         ) : mode === 'create' ? (
           <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
             <section className="rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
-              <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black">
-                <button
-                  type="button"
-                  onClick={() => setDeckSearchSource('global')}
-                  className={`rounded-xl px-3 py-2 transition active:scale-95 ${deckSearchSource === 'global' ? 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/20' : 'text-slate-300 hover:bg-white/[0.06]'}`}
-                >
-                  Carte globali
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeckSearchSource('collection')}
-                  className={`rounded-xl px-3 py-2 transition active:scale-95 ${deckSearchSource === 'collection' ? 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/20' : 'text-slate-300 hover:bg-white/[0.06]'}`}
-                >
-                  Mie carte
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder={deckSearchSource === 'collection' ? 'Cerca tra le mie carte' : 'Cerca nel catalogo carte'}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-10 py-3 text-sm text-white outline-none focus:border-cyan-300"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6">
                 {loadingSearch ? (
                   <p className="col-span-full rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Ricerca...</p>
                 ) : !search.trim() ? (

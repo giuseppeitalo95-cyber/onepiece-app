@@ -419,7 +419,7 @@ export default function BachecaPage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">
                 <Sparkles size={13} />
-                Home
+                Bacheca
               </div>
               <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
@@ -436,9 +436,6 @@ export default function BachecaPage() {
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
             <Megaphone size={15} />
             Nuovo annuncio
-          </div>
-          <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-100">
-            Cerco
           </div>
           <div className="mt-3 space-y-2">
             {selectedPostCard ? (
@@ -517,8 +514,7 @@ export default function BachecaPage() {
         <section className="mt-4 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Bacheca</p>
-              <h2 className="mt-1 text-xl font-black text-white">Annunci</h2>
+              <p className="text-xl font-black text-white">Annunci</p>
             </div>
             <Bell className="text-cyan-100" size={22} />
           </div>
