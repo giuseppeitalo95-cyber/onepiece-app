@@ -29,6 +29,7 @@ const getPageKey = (pathname: string) => {
   if (pathname.startsWith('/dashboard')) return 'collezione'
   if (pathname.startsWith('/decks')) return 'decks'
   if (pathname.startsWith('/friends')) return 'amici'
+  if (pathname.startsWith('/chat')) return 'chat'
   if (pathname.startsWith('/profile')) return 'profilo'
   return 'bacheca'
 }

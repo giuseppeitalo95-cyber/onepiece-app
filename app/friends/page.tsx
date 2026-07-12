@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Check, Crown, Heart, Inbox, LibraryBig, Search, UserPlus, Users, X } from 'lucide-react'
+import { Check, Crown, Heart, Inbox, LibraryBig, MessageCircle, Search, UserPlus, Users, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -764,6 +764,23 @@ export default function FriendsPage() {
                         style={{ width: `${selectedProgress.progressPercent}%` }}
                       />
                     </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-emerald-100"
+                      >
+                        Amico
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/chat?user=${selectedProfile.id}`)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-cyan-200 active:scale-95"
+                      >
+                        <MessageCircle size={14} />
+                        Messaggio
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
@@ -790,15 +807,25 @@ export default function FriendsPage() {
                 ) : null}
 
                 {!isFriend && (!selectedRequest || selectedRequest.status !== 'incoming') ? (
-                  <button
-                    onClick={() => selectedProfile?.id && sendFriendRequest(selectedProfile.id)}
-                    disabled={busy || resolvedRequests.get(selectedProfile.id) === 'sent' || resolvedRequests.get(selectedProfile.id) === 'friend'}
-                    className="w-full rounded-3xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {resolvedRequests.get(selectedProfile.id) === 'sent'
-                      ? 'Richiesta inviata'
-                      : 'Invia richiesta d\'amicizia'}
-                  </button>
+                  <div className="grid gap-2">
+                    <button
+                      onClick={() => selectedProfile?.id && sendFriendRequest(selectedProfile.id)}
+                      disabled={busy || resolvedRequests.get(selectedProfile.id) === 'sent' || resolvedRequests.get(selectedProfile.id) === 'friend'}
+                      className="w-full rounded-3xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resolvedRequests.get(selectedProfile.id) === 'sent'
+                        ? 'Richiesta inviata'
+                        : 'Invia richiesta d\'amicizia'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-3xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-semibold text-slate-500"
+                    >
+                      <MessageCircle size={16} />
+                      Messaggio
+                    </button>
+                  </div>
                 ) : null}
               </div>
 

@@ -32,6 +32,7 @@ drop policy if exists "Users can insert own board posts" on public.board_posts;
 drop policy if exists "Users can update own board posts" on public.board_posts;
 drop policy if exists "Users can delete own board posts" on public.board_posts;
 drop policy if exists "Admin can delete board posts" on public.board_posts;
+drop policy if exists "Premium board posts are public" on public.board_posts;
 
 create policy "Users can view own board posts"
 on public.board_posts for select
@@ -48,6 +49,22 @@ using (
         (fr.requester_id = auth.uid() and fr.receiver_id = board_posts.user_id)
         or
         (fr.receiver_id = auth.uid() and fr.requester_id = board_posts.user_id)
+      )
+  )
+);
+
+create policy "Premium board posts are public"
+on public.board_posts for select
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = board_posts.user_id
+      and (
+        p.id = 'fcade84e-6413-4009-91df-a8c839a170cc'
+        or p.is_vip is true
+        or p.is_premium is true
+        or (p.premium_until is not null and p.premium_until > now())
       )
   )
 );

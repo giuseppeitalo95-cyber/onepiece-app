@@ -8,7 +8,7 @@ import {
   evaluateProgress,
   type ProgressSummary,
 } from '@/lib/progression'
-import { Crown } from 'lucide-react'
+import { Crown, MessageCircle } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
@@ -20,19 +20,22 @@ export default function Topbar() {
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
+  const [chatUnread, setChatUnread] = useState(0)
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
   )
 
   useEffect(() => {
+    let cancelled = false
+
     const loadProfile = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession()
 
       if (!session?.user) {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
         return
       }
 
@@ -64,6 +67,8 @@ export default function Topbar() {
         )
         .eq('user_id', session.user.id)
 
+      if (cancelled) return
+
       setProgress(
         evaluateProgress(session.user.id, cardData || [], {
           claimDaily: true,
@@ -73,10 +78,33 @@ export default function Topbar() {
       setUsername(profileData?.username || 'Utente')
       setAvatarUrl(profileData?.avatar_url || '')
       setPremiumTier(getPremiumTier(profileData, session.user))
+      await loadChatUnread(session.user.id)
       setLoading(false)
     }
 
+    const loadChatUnread = async (uid: string) => {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { count } = await supabase
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', uid)
+        .is('read_at', null)
+        .gte('created_at', cutoff)
+
+      if (!cancelled) setChatUnread(count || 0)
+    }
+
     loadProfile()
+
+    const timer = window.setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) await loadChatUnread(session.user.id)
+    }, 30000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [pathname, router])
 
   return (
@@ -84,19 +112,34 @@ export default function Topbar() {
       <AchievementToasts />
 
       <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
-        <button
-          type="button"
-          onClick={() => router.push('/premium')}
-          className={`op-premium-topbar relative z-10 flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
-            premiumTier === 'free'
-              ? 'border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/40 hover:text-cyan-50'
-              : 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
-          }`}
-          aria-label="Premium"
-        >
-          <Crown size={15} />
-          <span className="hidden min-[380px]:inline">Premium</span>
-        </button>
+        <div className="relative z-10 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => router.push('/premium')}
+            className={`op-premium-topbar flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
+              premiumTier === 'free'
+                ? 'border-white/10 bg-white/[0.06] text-slate-300 hover:border-cyan-300/40 hover:text-cyan-50'
+                : 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
+            }`}
+            aria-label="Premium"
+          >
+            <Crown size={15} />
+            <span className="hidden min-[380px]:inline">Premium</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/chat')}
+            className="relative grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-300 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-cyan-50 active:scale-95"
+            aria-label="Chat"
+          >
+            <MessageCircle size={17} />
+            {chatUnread > 0 ? (
+              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_16px_rgba(251,113,133,0.65)] ring-2 ring-[#173842]">
+                {chatUnread > 9 ? '9+' : chatUnread}
+              </span>
+            ) : null}
+          </button>
+        </div>
 
         <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center">
           <AppLogo compact />
