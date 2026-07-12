@@ -14,6 +14,8 @@ export default function PushNotificationPrompt({
   hideWhenGranted = false
 }: PushNotificationPromptProps) {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
+  const [registered, setRegistered] = useState(false)
+  const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 
@@ -26,6 +28,7 @@ export default function PushNotificationPrompt({
       Boolean(vapidPublicKey)
 
     setPermission(supported ? Notification.permission : 'unsupported')
+    setRegistered(typeof window !== 'undefined' && window.localStorage.getItem('opv_push_registered') === '1')
   }, [vapidPublicKey])
 
   const urlBase64ToUint8Array = (base64String: string) => {
@@ -41,6 +44,7 @@ export default function PushNotificationPrompt({
 
   const enablePushNotifications = async () => {
     if (busy || !vapidPublicKey) return
+    setMessage('')
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
       setPermission('unsupported')
       return
@@ -60,9 +64,12 @@ export default function PushNotificationPrompt({
       })
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return
+      if (!session?.access_token) {
+        setMessage('Accedi di nuovo e riprova.')
+        return
+      }
 
-      await fetch('/api/push/subscribe', {
+      const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,38 +77,55 @@ export default function PushNotificationPrompt({
         },
         body: JSON.stringify({ subscription })
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        setRegistered(false)
+        window.localStorage.removeItem('opv_push_registered')
+        setMessage(data?.error || 'Non sono riuscito ad attivare le notifiche.')
+        return
+      }
+
+      setRegistered(true)
+      window.localStorage.setItem('opv_push_registered', '1')
+      setMessage('Notifiche attivate su questo dispositivo.')
     } finally {
       setBusy(false)
     }
   }
 
   if (permission === 'unsupported') return null
-  if (hideWhenGranted && permission === 'granted') return null
+  if (hideWhenGranted && permission === 'granted' && registered) return null
 
   const isGranted = permission === 'granted'
   const isDenied = permission === 'denied'
+  const isActive = isGranted && registered
 
   return (
     <div className={`rounded-2xl border px-3 py-2 ${
-      isGranted
+      isActive
         ? 'border-emerald-300/25 bg-emerald-300/10'
         : 'border-cyan-300/20 bg-cyan-300/[0.08]'
     } ${mode === 'profile' ? 'sm:px-4 sm:py-3' : ''}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Bell size={16} className={isGranted ? 'text-emerald-200' : 'text-cyan-100'} />
+          <Bell size={16} className={isActive ? 'text-emerald-200' : 'text-cyan-100'} />
           <div className="min-w-0">
             <p className="text-xs font-black text-white">
-              {isGranted ? 'Notifiche attive' : 'Vuoi attivare le notifiche per l\'app?'}
+              {isActive ? 'Notifiche attive' : 'Vuoi attivare le notifiche per l\'app?'}
             </p>
             {mode === 'profile' ? (
               <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                {isGranted
+                {message || (isActive
                   ? 'Puoi premere di nuovo per registrare questo dispositivo.'
                   : isDenied
                   ? 'Le notifiche sono bloccate dal browser: riattivale dalle impostazioni del dispositivo.'
-                  : 'Ricevi avvisi per messaggi e novita importanti.'}
+                  : isGranted
+                  ? 'Permesso concesso: premi Riattiva per collegare questo dispositivo.'
+                  : 'Ricevi avvisi per messaggi e novita importanti.')}
               </p>
+            ) : null}
+            {mode !== 'profile' && message ? (
+              <p className="mt-1 text-[11px] leading-5 text-slate-400">{message}</p>
             ) : null}
           </div>
         </div>
@@ -110,12 +134,12 @@ export default function PushNotificationPrompt({
           onClick={enablePushNotifications}
           disabled={busy || isDenied}
           className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black transition active:scale-95 disabled:opacity-50 ${
-            isGranted
+            isActive
               ? 'border border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
               : 'bg-cyan-300 text-slate-950'
           }`}
         >
-          {busy ? 'Attivo...' : isGranted ? 'Riattiva' : 'Attiva'}
+          {busy ? 'Attivo...' : isActive || isGranted ? 'Riattiva' : 'Attiva'}
         </button>
       </div>
     </div>

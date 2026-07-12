@@ -190,7 +190,7 @@ export default function ChatPage() {
         : new URLSearchParams(window.location.search).get('user') || ''
       const safeInitial = loadedFriends.some(friend => friend.id === initialFriendId)
         ? initialFriendId
-        : loadedFriends[0]?.id || ''
+        : ''
       setSelectedFriendId(safeInitial)
       if (safeInitial) await markConversationRead(safeInitial, uid)
       setLoading(false)
@@ -286,7 +286,7 @@ export default function ChatPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) return
 
-      await fetch('/api/push/send', {
+      const res = await fetch('/api/push/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -299,6 +299,12 @@ export default function ChatPage() {
           url: `/chat?user=${userId}`
         })
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        console.warn('Push send failed:', data?.error || res.status)
+      } else if (data?.sent === 0) {
+        setStatus('Messaggio inviato. Il destinatario non ha ancora le notifiche attive su questo dispositivo.')
+      }
     } catch {
     }
   }
