@@ -202,7 +202,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 850)
+    }, 450)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -617,7 +617,7 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.78)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.7)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -749,6 +749,24 @@ export default function ScanPage() {
     } catch {
       return card
     }
+  }
+
+  const enrichPendingPriceInBackground = (card: ScannedCard, generation: number) => {
+    void enrichCardWithLivePrice(card).then(pricedCard => {
+      if (!isScanStillActive(generation)) return
+      setPendingRecognition(current => {
+        if (!current || current.card_id !== card.card_id) return current
+        return {
+          ...current,
+          market_price: pricedCard.market_price,
+          inventory_price: pricedCard.inventory_price,
+          price_source: pricedCard.price_source,
+          price_url: pricedCard.price_url,
+          price_updated_at: pricedCard.price_updated_at,
+          image_url: current.image_url || pricedCard.image_url
+        }
+      })
+    })
   }
 
   const selectRecognitionVariant = async (variant: ScannedCard) => {
@@ -896,27 +914,73 @@ export default function ScanPage() {
     }
   }
 
-  const confirmRecognizedCard = (card: ScannedCard) => {
-    setScannedCards(prev => {
-      const copy = {
-        ...card,
-        id: `${card.card_id || card.name || 'card'}-${Date.now()}-${Math.random()}`
+  const addRecognizedCardToCollection = async (card: ScannedCard) => {
+    if (!userId || adding) return
+
+    setAdding('pending')
+
+    const savedCard = {
+      ...card,
+      id: `${card.card_id || card.name || 'card'}-${Date.now()}-${Math.random()}`
+    }
+
+    try {
+      await saveCardToCollection(savedCard)
+      await refreshProgressAfterCollectionChange()
+
+      setScannedCards(prev => [savedCard, ...prev])
+      recognitionStreakRef.current = null
+      lastConfirmedSignatureRef.current = pendingRecognitionSignatureRef.current
+      pendingRecognitionSignatureRef.current = null
+      setCarouselIndex(0)
+      setPendingRecognition(null)
+      scanCooldownUntilRef.current = Date.now() + 150
+      setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Cambia carta e continuo.`)
+
+      if (savedCard.market_price == null && savedCard.inventory_price == null) {
+        void enrichCardWithLivePrice(savedCard).then(async pricedCard => {
+          const livePrice = pricedCard.market_price ?? pricedCard.inventory_price ?? null
+          if (!userId || livePrice == null) return
+
+          await supabase
+            .from('user_cards')
+            .update({
+              market_price: livePrice,
+              inventory_price: null,
+              image_url: pricedCard.image_url || savedCard.image_url
+            })
+            .eq('user_id', userId)
+            .eq('card_id', savedCard.card_id)
+            .is('market_price', null)
+            .is('inventory_price', null)
+
+          setScannedCards(prev => prev.map(item =>
+            item.id === savedCard.id
+              ? {
+                  ...item,
+                  market_price: livePrice,
+                  inventory_price: null,
+                  image_url: item.image_url || pricedCard.image_url || null,
+                  price_source: pricedCard.price_source,
+                  price_url: pricedCard.price_url,
+                  price_updated_at: pricedCard.price_updated_at
+                }
+              : item
+          ))
+        })
       }
-      return [copy, ...prev]
-    })
-    recognitionStreakRef.current = null
-    lastConfirmedSignatureRef.current = pendingRecognitionSignatureRef.current
-    pendingRecognitionSignatureRef.current = null
-    setCarouselIndex(0)
-    setPendingRecognition(null)
-    scanCooldownUntilRef.current = Date.now() + 420
-    setRecognitionMessage(`Carta aggiunta: ${card.name}. Cambia carta e la riprendo subito.`)
+    } catch (err) {
+      console.error('Add recognized card error:', err)
+      alert('Errore aggiunta carta alla collezione')
+    }
+
+    setAdding(null)
   }
 
   const discardPendingRecognition = () => {
     pendingRecognitionSignatureRef.current = null
     recognitionStreakRef.current = null
-    scanCooldownUntilRef.current = Date.now() + 260
+    scanCooldownUntilRef.current = Date.now() + 120
     setPendingRecognition(null)
     setRecognitionMessage('Carta scartata. Tieni al centro la prossima carta.')
   }
@@ -1005,7 +1069,7 @@ export default function ScanPage() {
     const frameSignature = frameSignatureFromCanvas(canvas, rect)
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) < 12) {
       setRecognitionMessage('Carta già aggiunta. Cambiala o muovila per continuare.')
-      scanCooldownUntilRef.current = Date.now() + 180
+      scanCooldownUntilRef.current = Date.now() + 80
       return
     }
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) >= 12) {
@@ -1078,12 +1142,16 @@ export default function ScanPage() {
       return
     }
 
-    const fullCardCanvas = document.createElement('canvas')
-    fullCardCanvas.width = 720
-    fullCardCanvas.height = 1000
-    const fullCardCtx = fullCardCanvas.getContext('2d')
-    if (!fullCardCtx) return
-    fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
+    const fastOcrCanvas = document.createElement('canvas')
+    fastOcrCanvas.width = 760
+    fastOcrCanvas.height = 760
+    const fastOcrCtx = fastOcrCanvas.getContext('2d')
+    if (!fastOcrCtx) return
+    fastOcrCtx.fillStyle = '#ffffff'
+    fastOcrCtx.fillRect(0, 0, fastOcrCanvas.width, fastOcrCanvas.height)
+    fastOcrCtx.drawImage(codeCropCanvas, 0, 0, fastOcrCanvas.width, 180)
+    fastOcrCtx.drawImage(preprocessedCode, 0, 180, fastOcrCanvas.width, 180)
+    fastOcrCtx.drawImage(nameCropCanvas, 0, 360, fastOcrCanvas.width, 400)
 
     const imageMatchCanvas = document.createElement('canvas')
     imageMatchCanvas.width = 300
@@ -1094,15 +1162,12 @@ export default function ScanPage() {
     }
 
     const ocrText = await runOcrOnCanvases([
-      codeCropCanvas,
-      preprocessedCode,
-      nameCropCanvas,
-      fullCardCanvas
+      fastOcrCanvas
     ])
     if (!isScanStillActive(generation)) return
     if (!isFrameStillCurrent(frameSignature)) {
       recognitionStreakRef.current = null
-      scanCooldownUntilRef.current = Date.now() + 140
+      scanCooldownUntilRef.current = Date.now() + 80
       setRecognitionMessage('Immagine cambiata durante la lettura. Riprovo sul frame attuale.')
       return
     }
@@ -1130,19 +1195,17 @@ export default function ScanPage() {
         return
       }
 
-      setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Recupero prezzo medio Cardmarket...`)
-      const pricedCard = await enrichCardWithLivePrice(cardMatch)
-      if (!isScanStillActive(generation)) return
       if (!isFrameStillCurrent(frameSignature)) {
         recognitionStreakRef.current = null
-        scanCooldownUntilRef.current = Date.now() + 140
+        scanCooldownUntilRef.current = Date.now() + 80
         setRecognitionMessage('Risultato scartato: la carta non è più inquadrata. Riprovo.')
         return
       }
 
       pendingRecognitionSignatureRef.current = frameSignature
-      setPendingRecognition(pricedCard)
-      setRecognitionMessage(`Carta trovata: ${pricedCard.name}. Conferma o scarta.`)
+      setPendingRecognition(cardMatch)
+      setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Aggiungila alla collezione o scartala.`)
+      enrichPendingPriceInBackground(cardMatch, generation)
     } else {
       recognitionStreakRef.current = null
       const previewText = allOcrText.replace(/\s+/g, ' ').trim().slice(0, 90)
@@ -1435,80 +1498,6 @@ export default function ScanPage() {
     }
   }
 
-  const saveCardsToCollectionBatch = async (cards: ScannedCard[]) => {
-    if (!userId || cards.length === 0) return
-
-    const grouped = new Map<string, { card: ScannedCard; quantity: number }>()
-    for (const card of cards) {
-      const key = card.card_id
-      if (!key) continue
-      const current = grouped.get(key)
-      grouped.set(key, { card, quantity: (current?.quantity || 0) + 1 })
-    }
-
-    const cardIds = [...grouped.keys()]
-    if (cardIds.length === 0) return
-
-    const { data: existingCards, error: lookupError } = await supabase
-      .from('user_cards')
-      .select('id, card_id, quantity, market_price, inventory_price')
-      .eq('user_id', userId)
-      .in('card_id', cardIds)
-
-    if (lookupError) throw lookupError
-
-    const existingById = new Map((existingCards || []).map(card => [String(card.card_id), card]))
-    const inserts: Array<Record<string, unknown>> = []
-    const operations: Array<Promise<{ error: unknown }>> = []
-
-    grouped.forEach(({ card, quantity }, cardId) => {
-      const payload = {
-        user_id: userId,
-        card_id: card.card_id,
-        name: card.name,
-        image_url: card.image_url,
-        rarity: card.rarity,
-        card_color: card.card_color ?? null,
-        card_type: card.card_type ?? null,
-        card_cost: card.card_cost ?? null,
-        card_power: card.card_power ?? null,
-        market_price: card.market_price ?? null,
-        inventory_price: card.inventory_price ?? null,
-      }
-      const existing = existingById.get(cardId)
-
-      if (existing) {
-        const savedPrice = card.market_price ?? card.inventory_price ?? null
-        const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && savedPrice != null
-        operations.push(
-          Promise.resolve(supabase
-            .from('user_cards')
-            .update({
-              ...payload,
-              market_price: shouldBackfillPrice ? savedPrice : existing.market_price ?? null,
-              inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
-              quantity: Number(existing.quantity || 0) + quantity
-            })
-            .eq('id', existing.id))
-        )
-      } else {
-        inserts.push({
-          ...payload,
-          quantity
-        })
-      }
-    })
-
-    if (inserts.length > 0) {
-      operations.push(Promise.resolve(supabase.from('user_cards').insert(inserts)))
-    }
-
-    const results = await Promise.all(operations)
-
-    const errorResult = results.find(result => result.error)
-    if (errorResult?.error) throw errorResult.error
-  }
-
   const refreshProgressAfterCollectionChange = async () => {
     if (!userId) return
 
@@ -1520,29 +1509,11 @@ export default function ScanPage() {
     evaluateProgress(userId, data || [], { claimDaily: true })
   }
 
-  const addAllToCollection = async () => {
-    if (!userId || adding || scannedCards.length === 0) return
-
-    setAdding('all')
-    try {
-      await saveCardsToCollectionBatch(scannedCards)
-      await refreshProgressAfterCollectionChange()
-      setScannedCards([])
-      setCarouselIndex(0)
-      setShowSummary(false)
-      setRecognitionMessage('Pescata aggiunta alla collezione.')
-    } catch (err) {
-      console.error('Add all error:', err)
-      alert('Errore aggiunta pescata')
-    }
-    setAdding(null)
-  }
-
   const discardScanResults = () => {
     setScannedCards([])
     setCarouselIndex(0)
     setShowSummary(false)
-    setRecognitionMessage('Pescata chiusa senza salvare.')
+    setRecognitionMessage('Riepilogo chiuso.')
   }
 
   const totalValue = scannedCards.reduce((sum, card) => {
@@ -1822,19 +1793,12 @@ export default function ScanPage() {
                   </>
                 )}
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4">
                   <button
                     onClick={discardScanResults}
-                    className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-slate-400"
+                    className="w-full rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-slate-400"
                   >
                     Chiudi
-                  </button>
-                  <button
-                    onClick={addAllToCollection}
-                    disabled={adding === 'all' || scannedCards.length === 0}
-                    className="rounded-2xl border border-emerald-400/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {adding === 'all' ? 'Salvo...' : 'Aggiungi alla collezione'}
                   </button>
                 </div>
               </div>
@@ -1912,10 +1876,11 @@ export default function ScanPage() {
                     </button>
 
                     <button
-                      onClick={() => confirmRecognizedCard(pendingRecognition)}
-                      className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/30"
+                      onClick={() => addRecognizedCardToCollection(pendingRecognition)}
+                      disabled={adding === 'pending'}
+                      className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Conferma
+                      {adding === 'pending' ? 'Aggiungo...' : 'Aggiungi alla collezione'}
                     </button>
                   </div>
                 </div>
