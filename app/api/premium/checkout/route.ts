@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqd3hnYnphdGR1ZWVmZGl5eGxucyIsInJlZiI6Imp4d2diemF0ZHVlZWZkaXl4bG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzMwNjMsImV4cCI6MjA5MjM0OTA2M30.8HFzw4B9i2wB8cBuuG-gR9xEswt8kp-QyA8zqvd6YRQ'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4d2diemF0ZHVlZWZkaXl4bG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzMwNjMsImV4cCI6MjA5MjM0OTA2M30.8HFzw4B9i2wB8cBuuG-gR9xEswt8kp-QyA8zqvd6YRQ'
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 const stripePriceId = process.env.STRIPE_PREMIUM_PRICE_ID
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Devi effettuare l accesso.' }, { status: 401 })
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const supabase = createClient(SUPABASE_URL, supabaseServiceRoleKey || SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false }
   })
