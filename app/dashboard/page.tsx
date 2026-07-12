@@ -118,7 +118,6 @@ const parseCollectionSet = (cardId: string) => {
 export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const router = useRouter()
 
   const [userId, setUserId] = useState<string | null>(null)
@@ -1035,49 +1034,6 @@ export default function Dashboard() {
                 className="relative bg-slate-900 rounded-lg p-1.5 sm:p-2 border border-slate-700 hover:border-amber-400/60 transition onepiece-card-hover onepiece-border-glow"
               >
 
-                {/* DELETE BUTTON */}
-                {/* MENU DELETE (3 PUNTINI) */}
-<div className="absolute bottom-1 sm:bottom-2 right-1 sm:right-2">
-  
-  <button 
-    onClick={() => setOpenMenuId(openMenuId === item.card_id ? null : item.card_id)}
-    className="text-gray-400 hover:text-red-400 text-base sm:text-lg leading-none px-1"
-  >
-    ⋯
-  </button>
-
-  {openMenuId === item.card_id && (
-    <>
-      <div 
-        className="fixed inset-0 z-20"
-        onClick={() => setOpenMenuId(null)}
-      />
-      <div className="absolute bottom-6 right-0 bg-slate-800 border border-slate-700 rounded-md shadow-lg overflow-hidden z-30">
-    
-        <button
-          onClick={() => {
-            removeCard(item.card_id, item.quantity)
-            setOpenMenuId(null)
-          }}
-          className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-red-400 hover:bg-slate-700 text-xs w-full whitespace-nowrap"
-        >
-          <Trash2 size={12} className="sm:w-3.5 sm:h-3.5" />
-          Elimina
-        </button>
-        <button
-          onClick={() => {
-            openCollectionCard(item)
-            setOpenMenuId(null)
-          }}
-          className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 text-white hover:bg-slate-700 text-xs w-full whitespace-nowrap"
-        >
-          Info
-        </button>
-      </div>
-    </>
-  )}
-</div>
-
                 <button onClick={() => openCollectionCard(item)} className="block w-full text-left">
                   <CardImage
                     src={item.image_url}
@@ -1613,15 +1569,28 @@ export default function Dashboard() {
             className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3 lg:max-h-[70vh]"
             imgClassName="h-full w-full object-contain"
           />
-          <button
-            onClick={() => startSale(selectedCard)}
-            className="w-full rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18"
-          >
-            Venduta
-          </button>
         </div>
 
         <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={async () => {
+                await removeCard(selectedCard.card_id, selectedCard.quantity)
+                setSelectedCard(null)
+                setLivePrice(null)
+              }}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm font-black text-rose-100 transition hover:bg-rose-400/16 active:scale-[0.98]"
+            >
+              <Trash2 size={16} />
+              Elimina
+            </button>
+            <button
+              onClick={() => startSale(selectedCard)}
+              className="rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18 active:scale-[0.98]"
+            >
+              Dichiara carta venduta
+            </button>
+          </div>
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-amber-300 mb-2">
               {selectedCard.name || 'Carta sconosciuta'}
