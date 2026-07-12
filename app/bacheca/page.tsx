@@ -55,6 +55,7 @@ type LivePriceResult = {
 }
 
 const BOARD_MAX_POSTS = 30
+const BOARD_FETCH_POSTS = 80
 const BOARD_RETENTION_DAYS = PREMIUM_BOARD_POST_DAYS
 
 const displayCardId = (value?: string | null) =>
@@ -107,6 +108,34 @@ export default function BachecaPage() {
     return data?.publicUrl ?? ''
   }
 
+  const resolveProfiles = async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids)].filter(Boolean)
+    if (uniqueIds.length === 0) return {}
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url, is_premium, premium_until, is_vip')
+      .in('id', uniqueIds)
+
+    let safeProfileData: ProfileItem[] = (profileData || []) as ProfileItem[]
+    if (!profileData) {
+      const fallback = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .in('id', uniqueIds)
+      safeProfileData = (fallback.data || []) as ProfileItem[]
+    }
+
+    const resolvedProfiles = await Promise.all(
+      safeProfileData.map(async (profile: ProfileItem) => ({
+        ...profile,
+        avatar_url: await getAvatarPublicUrl(profile.avatar_url)
+      }))
+    )
+
+    return Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile])) as Record<string, ProfileItem>
+  }
+
   useEffect(() => {
     const load = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -131,28 +160,7 @@ export default function BachecaPage() {
 
       const allIds = [uid, ...friends]
       if (allIds.length > 0) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('id, username, avatar_url, is_premium, premium_until, is_vip')
-          .in('id', allIds)
-
-        let safeProfileData: ProfileItem[] = (profileData || []) as ProfileItem[]
-        if (!profileData) {
-          const fallback = await supabase
-            .from('profiles')
-            .select('id, username, avatar_url')
-            .in('id', allIds)
-          safeProfileData = (fallback.data || []) as ProfileItem[]
-        }
-
-        const resolvedProfiles = await Promise.all(
-          safeProfileData.map(async (profile: ProfileItem) => ({
-            ...profile,
-            avatar_url: await getAvatarPublicUrl(profile.avatar_url)
-          }))
-        )
-
-        const profileMap = Object.fromEntries(resolvedProfiles.map((profile: ProfileItem) => [profile.id, profile]))
+        const profileMap = await resolveProfiles(allIds)
         setProfiles(profileMap)
         setIsAdmin(isAdminAccount(session.user, profileMap[uid]))
         await loadPosts(allIds, profileMap)
@@ -217,10 +225,9 @@ export default function BachecaPage() {
     const { data, error } = await supabase
       .from('board_posts')
       .select('id, user_id, type, title, message, card_id, card_name, card_code, card_image_url, card_rarity, created_at')
-      .in('user_id', ids)
       .gte('created_at', cutoff.toISOString())
       .order('created_at', { ascending: false })
-      .limit(BOARD_MAX_POSTS)
+      .limit(BOARD_FETCH_POSTS)
 
     if (error) {
       setBoardReady(false)
@@ -228,15 +235,26 @@ export default function BachecaPage() {
       return
     }
 
+    const loadedPosts = (data || []) as BoardPost[]
+    const missingProfileIds = loadedPosts
+      .map(post => post.user_id)
+      .filter(id => id && !profileMap[id])
+    const extraProfiles = await resolveProfiles(missingProfileIds)
+    const fullProfileMap = { ...profileMap, ...extraProfiles }
+    setProfiles(current => ({ ...current, ...fullProfileMap }))
+
+    const visibleSet = new Set(ids)
     setBoardReady(true)
-    setPosts(((data || []) as BoardPost[]).filter(post => {
-      const profile = profileMap[post.user_id]
+    setPosts(loadedPosts.filter(post => {
+      const profile = fullProfileMap[post.user_id]
       const tier = getPremiumTier(profile, { id: post.user_id })
       const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
       const cutoffForPost = new Date()
       cutoffForPost.setDate(cutoffForPost.getDate() - days)
-      return new Date(post.created_at).getTime() >= cutoffForPost.getTime()
-    }))
+      const stillVisible = new Date(post.created_at).getTime() >= cutoffForPost.getTime()
+      const isVisibleToViewer = visibleSet.has(post.user_id) || tier !== 'free'
+      return stillVisible && isVisibleToViewer
+    }).slice(0, BOARD_MAX_POSTS))
   }
 
   const cleanupOwnPosts = async (uid: string) => {
@@ -408,7 +426,7 @@ export default function BachecaPage() {
                 Qui troverai tutte le richieste carte dei tuoi amici.
               </p>
               <p className="mt-1 text-xs font-semibold text-slate-500">
-                Restano visibili gli ultimi {BOARD_MAX_POSTS} annunci degli ultimi {BOARD_RETENTION_DAYS} giorni.
+                Gli annunci Premium, VIP e Admin sono visibili a tutti per {PREMIUM_BOARD_POST_DAYS} giorni. Gli annunci free restano nella cerchia amici per {FREE_BOARD_POST_DAYS} giorni.
               </p>
             </div>
           </div>

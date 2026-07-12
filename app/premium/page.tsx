@@ -19,7 +19,7 @@ const freeFeatures = [
 const premiumFeatures = [
   'Deck salvati illimitati',
   'Scan giornaliere illimitate',
-  `Annunci visibili per ${PREMIUM_BOARD_POST_DAYS} giorni`,
+  `Annunci visibili a tutti per ${PREMIUM_BOARD_POST_DAYS} giorni`,
   'Nickname e icona Premium illuminati',
   'Supporto diretto al mantenimento del sito'
 ]
@@ -147,10 +147,7 @@ export default function PremiumPage() {
             </article>
 
             <article className="relative flex flex-col overflow-hidden rounded-[1.5rem] border border-cyan-200/35 bg-cyan-300/12 p-4 shadow-xl shadow-cyan-950/20">
-              <div className="absolute right-4 top-4 rounded-full border border-cyan-100/30 bg-cyan-100/15 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-50">
-                Consigliato
-              </div>
-              <div className="flex items-center justify-between gap-3 pr-24">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Piano</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Premium</h2>
