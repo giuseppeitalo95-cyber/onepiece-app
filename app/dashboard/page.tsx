@@ -88,6 +88,15 @@ const setDisplayName = (setCode: string) => {
   return setCode.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
 }
 
+const numberOrNull = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const compactCardCode = (value?: string | null) =>
+  String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+
 const parseCollectionSet = (cardId: string) => {
   const normalized = (cardId || '').toUpperCase().replace(/_/g, '-')
   const match = normalized.match(/^(OP|EB|ST|PRB|SP|EX|CP)(\d{1,2})-?(\d{3})/)
@@ -152,6 +161,7 @@ export default function Dashboard() {
   const [sellingBusy, setSellingBusy] = useState(false)
   const [restoringSoldId, setRestoringSoldId] = useState<string | null>(null)
   const [saleMessage, setSaleMessage] = useState('')
+  const detailRunRef = useRef(0)
 
  useEffect(() => {
   if (addOpen || selectedCard || catalogOpen || analyticsOpen || soldOpen || sellingCard) {
@@ -246,8 +256,8 @@ export default function Dashboard() {
             rarity: card.rarity || '-',
             card_color: card.card_color ?? null,
             card_type: card.card_type ?? null,
-            card_cost: card.card_cost ? Number(card.card_cost) : null,
-            card_power: card.card_power ? Number(card.card_power) : null,
+            card_cost: numberOrNull(card.card_cost),
+            card_power: numberOrNull(card.card_power),
             market_price: card.market_price ? Number(card.market_price) : null,
             inventory_price: card.inventory_price ? Number(card.inventory_price) : null,
             set_name: card.set_name ?? null,
@@ -402,9 +412,73 @@ export default function Dashboard() {
     setLivePriceLoading(false)
   }
 
+  const fetchCatalogDetailsForCard = async (card: UserCard) => {
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(card.card_id)}`)
+      const data = await res.json()
+      if (!Array.isArray(data)) return null
+
+      const wanted = compactCardCode(card.card_id)
+      const detail = data.find((candidate: any) => {
+        const ids = [
+          candidate.card_set_id,
+          candidate.card_id,
+          candidate.id
+        ].map(compactCardCode)
+        return ids.includes(wanted)
+      }) || data[0]
+
+      if (!detail) return null
+
+      return {
+        name: detail.card_name || detail.name || card.name,
+        image_url: detail.card_image || detail.image_url || card.image_url,
+        rarity: detail.rarity && detail.rarity !== 'Unknown' ? detail.rarity : card.rarity,
+        card_color: detail.card_color && detail.card_color !== 'Unknown' ? detail.card_color : card.card_color,
+        card_type: detail.card_type && detail.card_type !== 'Unknown' ? detail.card_type : card.card_type,
+        card_cost: numberOrNull(detail.card_cost),
+        card_power: numberOrNull(detail.card_power),
+      } satisfies Partial<UserCard>
+    } catch {
+      return null
+    }
+  }
+
   const openCollectionCard = (card: UserCard) => {
+    const runId = ++detailRunRef.current
     setSelectedCard(card)
     void loadLivePrice({ card_id: card.card_id, name: card.name })
+    if (card.card_cost != null && card.card_power != null && card.card_type && card.card_color && card.rarity) return
+
+    void (async () => {
+      const detail = await fetchCatalogDetailsForCard(card)
+      if (!detail || runId !== detailRunRef.current) return
+
+      const enriched = {
+        ...card,
+        ...detail,
+        card_cost: detail.card_cost ?? card.card_cost ?? null,
+        card_power: detail.card_power ?? card.card_power ?? null,
+      }
+      setSelectedCard(current => current?.card_id === card.card_id ? enriched : current)
+      setCards(current => current.map(item => item.card_id === card.card_id ? { ...item, ...enriched } : item))
+
+      if (userId) {
+        await supabase
+          .from('user_cards')
+          .update({
+            name: enriched.name,
+            image_url: enriched.image_url,
+            rarity: enriched.rarity,
+            card_color: enriched.card_color,
+            card_type: enriched.card_type,
+            card_cost: enriched.card_cost,
+            card_power: enriched.card_power,
+          })
+          .eq('user_id', userId)
+          .eq('card_id', card.card_id)
+      }
+    })()
   }
 
   const loadSoldCards = async (uid = userId) => {
