@@ -2,45 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Crown, Infinity, ScanLine, Sparkles, Layers3, MessageSquareHeart, X } from 'lucide-react'
+import { Check, Crown, Infinity, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
-import { FREE_DAILY_SCAN_LIMIT, FREE_DECK_LIMIT, PREMIUM_BOARD_POST_DAYS, FREE_BOARD_POST_DAYS, getPremiumTier, premiumLabel, type PremiumProfile } from '@/lib/premium'
-
-const perks = [
-  {
-    Icon: Layers3,
-    title: 'Deck illimitati',
-    free: `${FREE_DECK_LIMIT} deck salvati`,
-    premium: 'Deck salvati illimitati'
-  },
-  {
-    Icon: ScanLine,
-    title: 'Scanner più libero',
-    free: `${FREE_DAILY_SCAN_LIMIT} scan al giorno`,
-    premium: 'Scan giornaliere illimitate'
-  },
-  {
-    Icon: MessageSquareHeart,
-    title: 'Bacheca in evidenza',
-    free: `Annunci per ${FREE_BOARD_POST_DAYS} giorni`,
-    premium: `Annunci per ${PREMIUM_BOARD_POST_DAYS} giorni`
-  },
-  {
-    Icon: Sparkles,
-    title: 'Identità luminosa',
-    free: 'Nickname standard',
-    premium: 'Nickname e icona Premium illuminati'
-  }
-]
+import { FREE_DAILY_SCAN_LIMIT, FREE_DECK_LIMIT, FREE_BOARD_POST_DAYS, PREMIUM_BOARD_POST_DAYS, getPremiumTier, premiumLabel, type PremiumProfile } from '@/lib/premium'
 
 const freeFeatures = [
   `${FREE_DECK_LIMIT} deck salvati`,
   `${FREE_DAILY_SCAN_LIMIT} scan al giorno`,
   `Annunci visibili per ${FREE_BOARD_POST_DAYS} giorni`,
   'Nickname standard',
-  'Supporto base alle funzioni OPV'
+  'Funzioni base OPV'
 ]
 
 const premiumFeatures = [
@@ -136,12 +109,12 @@ export default function PremiumPage() {
                 </div>
                 <h1 className="mt-4 text-3xl font-black text-white sm:text-5xl">Supporta OPV</h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                  Premium serve a sostenere il sito, mantenere scanner, database, prezzi e nuove funzioni senza riempire l'app di pubblicità.
+                  Premium serve a sostenere il sito, mantenere scanner, database, prezzi e nuove funzioni senza riempire l'app di pubblicita.
                 </p>
               </div>
 
               <div className="rounded-[1.5rem] border border-white/12 bg-slate-950/72 p-4 text-center">
-                <p className="text-4xl font-black text-cyan-200">1€</p>
+                <p className="text-4xl font-black text-cyan-200">1 euro</p>
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">al mese</p>
                 {activeLabel ? (
                   <div className="mt-3 rounded-2xl border border-emerald-300/30 bg-emerald-300/12 px-3 py-2 text-sm font-black text-emerald-100">
@@ -152,18 +125,18 @@ export default function PremiumPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6">
-            <article className="rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
+          <div className="grid gap-4 p-4 md:grid-cols-2 sm:p-6">
+            <article className="flex flex-col rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Piano</p>
                   <h2 className="mt-1 text-2xl font-black text-white">Free</h2>
                 </div>
                 <div className="rounded-2xl border border-slate-700 bg-slate-950/75 px-3 py-2 text-sm font-black text-slate-300">
-                  0€
+                  0 euro
                 </div>
               </div>
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 flex-1 space-y-2">
                 {freeFeatures.map(feature => (
                   <div key={feature} className="flex items-start gap-2 rounded-2xl border border-slate-700 bg-slate-950/62 px-3 py-2 text-sm text-slate-300">
                     <X size={16} className="mt-0.5 shrink-0 text-slate-500" />
@@ -173,7 +146,7 @@ export default function PremiumPage() {
               </div>
             </article>
 
-            <article className="relative overflow-hidden rounded-[1.5rem] border border-cyan-200/35 bg-cyan-300/12 p-4 shadow-xl shadow-cyan-950/20">
+            <article className="relative flex flex-col overflow-hidden rounded-[1.5rem] border border-cyan-200/35 bg-cyan-300/12 p-4 shadow-xl shadow-cyan-950/20">
               <div className="absolute right-4 top-4 rounded-full border border-cyan-100/30 bg-cyan-100/15 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-50">
                 Consigliato
               </div>
@@ -183,10 +156,10 @@ export default function PremiumPage() {
                   <h2 className="mt-1 text-2xl font-black text-white">Premium</h2>
                 </div>
                 <div className="rounded-2xl border border-cyan-100/35 bg-cyan-100/18 px-3 py-2 text-sm font-black text-cyan-50">
-                  1€/mese
+                  1 euro/mese
                 </div>
               </div>
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 flex-1 space-y-2">
                 {premiumFeatures.map(feature => (
                   <div key={feature} className="flex items-start gap-2 rounded-2xl border border-cyan-100/25 bg-slate-950/50 px-3 py-2 text-sm font-bold text-cyan-50">
                     <Check size={16} className="mt-0.5 shrink-0 text-cyan-200" />
@@ -195,27 +168,6 @@ export default function PremiumPage() {
                 ))}
               </div>
             </article>
-          </div>
-
-          <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 sm:px-6 sm:pb-6">
-            {perks.map(({ Icon, title, free, premium }) => (
-              <article key={title} className="rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-11 w-11 place-items-center rounded-2xl bg-cyan-300/15 text-cyan-100">
-                    <Icon size={20} />
-                  </div>
-                  <h2 className="text-base font-black text-white">{title}</h2>
-                </div>
-                <div className="mt-4 grid gap-2 text-sm">
-                  <div className="rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-slate-400">
-                    Free: {free}
-                  </div>
-                  <div className="rounded-2xl border border-cyan-200/30 bg-cyan-300/12 px-3 py-2 font-bold text-cyan-100">
-                    Premium: {premium}
-                  </div>
-                </div>
-              </article>
-            ))}
           </div>
 
           <div className="border-t border-slate-800 p-4 sm:p-6">
@@ -232,7 +184,7 @@ export default function PremiumPage() {
               ) : (
                 <>
                   <Infinity size={18} />
-                  Premium già attivo
+                  Premium gia attivo
                 </>
               )}
             </button>
