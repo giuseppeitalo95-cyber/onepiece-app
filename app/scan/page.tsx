@@ -742,7 +742,7 @@ export default function ScanPage() {
         market_price: price.marketPrice ?? price.midPrice ?? price.directLowPrice ?? price.lowPrice ?? card.market_price ?? null,
         inventory_price: null,
         image_url: card.image_url || price.productImageUrl || null,
-        price_source: price.source || 'Prezzo Medio Cardmarket',
+        price_source: price.source || 'Prezzo Medio',
         price_url: price.productUrl || null,
         price_updated_at: price.modifiedOn || null
       }
@@ -772,7 +772,7 @@ export default function ScanPage() {
   const selectRecognitionVariant = async (variant: ScannedCard) => {
     if (pendingRecognition?.card_id === variant.card_id) return
 
-    setRecognitionMessage(`Variante selezionata: ${variantLabel(variant)}. Recupero prezzo medio Cardmarket...`)
+    setRecognitionMessage(`Variante selezionata: ${variantLabel(variant)}. Recupero prezzo medio...`)
     const pricedVariant = await enrichCardWithLivePrice({
       ...variant,
       id: pendingRecognition?.id || variant.id
@@ -1855,7 +1855,7 @@ export default function ScanPage() {
                   )}
 
                   <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo Medio Cardmarket</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo Medio</p>
                     <p className="mt-1 text-2xl font-black text-cyan-200">
                       {formatPrice(pendingRecognition.market_price ?? pendingRecognition.inventory_price ?? 0)}
                     </p>

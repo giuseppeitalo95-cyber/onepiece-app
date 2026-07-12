@@ -177,7 +177,7 @@ export default function Home() {
             <div className="grid grid-cols-3 gap-3">
               {[
                 ['Scan', 'Camera live'],
-                ['Valore', 'Cardmarket'],
+                ['Valore', 'Prezzo Medio'],
                 ['Vault', 'Collezione'],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-3xl border border-white/10 bg-white/[0.06] p-4">

@@ -610,7 +610,7 @@ export default function BachecaPage() {
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
                     ['Rarita', selectedBoardCard.rarity || '-'],
-                    ['Prezzo Medio Cardmarket', selectedBoardCardPriceLoading ? '...' : formatPrice(selectedBoardCardPrice)],
+                    ['Prezzo Medio', selectedBoardCardPriceLoading ? '...' : formatPrice(selectedBoardCardPrice)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>

@@ -978,7 +978,7 @@ export default function FriendsPage() {
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
                     ['Rarita', selectedFriendCard.rarity || '-'],
-                    ['Prezzo Medio Cardmarket', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
+                    ['Prezzo Medio', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
                     ['Copie', selectedFriendCard.quantity || 1],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">

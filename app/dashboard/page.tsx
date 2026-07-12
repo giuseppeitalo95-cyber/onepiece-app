@@ -997,7 +997,7 @@ export default function Dashboard() {
                 <p className="mt-3 text-xl font-black text-white">{catalogSelectedCard.name}</p>
                 <p className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-500">{displayCardId(catalogSelectedCard.id)}</p>
                 <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Prezzo Medio Cardmarket</p>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">Prezzo Medio</p>
                   <p className="mt-1 text-2xl font-black text-cyan-200">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
                 </div>
               </div>
@@ -1011,7 +1011,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-slate-700 p-5 text-center text-sm text-slate-400">
-              Tocca una carta per vedere prezzo medio Cardmarket e dettagli.
+              Tocca una carta per vedere prezzo medio e dettagli.
             </div>
           )}
         </aside>
@@ -1092,7 +1092,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <TrendingUp className="text-emerald-200" size={18} />
-                <p className="text-sm font-black text-white">Prezzo Medio Cardmarket</p>
+                <p className="text-sm font-black text-white">Prezzo Medio</p>
               </div>
               <button
                 onClick={openAnalytics}
@@ -1102,7 +1102,7 @@ export default function Dashboard() {
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-400">
-              {analyticsLoading ? 'Aggiorno i prezzi Cardmarket...' : `Prezzi aggiornati: ${analyticsCandidates.length} carte principali`}
+              {analyticsLoading ? 'Aggiorno i prezzi...' : `Prezzi aggiornati: ${analyticsCandidates.length} carte principali`}
             </p>
             <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
               <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Valore aggiornato carte principali</p>
@@ -1198,7 +1198,7 @@ export default function Dashboard() {
             </p>
             <div className="mb-3 grid gap-2 sm:grid-cols-3 lg:gap-3">
               <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Prezzo Medio Cardmarket</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Prezzo Medio</p>
                 <p className="mt-1 text-xl font-black text-cyan-200 lg:text-2xl">{livePriceLoading ? '...' : formatPrice(livePrice)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
