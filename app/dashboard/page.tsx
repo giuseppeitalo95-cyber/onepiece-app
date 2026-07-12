@@ -825,6 +825,10 @@ export default function Dashboard() {
   const topSavedCardTotal = topSavedCard && topSavedCardPrice != null
     ? topSavedCardPrice * topSavedCard.quantity
     : null
+  const topExpensiveCards = [...cards]
+    .filter(card => getAnalyticsPrice(card) != null)
+    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))
+    .slice(0, 5)
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
@@ -1335,23 +1339,37 @@ export default function Dashboard() {
           <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
             <div className="flex items-center gap-2">
               <Crown className="text-cyan-200" size={18} />
-              <p className="text-sm font-black text-white">Carta più alta</p>
+              <p className="text-sm font-black text-white">Carte piu costose</p>
             </div>
-            {topSavedCard ? (
-              <div className="mt-3 grid grid-cols-[76px_1fr] gap-3">
-                <button onClick={() => openCollectionCard(topSavedCard)} className="block text-left">
-                  <CardImage
-                    src={topSavedCard.image_url}
-                    cardId={topSavedCard.card_id}
-                    alt={topSavedCard.name || 'Carta'}
-                    className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950"
-                  />
-                </button>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-bold text-white">{topSavedCard.name}</p>
-                  <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(topSavedCard.card_id)}</p>
-                  <p className="mt-2 text-2xl font-black text-cyan-200">{formatPrice(getAnalyticsPrice(topSavedCard))}</p>
-                </div>
+            {topExpensiveCards.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {topExpensiveCards.map((card, index) => (
+                  <button
+                    key={card.card_id}
+                    onClick={() => openCollectionCard(card)}
+                    className="grid w-full grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/65 p-2 text-left transition hover:border-cyan-300/40 active:scale-[0.99]"
+                  >
+                    <div className="relative">
+                      <CardImage
+                        src={card.image_url}
+                        cardId={card.card_id}
+                        alt={card.name || 'Carta'}
+                        className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                      />
+                      <span className="absolute -left-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-cyan-300 text-[10px] font-black text-slate-950">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">{card.name || card.card_id}</p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(card.card_id)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-cyan-200">{formatPrice(getAnalyticsPrice(card))}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">x{card.quantity}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             ) : (
               <p className="mt-3 text-sm text-slate-400">Nessun prezzo salvato.</p>
