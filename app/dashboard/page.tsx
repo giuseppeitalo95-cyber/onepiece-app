@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
 
 type UserCard = {
+  id?: string
   card_id: string
   quantity: number
   name: string | null
@@ -24,6 +25,8 @@ type UserCard = {
   card_power?: number | null
   market_price?: number | null
   inventory_price?: number | null
+  sale_price?: number | null
+  sold_at?: string | null
 }
 
 type CatalogCard = {
@@ -479,6 +482,13 @@ export default function Dashboard() {
           .eq('card_id', card.card_id)
       }
     })()
+  }
+
+  const openSoldCardDetail = (card: SoldCard) => {
+    detailRunRef.current += 1
+    setSoldOpen(false)
+    setSelectedCard(card)
+    void loadLivePrice({ card_id: card.card_id, name: card.name })
   }
 
   const loadSoldCards = async (uid = userId) => {
@@ -1486,19 +1496,30 @@ export default function Dashboard() {
 
               return (
                 <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)_38px] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2 sm:grid-cols-[60px_minmax(0,1fr)_minmax(150px,auto)_38px]">
-                  <CardImage
-                    src={card.image_url}
-                    cardId={card.card_id}
-                    alt={card.name || card.card_id}
-                    className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
-                  />
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => openSoldCardDetail(card)}
+                    className="block text-left transition active:scale-[0.98]"
+                    aria-label={`Apri ${card.name || card.card_id}`}
+                  >
+                    <CardImage
+                      src={card.image_url}
+                      cardId={card.card_id}
+                      alt={card.name || card.card_id}
+                      className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openSoldCardDetail(card)}
+                    className="min-w-0 text-left transition active:scale-[0.99]"
+                  >
                     <p className="truncate text-sm font-black text-white">{card.name || card.card_id}</p>
                     <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500">{displayCardId(card.card_id)}</p>
                     <p className="mt-1 text-[11px] text-slate-400">
                       Venduta il {new Date(card.sold_at).toLocaleDateString('it-IT')} - x{card.quantity}
                     </p>
-                  </div>
+                  </button>
                   <div className="col-span-3 grid grid-cols-3 gap-1.5 text-right sm:col-span-1">
                     <div className="rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5">
                       <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Venduta</p>
@@ -1664,25 +1685,38 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={async () => {
-                await removeCard(selectedCard.card_id, selectedCard.quantity)
-                setSelectedCard(null)
-                setLivePrice(null)
-              }}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm font-black text-rose-100 transition hover:bg-rose-400/16 active:scale-[0.98]"
-            >
-              <Trash2 size={16} />
-              Elimina
-            </button>
-            <button
-              onClick={() => startSale(selectedCard)}
-              className="rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18 active:scale-[0.98]"
-            >
-              Dichiara carta venduta
-            </button>
-          </div>
+          {selectedCard.sold_at ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-2xl border border-emerald-300/25 bg-emerald-300/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Venduta a</p>
+                <p className="mt-1 text-xl font-black text-emerald-200">{formatPrice(selectedCard.sale_price ?? null)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Data vendita</p>
+                <p className="mt-1 text-sm font-black text-white">{new Date(selectedCard.sold_at).toLocaleDateString('it-IT')}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await removeCard(selectedCard.card_id, selectedCard.quantity)
+                  setSelectedCard(null)
+                  setLivePrice(null)
+                }}
+                className="flex items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm font-black text-rose-100 transition hover:bg-rose-400/16 active:scale-[0.98]"
+              >
+                <Trash2 size={16} />
+                Elimina
+              </button>
+              <button
+                onClick={() => startSale(selectedCard)}
+                className="rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18 active:scale-[0.98]"
+              >
+                Dichiara carta venduta
+              </button>
+            </div>
+          )}
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-amber-300 mb-2">
               {selectedCard.name || 'Carta sconosciuta'}
