@@ -1,4 +1,4 @@
-export const ONLINE_WINDOW_MS = 2 * 60 * 1000
+export const ONLINE_WINDOW_MS = 60 * 1000
 
 export type OnlineProfile = {
   last_seen_at?: string | null
