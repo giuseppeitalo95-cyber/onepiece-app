@@ -79,6 +79,8 @@ export default function ScanPage() {
   const scanCooldownUntilRef = useRef(0)
   const scanSessionRef = useRef(false)
   const showSummaryRef = useRef(false)
+  const pendingRecognitionSignatureRef = useRef<number[] | null>(null)
+  const lastConfirmedSignatureRef = useRef<number[] | null>(null)
   const manualSearchRunRef = useRef(0)
 
   useEffect(() => {
@@ -200,7 +202,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 1300)
+    }, 850)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -210,8 +212,40 @@ export default function ScanPage() {
     }
   }, [cameraActive, cameraReady, ocrReady, scanSessionActive, showSummary, pendingRecognition])
 
+  const optimizeCameraTrack = async (stream: MediaStream) => {
+    const [track] = stream.getVideoTracks()
+    if (!track?.getCapabilities || !track.applyConstraints) return
+
+    try {
+      const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+        focusMode?: string[]
+        exposureMode?: string[]
+        whiteBalanceMode?: string[]
+      }
+      const advanced: Record<string, string>[] = []
+
+      if (capabilities.focusMode?.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' })
+      }
+      if (capabilities.exposureMode?.includes('continuous')) {
+        advanced.push({ exposureMode: 'continuous' })
+      }
+      if (capabilities.whiteBalanceMode?.includes('continuous')) {
+        advanced.push({ whiteBalanceMode: 'continuous' })
+      }
+
+      if (advanced.length > 0) {
+        await track.applyConstraints({ advanced } as MediaTrackConstraints)
+      }
+    } catch {
+      // Alcuni browser Android espongono le capability ma rifiutano i constraint.
+    }
+  }
+
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
+
+    await optimizeCameraTrack(stream)
 
     videoRef.current.srcObject = stream
     videoRef.current.muted = true
@@ -583,7 +617,70 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.86)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.78)
+
+  const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    const area = rect || { x: 0, y: 0, width: canvas.width, height: canvas.height }
+    const cols = 6
+    const rows = 8
+    const signature: number[] = []
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(area.x + ((col + 0.5) / cols) * area.width)))
+        const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(area.y + ((row + 0.5) / rows) * area.height)))
+        const pixel = ctx.getImageData(x, y, 1, 1).data
+        signature.push(Math.round(pixel[0] * 0.299 + pixel[1] * 0.587 + pixel[2] * 0.114))
+      }
+    }
+
+    return signature
+  }
+
+  const frameSignatureFromVideo = () => {
+    const video = videoRef.current
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null
+
+    const signatureCanvas = document.createElement('canvas')
+    signatureCanvas.width = 90
+    signatureCanvas.height = 120
+    const ctx = signatureCanvas.getContext('2d')
+    if (!ctx) return null
+
+    const targetAspect = signatureCanvas.width / signatureCanvas.height
+    const sourceAspect = video.videoWidth / video.videoHeight
+    let sourceX = 0
+    let sourceY = 0
+    let sourceWidth = video.videoWidth
+    let sourceHeight = video.videoHeight
+
+    if (sourceAspect > targetAspect) {
+      sourceWidth = video.videoHeight * targetAspect
+      sourceX = (video.videoWidth - sourceWidth) / 2
+    } else {
+      sourceHeight = video.videoWidth / targetAspect
+      sourceY = (video.videoHeight - sourceHeight) / 2
+    }
+
+    ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, signatureCanvas.width, signatureCanvas.height)
+    return frameSignatureFromCanvas(signatureCanvas, {
+      x: signatureCanvas.width * 0.08,
+      y: signatureCanvas.height * 0.08,
+      width: signatureCanvas.width * 0.84,
+      height: signatureCanvas.height * 0.84
+    })
+  }
+
+  const signatureDistance = (a?: number[] | null, b?: number[] | null) => {
+    if (!a || !b || a.length !== b.length) return Number.POSITIVE_INFINITY
+    return a.reduce((sum, value, index) => sum + Math.abs(value - b[index]), 0) / a.length
+  }
+
+  const isFrameStillCurrent = (signature: number[] | null) =>
+    signatureDistance(signature, frameSignatureFromVideo()) < 32
 
   const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
     try {
@@ -808,10 +905,20 @@ export default function ScanPage() {
       return [copy, ...prev]
     })
     recognitionStreakRef.current = null
+    lastConfirmedSignatureRef.current = pendingRecognitionSignatureRef.current
+    pendingRecognitionSignatureRef.current = null
     setCarouselIndex(0)
     setPendingRecognition(null)
-    scanCooldownUntilRef.current = Date.now() + 700
-    setRecognitionMessage(`Carta aggiunta alla pescata: ${card.name}. Prepara la prossima.`)
+    scanCooldownUntilRef.current = Date.now() + 420
+    setRecognitionMessage(`Carta aggiunta: ${card.name}. Cambia carta e la riprendo subito.`)
+  }
+
+  const discardPendingRecognition = () => {
+    pendingRecognitionSignatureRef.current = null
+    recognitionStreakRef.current = null
+    scanCooldownUntilRef.current = Date.now() + 260
+    setPendingRecognition(null)
+    setRecognitionMessage('Carta scartata. Tieni al centro la prossima carta.')
   }
 
   const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
@@ -855,8 +962,8 @@ export default function ScanPage() {
 
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
 
-    canvas.width = 1080
-    canvas.height = 1440
+    canvas.width = 900
+    canvas.height = 1200
     setVideoSize({ width: canvas.width, height: canvas.height })
 
     const targetAspect = canvas.width / canvas.height
@@ -895,18 +1002,28 @@ export default function ScanPage() {
     if (!isScanStillActive(generation)) return
 
     setDetectedRect(rect)
+    const frameSignature = frameSignatureFromCanvas(canvas, rect)
+    if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) < 12) {
+      setRecognitionMessage('Carta già aggiunta. Cambiala o muovila per continuare.')
+      scanCooldownUntilRef.current = Date.now() + 180
+      return
+    }
+    if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) >= 12) {
+      lastConfirmedSignatureRef.current = null
+    }
+
     setRecognitionMessage('Analisi del frame in corso...')
 
     // Ritaglio CODICE (striscia in basso: il codice puo stare anche verso destra)
     const codeCropCanvas = document.createElement('canvas')
-    codeCropCanvas.width = 720
-    codeCropCanvas.height = 360
+    codeCropCanvas.width = 640
+    codeCropCanvas.height = 300
     const codeCropCtx = codeCropCanvas.getContext('2d')
 
     // Ritagli leggibili: effetto, nome e riga codice sono le zone piu utili per il match.
     const nameCropCanvas = document.createElement('canvas')
-    nameCropCanvas.width = 900
-    nameCropCanvas.height = 540
+    nameCropCanvas.width = 760
+    nameCropCanvas.height = 420
     const nameCropCtx = nameCropCanvas.getContext('2d')
 
     if (!codeCropCtx || !nameCropCtx) return
@@ -925,9 +1042,9 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 120,
+        index * 100,
         codeCropCanvas.width,
-        120
+        100
       )
     })
 
@@ -945,21 +1062,16 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 180,
+        index * 140,
         nameCropCanvas.width,
-        180
+        140
       )
     })
 
     const preprocessedCode = document.createElement('canvas')
-    preprocessedCode.width = 720
-    preprocessedCode.height = 360
+    preprocessedCode.width = 640
+    preprocessedCode.height = 300
     preprocessForOcr(codeCropCanvas, preprocessedCode)
-
-    const preprocessedName = document.createElement('canvas')
-    preprocessedName.width = 900
-    preprocessedName.height = 540
-    preprocessForOcr(nameCropCanvas, preprocessedName)
 
     if (!ocrReady) {
       setRecognitionMessage('Inizializzo il riconoscimento del testo...')
@@ -967,15 +1079,15 @@ export default function ScanPage() {
     }
 
     const fullCardCanvas = document.createElement('canvas')
-    fullCardCanvas.width = 900
-    fullCardCanvas.height = 1250
+    fullCardCanvas.width = 720
+    fullCardCanvas.height = 1000
     const fullCardCtx = fullCardCanvas.getContext('2d')
     if (!fullCardCtx) return
     fullCardCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardCanvas.width, fullCardCanvas.height)
 
     const imageMatchCanvas = document.createElement('canvas')
-    imageMatchCanvas.width = 320
-    imageMatchCanvas.height = 448
+    imageMatchCanvas.width = 300
+    imageMatchCanvas.height = 420
     const imageMatchCtx = imageMatchCanvas.getContext('2d')
     if (imageMatchCtx) {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, imageMatchCanvas.width, imageMatchCanvas.height)
@@ -985,10 +1097,15 @@ export default function ScanPage() {
       codeCropCanvas,
       preprocessedCode,
       nameCropCanvas,
-      preprocessedName,
       fullCardCanvas
     ])
     if (!isScanStillActive(generation)) return
+    if (!isFrameStillCurrent(frameSignature)) {
+      recognitionStreakRef.current = null
+      scanCooldownUntilRef.current = Date.now() + 140
+      setRecognitionMessage('Immagine cambiata durante la lettura. Riprovo sul frame attuale.')
+      return
+    }
 
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
@@ -1016,7 +1133,14 @@ export default function ScanPage() {
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Recupero prezzo medio Cardmarket...`)
       const pricedCard = await enrichCardWithLivePrice(cardMatch)
       if (!isScanStillActive(generation)) return
+      if (!isFrameStillCurrent(frameSignature)) {
+        recognitionStreakRef.current = null
+        scanCooldownUntilRef.current = Date.now() + 140
+        setRecognitionMessage('Risultato scartato: la carta non è più inquadrata. Riprovo.')
+        return
+      }
 
+      pendingRecognitionSignatureRef.current = frameSignature
       setPendingRecognition(pricedCard)
       setRecognitionMessage(`Carta trovata: ${pricedCard.name}. Conferma o scarta.`)
     } else {
@@ -1065,6 +1189,8 @@ export default function ScanPage() {
       setScanSessionActive(true)
       setShowSummary(false)
       setPendingRecognition(null)
+      pendingRecognitionSignatureRef.current = null
+      lastConfirmedSignatureRef.current = null
       recognitionStreakRef.current = null
       return
     }
@@ -1074,8 +1200,8 @@ export default function ScanPage() {
         {
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 3840 },
-            height: { ideal: 2160 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             frameRate: { ideal: 30 }
           },
           audio: false
@@ -1083,16 +1209,17 @@ export default function ScanPage() {
         {
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             frameRate: { ideal: 30 }
           },
           audio: false
         },
         {
           video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 960 },
+            height: { ideal: 720 },
             frameRate: { ideal: 30 }
           },
           audio: false
@@ -1125,6 +1252,8 @@ export default function ScanPage() {
       setScanSessionActive(true)
       setShowSummary(false)
       setPendingRecognition(null)
+      pendingRecognitionSignatureRef.current = null
+      lastConfirmedSignatureRef.current = null
       recognitionStreakRef.current = null
       setRecognitionMessage('Scanner attivo. Tieni la carta al centro.')
     } catch (err) {
@@ -1155,6 +1284,8 @@ export default function ScanPage() {
     setScanSessionActive(false)
     setShowSummary(true)
     setPendingRecognition(null)
+    pendingRecognitionSignatureRef.current = null
+    lastConfirmedSignatureRef.current = null
     recognitionStreakRef.current = null
     setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')
   }
@@ -1774,7 +1905,7 @@ export default function ScanPage() {
                 <div className="shrink-0 border-t border-slate-700 bg-slate-950/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setPendingRecognition(null)}
+                      onClick={discardPendingRecognition}
                       className="flex-1 rounded-2xl border border-slate-600 bg-slate-800 px-3 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
                     >
                       Scarta
