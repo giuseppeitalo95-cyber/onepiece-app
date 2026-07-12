@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const isAuthorized = (req: NextRequest) => {
-  const secret = process.env.CARDMARKET_SYNC_SECRET
+  const secret = process.env.CARDMARKET_SYNC_SECRET || process.env.CRON_SECRET
   if (!secret) return true
 
   const auth = req.headers.get('authorization') || ''
