@@ -303,7 +303,9 @@ export default function ChatPage() {
       if (!res.ok) {
         console.warn('Push send failed:', data?.error || res.status)
       } else if (data?.sent === 0) {
-        setStatus('Messaggio inviato. Il destinatario non ha ancora le notifiche attive su questo dispositivo.')
+        setStatus(data?.subscriptions
+          ? 'Messaggio inviato, ma la notifica non e partita. Fai riattivare le notifiche dal profilo.'
+          : 'Messaggio inviato. Il destinatario non ha ancora le notifiche attive su questo dispositivo.')
       }
     } catch {
     }

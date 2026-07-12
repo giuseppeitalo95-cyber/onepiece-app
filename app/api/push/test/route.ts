@@ -10,7 +10,6 @@ const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:giuseppeitalo95@gmail
 
 type PushSubscriptionRow = {
   id: string
-  endpoint: string
   subscription: webPush.PushSubscription
 }
 
@@ -43,33 +42,25 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Invalid session' }, { status: 401 })
   }
 
-  const body = await request.json().catch(() => null)
-  const receiverId = String(body?.receiverId || '')
-  const title = String(body?.title || 'OnePiece Vault').slice(0, 80)
-  const messageBody = String(body?.body || 'Hai una nuova notifica.').slice(0, 180)
-  const url = String(body?.url || '/chat').slice(0, 300)
-
-  if (!receiverId) {
-    return Response.json({ ok: false, error: 'Missing receiverId' }, { status: 400 })
-  }
-  if (receiverId === user.id) {
-    return Response.json({ ok: true, subscriptions: 0, sent: 0, failures: [] })
-  }
-
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false }
   })
 
   const { data: subscriptions, error } = await db
     .from('push_subscriptions')
-    .select('id, endpoint, subscription')
-    .eq('user_id', receiverId)
+    .select('id, subscription')
+    .eq('user_id', user.id)
 
   if (error) {
     return Response.json({ ok: false, error: error.message }, { status: 500 })
   }
 
-  const payload = JSON.stringify({ title, body: messageBody, url })
+  const payload = JSON.stringify({
+    title: 'Test notifiche OPV',
+    body: 'Se vedi questa notifica, il dispositivo e collegato correttamente.',
+    url: '/profile'
+  })
+
   let sent = 0
   const failures: string[] = []
 

@@ -17,6 +17,7 @@ export default function PushNotificationPrompt({
   const [registered, setRegistered] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [testBusy, setTestBusy] = useState(false)
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 
   useEffect(() => {
@@ -88,8 +89,50 @@ export default function PushNotificationPrompt({
       setRegistered(true)
       window.localStorage.setItem('opv_push_registered', '1')
       setMessage('Notifiche attivate su questo dispositivo.')
+    } catch {
+      setMessage('Non sono riuscito ad attivare le notifiche. Riprova tra poco.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const sendTestNotification = async () => {
+    if (testBusy) return
+    setMessage('')
+    setTestBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setMessage('Accedi di nuovo e riprova.')
+        return
+      }
+
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        setMessage(data?.error || 'Test notifiche non riuscito.')
+        return
+      }
+      if (!data.subscriptions) {
+        setRegistered(false)
+        window.localStorage.removeItem('opv_push_registered')
+        setMessage('Nessun dispositivo registrato: premi Riattiva da questo iPhone.')
+        return
+      }
+      if (data.sent > 0) {
+        setMessage('Notifica test inviata. Se non la vedi, controlla i permessi iOS di OPV.')
+        return
+      }
+      setMessage(`Dispositivo registrato, ma invio non riuscito${data.failures?.length ? ` (${data.failures.join(', ')})` : ''}. Premi Riattiva.`)
+    } catch {
+      setMessage('Test notifiche non riuscito. Riprova tra poco.')
+    } finally {
+      setTestBusy(false)
     }
   }
 
@@ -129,18 +172,30 @@ export default function PushNotificationPrompt({
             ) : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={enablePushNotifications}
-          disabled={busy || isDenied}
-          className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black transition active:scale-95 disabled:opacity-50 ${
-            isActive
-              ? 'border border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
-              : 'bg-cyan-300 text-slate-950'
-          }`}
-        >
-          {busy ? 'Attivo...' : isActive || isGranted ? 'Riattiva' : 'Attiva'}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {mode === 'profile' && isActive ? (
+            <button
+              type="button"
+              onClick={sendTestNotification}
+              disabled={testBusy}
+              className="rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-xs font-black text-white transition active:scale-95 disabled:opacity-50"
+            >
+              {testBusy ? 'Test...' : 'Test'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={enablePushNotifications}
+            disabled={busy || isDenied}
+            className={`rounded-xl px-3 py-2 text-xs font-black transition active:scale-95 disabled:opacity-50 ${
+              isActive
+                ? 'border border-emerald-300/25 bg-emerald-300/12 text-emerald-100'
+                : 'bg-cyan-300 text-slate-950'
+            }`}
+          >
+            {busy ? 'Attivo...' : isActive || isGranted ? 'Riattiva' : 'Attiva'}
+          </button>
+        </div>
       </div>
     </div>
   )
