@@ -13,12 +13,25 @@ create table if not exists public.chat_messages (
   constraint chat_messages_no_self_message check (sender_id <> receiver_id)
 );
 
+create table if not exists public.chat_blocks (
+  blocker_id uuid not null references auth.users(id) on delete cascade,
+  blocked_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint chat_blocks_no_self_block check (blocker_id <> blocked_id)
+);
+
 alter table public.chat_messages enable row level security;
+alter table public.chat_blocks enable row level security;
 
 drop policy if exists "Chat participants can view temporary messages" on public.chat_messages;
 drop policy if exists "Friends can send temporary messages" on public.chat_messages;
+drop policy if exists "Friends and premium can send temporary messages" on public.chat_messages;
 drop policy if exists "Receivers can mark messages read" on public.chat_messages;
 drop policy if exists "Participants can delete expired messages" on public.chat_messages;
+drop policy if exists "Users can view own chat blocks" on public.chat_blocks;
+drop policy if exists "Users can block others" on public.chat_blocks;
+drop policy if exists "Users can unblock others" on public.chat_blocks;
 
 create policy "Chat participants can view temporary messages"
 on public.chat_messages for select
@@ -32,6 +45,12 @@ on public.chat_messages for insert
 with check (
   sender_id = auth.uid()
   and receiver_id <> auth.uid()
+  and not exists (
+    select 1
+    from public.chat_blocks cb
+    where (cb.blocker_id = chat_messages.receiver_id and cb.blocked_id = auth.uid())
+       or (cb.blocker_id = auth.uid() and cb.blocked_id = chat_messages.receiver_id)
+  )
   and exists (
     select 1
     from public.friend_requests fr
@@ -56,6 +75,18 @@ using (
   and (sender_id = auth.uid() or receiver_id = auth.uid())
 );
 
+create policy "Users can view own chat blocks"
+on public.chat_blocks for select
+using (blocker_id = auth.uid() or blocked_id = auth.uid());
+
+create policy "Users can block others"
+on public.chat_blocks for insert
+with check (blocker_id = auth.uid());
+
+create policy "Users can unblock others"
+on public.chat_blocks for delete
+using (blocker_id = auth.uid());
+
 create index if not exists chat_messages_receiver_unread_idx
 on public.chat_messages (receiver_id, read_at, created_at desc);
 
@@ -67,3 +98,6 @@ on public.chat_messages (receiver_id, created_at desc);
 
 create index if not exists chat_messages_created_idx
 on public.chat_messages (created_at);
+
+create index if not exists chat_blocks_blocked_idx
+on public.chat_blocks (blocked_id, blocker_id);

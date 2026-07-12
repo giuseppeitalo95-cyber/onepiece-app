@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock3, Inbox, MessageCircle, Search, Send, ShieldCheck, UserPlus } from 'lucide-react'
+import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Search, Send, ShieldCheck, UserPlus } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
@@ -32,6 +32,11 @@ type FriendRequest = {
   status: string
 }
 
+type ChatBlock = {
+  blocker_id: string
+  blocked_id: string
+}
+
 const cutoffIso = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 const badgeLabel = (value: number) => value > 9 ? '9+' : String(value)
 
@@ -53,6 +58,8 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [chatReady, setChatReady] = useState(true)
+  const [blocksReady, setBlocksReady] = useState(true)
+  const [blocks, setBlocks] = useState<ChatBlock[]>([])
   const [status, setStatus] = useState('')
 
   const getAvatarPublicUrl = (avatarPath: string | null) => {
@@ -124,6 +131,23 @@ export default function ChatPage() {
     setMessages((data || []) as ChatMessage[])
   }
 
+  const loadBlocks = async (uid: string) => {
+    const { data, error } = await supabase
+      .from('chat_blocks')
+      .select('blocker_id, blocked_id')
+      .or(`blocker_id.eq.${uid},blocked_id.eq.${uid}`)
+
+    if (error) {
+      setBlocksReady(false)
+      setBlocks([])
+      return []
+    }
+
+    setBlocksReady(true)
+    setBlocks((data || []) as ChatBlock[])
+    return (data || []) as ChatBlock[]
+  }
+
   const markConversationRead = async (friendId: string, uid = userId) => {
     if (!uid || !friendId || !chatReady) return
 
@@ -140,6 +164,7 @@ export default function ChatPage() {
         ? { ...message, read_at: new Date().toISOString() }
         : message
     ))
+    window.dispatchEvent(new CustomEvent('opv:chat-unread-changed'))
   }
 
   useEffect(() => {
@@ -155,6 +180,7 @@ export default function ChatPage() {
       void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
       const loadedFriends = await loadFriends(uid)
+      await loadBlocks(uid)
       await loadMessages(uid)
 
       const initialFriendId = typeof window === 'undefined'
@@ -183,7 +209,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (selectedFriendId) void markConversationRead(selectedFriendId)
-  }, [selectedFriendId])
+  }, [selectedFriendId, messages.length, chatReady])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -191,6 +217,8 @@ export default function ChatPage() {
 
   const friendMap = useMemo(() => new Map(friends.map(friend => [friend.id, friend])), [friends])
   const selectedFriend = selectedFriendId ? friendMap.get(selectedFriendId) || null : null
+  const blockedByMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === userId && block.blocked_id === selectedFriendId))
+  const blockedMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === selectedFriendId && block.blocked_id === userId))
   const filteredFriends = friends.filter(friend =>
     (friend.username || 'Giocatore').toLowerCase().includes(query.trim().toLowerCase())
   )
@@ -218,6 +246,12 @@ export default function ChatPage() {
   const sendMessage = async () => {
     const cleanText = text.trim()
     if (!userId || !selectedFriendId || !cleanText || sending) return
+    if (blockedByMe || blockedMe) {
+      setStatus(blockedByMe
+        ? 'Hai bloccato questo utente. Sbloccalo per scrivere.'
+        : 'Questo utente non puo ricevere i tuoi messaggi.')
+      return
+    }
 
     setSending(true)
     setStatus('')
@@ -243,13 +277,51 @@ export default function ChatPage() {
     setSending(false)
   }
 
+  const toggleBlock = async () => {
+    if (!userId || !selectedFriendId || !blocksReady) return
+
+    setStatus('')
+    if (blockedByMe) {
+      const { error } = await supabase
+        .from('chat_blocks')
+        .delete()
+        .eq('blocker_id', userId)
+        .eq('blocked_id', selectedFriendId)
+
+      if (error) {
+        setStatus('Non sono riuscito a sbloccare questo utente.')
+        return
+      }
+      await loadBlocks(userId)
+      setStatus('Utente sbloccato.')
+      return
+    }
+
+    const confirmed = window.confirm('Vuoi bloccare questo utente? Non potra piu scriverti finche resta bloccato.')
+    if (!confirmed) return
+
+    const { error } = await supabase
+      .from('chat_blocks')
+      .insert({ blocker_id: userId, blocked_id: selectedFriendId })
+
+    if (error) {
+      setStatus(error.code === '42P01'
+        ? 'Per usare il blocco devi rieseguire chat.sql su Supabase.'
+        : 'Non sono riuscito a bloccare questo utente.')
+      return
+    }
+
+    await loadBlocks(userId)
+    setStatus('Utente bloccato. Non potra piu scriverti.')
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds">
       <Topbar />
       <Sidebar activePage="chat" />
 
       <main className="mx-auto grid max-w-7xl gap-3 px-3 pb-32 pt-4 sm:px-6 lg:grid-cols-[340px_1fr] lg:gap-4 lg:px-8">
-        <aside className="rounded-[1.65rem] border border-white/10 bg-slate-900/76 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-4">
+        <aside className={`${selectedFriendId ? 'hidden lg:block' : 'block'} rounded-[1.65rem] border border-white/10 bg-slate-900/76 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-4 lg:h-fit`}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Scambi</p>
@@ -271,6 +343,11 @@ export default function ChatPage() {
           {!chatReady ? (
             <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
               Chat pronta nel codice. Esegui `chat.sql` su Supabase per attivare la tabella.
+            </div>
+          ) : null}
+          {!blocksReady ? (
+            <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
+              Il blocco utenti richiede l'ultima versione di `chat.sql` su Supabase.
             </div>
           ) : null}
 
@@ -329,7 +406,7 @@ export default function ChatPage() {
               <UserPlus size={13} />
               Nuova chat
             </div>
-            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-[34dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-56">
               {loading ? (
                 <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Carico amici...</p>
               ) : filteredFriends.length === 0 ? (
@@ -353,26 +430,49 @@ export default function ChatPage() {
           </div>
         </aside>
 
-        <section className="flex min-h-[66dvh] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 shadow-2xl shadow-black/20 backdrop-blur-xl">
+        <section className={`${selectedFriendId ? 'flex' : 'hidden lg:flex'} min-h-[calc(100dvh-9.5rem)] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 shadow-2xl shadow-black/20 backdrop-blur-xl lg:min-h-[66dvh]`}>
           {selectedFriend ? (
             <>
               <header className="flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/55 p-3 sm:p-4">
+                <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFriendId('')}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-200 lg:hidden"
+                    aria-label="Torna alle chat"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <button
+                    onClick={() => router.push(`/friends?profile=${selectedFriend.id}`)}
+                    className="flex min-w-0 items-center gap-3 text-left"
+                  >
+                    <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-slate-800 text-sm font-black text-cyan-100 sm:h-11 sm:w-11">
+                      {selectedFriend.avatar_url ? <img src={selectedFriend.avatar_url} alt={selectedFriend.username || 'Avatar'} className="h-full w-full object-cover" /> : (selectedFriend.username || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <span className="min-w-0">
+                      <span className={`block truncate text-sm font-black text-white sm:text-base ${premiumClassName(getPremiumTier(selectedFriend, { id: selectedFriend.id }))}`}>
+                        {selectedFriend.username || 'Giocatore'}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1 text-[11px] text-cyan-100/76 sm:text-xs">
+                        <ShieldCheck size={13} />
+                        Solo amici - 24H
+                      </span>
+                    </span>
+                  </button>
+                </div>
                 <button
-                  onClick={() => router.push(`/friends?profile=${selectedFriend.id}`)}
-                  className="flex min-w-0 items-center gap-3 text-left"
+                  type="button"
+                  onClick={toggleBlock}
+                  disabled={!blocksReady}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-2xl border px-2 py-2 text-[9px] font-black uppercase tracking-[0.08em] transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-3 sm:text-[10px] sm:tracking-[0.12em] ${
+                    blockedByMe
+                      ? 'border-emerald-300/30 bg-emerald-300/12 text-emerald-100'
+                      : 'border-rose-300/25 bg-rose-400/10 text-rose-100 hover:bg-rose-400/18'
+                  }`}
                 >
-                  <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-slate-800 text-sm font-black text-cyan-100">
-                    {selectedFriend.avatar_url ? <img src={selectedFriend.avatar_url} alt={selectedFriend.username || 'Avatar'} className="h-full w-full object-cover" /> : (selectedFriend.username || 'U').charAt(0).toUpperCase()}
-                  </div>
-                  <span className="min-w-0">
-                    <span className={`block truncate text-base font-black text-white ${premiumClassName(getPremiumTier(selectedFriend, { id: selectedFriend.id }))}`}>
-                      {selectedFriend.username || 'Giocatore'}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1 text-xs text-cyan-100/76">
-                      <ShieldCheck size={13} />
-                      Solo amici - 24H
-                    </span>
-                  </span>
+                  <Ban size={14} />
+                  {blockedByMe ? 'Sblocca' : 'Blocca'}
                 </button>
               </header>
 
@@ -407,6 +507,11 @@ export default function ChatPage() {
 
               <div className="border-t border-white/10 bg-slate-950/52 p-3">
                 {status ? <p className="mb-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{status}</p> : null}
+                {(blockedByMe || blockedMe) ? (
+                  <p className="mb-2 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
+                    {blockedByMe ? 'Hai bloccato questo utente.' : 'Non puoi scrivere in questa chat.'}
+                  </p>
+                ) : null}
                 <div className="flex gap-2">
                   <textarea
                     value={text}
@@ -420,11 +525,12 @@ export default function ChatPage() {
                     rows={1}
                     maxLength={800}
                     placeholder="Scrivi un messaggio..."
+                    disabled={blockedByMe || blockedMe}
                     className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
                   />
                   <button
                     onClick={sendMessage}
-                    disabled={sending || !text.trim()}
+                    disabled={sending || !text.trim() || blockedByMe || blockedMe}
                     className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-cyan-300 text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Invia messaggio"
                   >

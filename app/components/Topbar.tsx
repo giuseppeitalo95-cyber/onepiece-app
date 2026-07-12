@@ -101,9 +101,17 @@ export default function Topbar() {
       if (session?.user) await loadChatUnread(session.user.id)
     }, 30000)
 
+    const onChatChanged = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) await loadChatUnread(session.user.id)
+    }
+
+    window.addEventListener('opv:chat-unread-changed', onChatChanged)
+
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.removeEventListener('opv:chat-unread-changed', onChatChanged)
     }
   }, [pathname, router])
 
