@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Archive, BarChart3, Crown, Plus, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
+import { Archive, BarChart3, Crown, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, TrendingUp, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
@@ -150,6 +150,7 @@ export default function Dashboard() {
   const [salePrice, setSalePrice] = useState('')
   const [saleQuantity, setSaleQuantity] = useState(1)
   const [sellingBusy, setSellingBusy] = useState(false)
+  const [restoringSoldId, setRestoringSoldId] = useState<string | null>(null)
   const [saleMessage, setSaleMessage] = useState('')
 
  useEffect(() => {
@@ -514,6 +515,59 @@ export default function Dashboard() {
     setLivePrice(null)
     await loadCards(userId)
     if (soldOpen) await loadSoldCards(userId)
+  }
+
+  const restoreSoldCard = async (card: SoldCard) => {
+    if (!userId || restoringSoldId) return
+
+    setRestoringSoldId(card.id)
+
+    const { data: existing } = await supabase
+      .from('user_cards')
+      .select('id, quantity, market_price, inventory_price')
+      .eq('user_id', userId)
+      .eq('card_id', card.card_id)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase
+        .from('user_cards')
+        .update({
+          quantity: Number(existing.quantity || 0) + Number(card.quantity || 1),
+          market_price: existing.market_price ?? card.market_price ?? null,
+          inventory_price: existing.inventory_price ?? card.inventory_price ?? null
+        })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('user_cards')
+        .insert({
+          user_id: userId,
+          card_id: card.card_id,
+          quantity: card.quantity,
+          name: card.name,
+          image_url: card.image_url,
+          rarity: card.rarity,
+          card_color: card.card_color ?? null,
+          card_type: card.card_type ?? null,
+          card_cost: card.card_cost ?? null,
+          card_power: card.card_power ?? null,
+          market_price: card.market_price ?? null,
+          inventory_price: card.inventory_price ?? null
+        })
+    }
+
+    await supabase
+      .from('sold_cards')
+      .delete()
+      .eq('id', card.id)
+      .eq('user_id', userId)
+
+    await Promise.all([
+      loadCards(userId),
+      loadSoldCards(userId)
+    ])
+    setRestoringSoldId(null)
   }
 
   const openCatalogCard = (card: CatalogCard) => {
@@ -1380,7 +1434,7 @@ export default function Dashboard() {
               const delta = currentPrice == null ? null : card.sale_price - currentPrice
 
               return (
-                <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2 sm:grid-cols-[60px_minmax(0,1fr)_minmax(150px,auto)]">
+                <div key={card.id} className="grid grid-cols-[54px_minmax(0,1fr)_38px] gap-3 rounded-2xl border border-slate-700 bg-slate-900/82 p-2 sm:grid-cols-[60px_minmax(0,1fr)_minmax(150px,auto)_38px]">
                   <CardImage
                     src={card.image_url}
                     cardId={card.card_id}
@@ -1394,7 +1448,7 @@ export default function Dashboard() {
                       Venduta il {new Date(card.sold_at).toLocaleDateString('it-IT')} - x{card.quantity}
                     </p>
                   </div>
-                  <div className="col-span-2 grid grid-cols-3 gap-1.5 text-right sm:col-span-1">
+                  <div className="col-span-3 grid grid-cols-3 gap-1.5 text-right sm:col-span-1">
                     <div className="rounded-xl border border-white/10 bg-white/[0.045] px-2 py-1.5">
                       <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">Venduta</p>
                       <p className="mt-0.5 text-xs font-black text-emerald-200">{formatPrice(card.sale_price)}</p>
@@ -1418,6 +1472,16 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => restoreSoldCard(card)}
+                    disabled={restoringSoldId === card.id}
+                    className="grid h-9 w-9 place-items-center self-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-100 transition hover:bg-cyan-300/18 active:scale-95 disabled:opacity-50"
+                    title="Rimetti in collezione"
+                    aria-label="Rimetti in collezione"
+                  >
+                    <RotateCcw size={15} className={restoringSoldId === card.id ? 'animate-spin' : ''} />
+                  </button>
                 </div>
               )
             })}
