@@ -92,8 +92,13 @@ const displayCardId = (value?: string | null) =>
 const deckStorageKey = (userId: string) => `opv-decks:${userId}`
 const colors = ['red', 'green', 'blue', 'purple', 'black', 'yellow']
 
-const isDonCard = (card: { card_id?: string | null; name?: string | null; card_type?: string | null }) =>
-  compact(card.card_type).includes('don') || compact(card.name).includes('don') || compact(card.card_id).startsWith('don')
+const isDonCard = (card: { card_id?: string | null; name?: string | null; card_type?: string | null }) => {
+  const id = compact(card.card_id)
+  const name = compact(card.name)
+  const type = compact(card.card_type)
+
+  return id.startsWith('don') || type === 'don' || type === 'doncard' || name === 'don' || name === 'doncard'
+}
 
 const parseColors = (value?: string | null) => {
   const normalized = (value || '').toLowerCase()
