@@ -51,6 +51,63 @@ type LivePriceResult = {
   source?: string | null
 }
 
+const SET_RELEASE_ORDER: Record<string, number> = {
+  OP16: 16000,
+  ST30: 15920,
+  OP15: 15000,
+  EB03: 14500,
+  OP14: 14000,
+  OP13: 13000,
+  OP12: 12000,
+  OP11: 11000,
+  EB02: 10500,
+  OP10: 10000,
+  PRB02: 9800,
+  OP09: 9000,
+  PRB01: 8500,
+  OP08: 8000,
+  OP07: 7000,
+  EB01: 6500,
+  OP06: 6000,
+  OP05: 5000,
+  OP04: 4000,
+  OP03: 3000,
+  OP02: 2000,
+  OP01: 1000,
+}
+
+const setDisplayName = (setCode: string) => {
+  if (setCode === 'OTHER') return 'Altre carte'
+  return setCode.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
+}
+
+const parseCollectionSet = (cardId: string) => {
+  const normalized = (cardId || '').toUpperCase().replace(/_/g, '-')
+  const match = normalized.match(/^(OP|EB|ST|PRB|SP|EX|CP)(\d{1,2})-?(\d{3})/)
+  if (!match) {
+    const promoMatch = normalized.match(/^(P)-?(\d{3})/)
+    return {
+      setCode: promoMatch ? 'P' : 'OTHER',
+      releaseOrder: promoMatch ? 100 : 0,
+      number: promoMatch ? Number(promoMatch[2]) : 0,
+    }
+  }
+
+  const [, prefix, setRaw, numberRaw] = match
+  const setNumber = Number(setRaw)
+  const setCode = `${prefix}${String(setNumber).padStart(2, '0')}`
+  return {
+    setCode,
+    releaseOrder: SET_RELEASE_ORDER[setCode] ?? (
+      prefix === 'OP' ? setNumber * 1000 :
+      prefix === 'EB' ? setNumber * 1000 + 500 :
+      prefix === 'ST' ? 200 + setNumber :
+      50 + setNumber
+    ),
+    number: Number(numberRaw || 0),
+  }
+}
+
 export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
@@ -466,6 +523,25 @@ export default function Dashboard() {
 
     return matchesSearch && matchesColor && matchesRarity && matchesCost
   })
+  const sortedCollectionCards = [...filteredCards].sort((a, b) => {
+    const aSet = parseCollectionSet(a.card_id)
+    const bSet = parseCollectionSet(b.card_id)
+
+    if (aSet.releaseOrder !== bSet.releaseOrder) return bSet.releaseOrder - aSet.releaseOrder
+    if (aSet.setCode !== bSet.setCode) return bSet.setCode.localeCompare(aSet.setCode)
+    if (aSet.number !== bSet.number) return aSet.number - bSet.number
+    return a.card_id.localeCompare(b.card_id)
+  })
+  const collectionGroups = sortedCollectionCards.reduce<Array<{ setCode: string; cards: UserCard[] }>>((groups, card) => {
+    const setCode = parseCollectionSet(card.card_id).setCode
+    const last = groups[groups.length - 1]
+    if (last?.setCode === setCode) {
+      last.cards.push(card)
+    } else {
+      groups.push({ setCode, cards: [card] })
+    }
+    return groups
+  }, [])
 
   const selectedStoredPrice = selectedCard
     ? selectedCard.market_price ?? selectedCard.inventory_price ?? null
@@ -700,40 +776,17 @@ export default function Dashboard() {
             <p className="text-gray-400 text-sm">Caricamento collezione...</p>
           )}
 
-          <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8 gap-1.5 sm:gap-2 mt-4">
+          <div className="mt-4 space-y-5">
 
-            {[...filteredCards]
-  .sort((a, b) => {
-    const parse = (id: string) => {
-      const matchOp = id.match(/OP(\d+)-(\d+)/i)
-      const matchEb = id.match(/EB(\d+)-(\d+)/i)
-      
-      if (matchOp) {
-        return { type: 'op', set: parseInt(matchOp[1], 10), num: parseInt(matchOp[2], 10) }
-      }
-      if (matchEb) {
-        return { type: 'eb', set: parseInt(matchEb[1], 10), num: parseInt(matchEb[2], 10) }
-      }
-      return { type: 'other', set: 0, num: 0 }
-    }
-
-    const A = parse(a.card_id)
-    const B = parse(b.card_id)
-
-    // EB prima di OP
-    if (A.type !== B.type) {
-      if (A.type === 'eb') return -1
-      if (B.type === 'eb') return 1
-      return 0
-    }
-
-    // all'interno dello stesso tipo: set decrescente (15 → 14 → 13)
-    if (A.set !== B.set) return B.set - A.set
-
-    // dentro set: 001 → 002 → 025
-    return A.num - B.num
-  })
-  .map((item) => (
+            {collectionGroups.map(group => (
+              <section key={group.setCode}>
+                <div className="mb-2 flex items-center gap-3">
+                  <p className="shrink-0 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">{setDisplayName(group.setCode)}</p>
+                  <div className="h-px flex-1 bg-gradient-to-r from-cyan-300/30 to-transparent" />
+                  <span className="text-[10px] font-bold text-slate-500">{group.cards.reduce((sum, card) => sum + card.quantity, 0)} carte</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 2xl:grid-cols-8">
+                  {group.cards.map((item) => (
               <div
                 key={item.card_id}
                 className="relative bg-slate-900 rounded-lg p-1.5 sm:p-2 border border-slate-700 hover:border-amber-400/60 transition onepiece-card-hover onepiece-border-glow"
@@ -799,6 +852,9 @@ export default function Dashboard() {
                 <p className="text-[10px] sm:text-xs text-amber-300 mt-1">x{item.quantity}</p>
 
               </div>
+                  ))}
+                </div>
+              </section>
             ))}
 
           </div>
