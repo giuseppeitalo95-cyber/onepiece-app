@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Missing auth token' }, { status: 401 })
   }
 
-  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const authClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false }
   })

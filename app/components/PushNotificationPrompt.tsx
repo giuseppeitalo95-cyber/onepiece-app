@@ -43,6 +43,18 @@ export default function PushNotificationPrompt({
     return outputArray
   }
 
+  const getFreshAccessToken = async () => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session?.access_token) return ''
+
+    const { data: refreshData, error } = await supabase.auth.refreshSession()
+    if (!error && refreshData.session?.access_token) {
+      return refreshData.session.access_token
+    }
+
+    return sessionData.session.access_token
+  }
+
   const enablePushNotifications = async () => {
     if (busy || !vapidPublicKey) return
     setMessage('')
@@ -64,8 +76,8 @@ export default function PushNotificationPrompt({
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
       })
 
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const accessToken = await getFreshAccessToken()
+      if (!accessToken) {
         setMessage('Accedi di nuovo e riprova.')
         return
       }
@@ -74,7 +86,7 @@ export default function PushNotificationPrompt({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         },
         body: JSON.stringify({ subscription })
       })
@@ -82,7 +94,9 @@ export default function PushNotificationPrompt({
       if (!res.ok || !data?.ok) {
         setRegistered(false)
         window.localStorage.removeItem('opv_push_registered')
-        setMessage(data?.error || 'Non sono riuscito ad attivare le notifiche.')
+        setMessage(data?.error === 'Invalid session'
+          ? 'Sessione scaduta: disconnettiti e accedi di nuovo, poi premi Riattiva.'
+          : data?.error || 'Non sono riuscito ad attivare le notifiche.')
         return
       }
 
@@ -101,8 +115,8 @@ export default function PushNotificationPrompt({
     setMessage('')
     setTestBusy(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const accessToken = await getFreshAccessToken()
+      if (!accessToken) {
         setMessage('Accedi di nuovo e riprova.')
         return
       }
@@ -110,7 +124,7 @@ export default function PushNotificationPrompt({
       const res = await fetch('/api/push/test', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         }
       })
       const data = await res.json().catch(() => null)

@@ -246,6 +246,18 @@ export default function ChatPage() {
     selectedFriendId && (message.sender_id === selectedFriendId || message.receiver_id === selectedFriendId)
   )
 
+  const getFreshAccessToken = async () => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session?.access_token) return ''
+
+    const { data: refreshData, error } = await supabase.auth.refreshSession()
+    if (!error && refreshData.session?.access_token) {
+      return refreshData.session.access_token
+    }
+
+    return sessionData.session.access_token
+  }
+
   const sendMessage = async () => {
     const cleanText = text.trim()
     if (!userId || !selectedFriendId || !cleanText || sending) return
@@ -283,14 +295,14 @@ export default function ChatPage() {
 
   const sendPushNotification = async (receiverId: string, body: string) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) return
+      const accessToken = await getFreshAccessToken()
+      if (!accessToken) return
 
       const res = await fetch('/api/push/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`
+          Authorization: `Bearer ${accessToken}`
         },
         body: JSON.stringify({
           receiverId,
