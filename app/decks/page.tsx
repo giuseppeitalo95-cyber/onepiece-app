@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Crown, Eye, LibraryBig, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
+import { Crown, Eye, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -889,8 +889,7 @@ export default function DeckBuilderPage() {
         <section className="rounded-[1.6rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-200">Deck</p>
-              <h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">{pageTitle}</h1>
+              <h1 className="text-2xl font-black text-white sm:text-3xl">{pageTitle}</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{pageDescription}</p>
             </div>
             <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
@@ -904,9 +903,7 @@ export default function DeckBuilderPage() {
         {mode === 'saved' ? (
           <section className="mt-4 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
-                <LibraryBig size={15} />I miei deck
-              </div>
+              <p className="text-lg font-black text-white">I miei deck</p>
               <button onClick={startNewDeck} className="rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 active:scale-95">
                 Crea deck
               </button>
@@ -1000,7 +997,7 @@ export default function DeckBuilderPage() {
 
             <aside className="space-y-4">
               <div className="rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-4 backdrop-blur-xl">
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200"><LibraryBig size={15} />I miei deck</div>
+                <p className="text-sm font-black text-white">I miei deck</p>
                 <div className="mt-3 space-y-2">
                   {savedDecks.length === 0 ? (
                     <p className="rounded-2xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">Nessun deck salvato.</p>

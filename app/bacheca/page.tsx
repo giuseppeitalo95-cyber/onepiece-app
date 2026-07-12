@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Megaphone, Search, Send, Sparkles, Trash2, X } from 'lucide-react'
+import { Bell, Megaphone, Search, Send, Trash2, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -417,11 +417,7 @@ export default function BachecaPage() {
         <section className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
           <div className="flex flex-col gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">
-                <Sparkles size={13} />
-                Bacheca
-              </div>
-              <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
+              <h1 className="text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
                 Qui troverai tutte le richieste carte dei tuoi amici.
               </p>
