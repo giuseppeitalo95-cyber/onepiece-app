@@ -1507,13 +1507,21 @@ export default function Dashboard() {
       </button>
 
       <div className="grid gap-4 lg:grid-cols-[360px_1fr] xl:grid-cols-[420px_1fr] lg:items-start">
-        <CardImage
-          src={selectedCard.image_url}
-          cardId={selectedCard.card_id}
-          alt={selectedCard.name || 'Carta'}
-          className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3 lg:max-h-[70vh]"
-          imgClassName="h-full w-full object-contain"
-        />
+        <div className="space-y-3">
+          <CardImage
+            src={selectedCard.image_url}
+            cardId={selectedCard.card_id}
+            alt={selectedCard.name || 'Carta'}
+            className="aspect-[3/4] overflow-hidden rounded-3xl border border-slate-700 bg-slate-800 p-3 lg:max-h-[70vh]"
+            imgClassName="h-full w-full object-contain"
+          />
+          <button
+            onClick={() => startSale(selectedCard)}
+            className="w-full rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18"
+          >
+            Venduta
+          </button>
+        </div>
 
         <div className="space-y-4">
           <div>
@@ -1584,13 +1592,6 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-
-          <button
-            onClick={() => startSale(selectedCard)}
-            className="w-full rounded-2xl border border-emerald-300/35 bg-emerald-300/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-300/18"
-          >
-            Venduta
-          </button>
 
         </div>
       </div>
