@@ -1,11 +1,59 @@
 import { createClient } from '@supabase/supabase-js'
+import webPush from 'web-push'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:giuseppeitalo95@gmail.com'
+
+type PushSubscriptionRow = {
+  id: string
+  subscription: webPush.PushSubscription
+}
 
 const db = () => SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null
+
+const configureWebPush = () => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return false
+  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+  return true
+}
+
+const sendMessagePush = async (
+  client: any,
+  receiverId: string,
+  senderName: string,
+  message: string,
+  senderId: string,
+  postId: string
+) => {
+  if (!configureWebPush()) return
+
+  const { data: subscriptions } = await client
+    .from('push_subscriptions')
+    .select('id, subscription')
+    .eq('user_id', receiverId)
+
+  const payload = JSON.stringify({
+    title: `Nuovo messaggio da ${senderName}`,
+    body: message.slice(0, 180),
+    url: `/chat?user=${encodeURIComponent(senderId)}&post=${encodeURIComponent(postId)}`
+  })
+
+  await Promise.all(((subscriptions || []) as PushSubscriptionRow[]).map(async item => {
+    try {
+      await webPush.sendNotification(item.subscription, payload)
+    } catch (sendError: any) {
+      const statusCode = Number(sendError?.statusCode || 0)
+      if (statusCode === 404 || statusCode === 410) {
+        await client.from('push_subscriptions').delete().eq('id', item.id)
+      }
+    }
+  }))
+}
 
 export async function POST(request: Request) {
   const client = db()
@@ -90,5 +138,14 @@ export async function POST(request: Request) {
   }
 
   if (insertError) return Response.json({ ok: false, error: insertError.message }, { status: 500 })
+  const { data: senderProfile } = await client
+    .from('profiles')
+    .select('username')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const senderName = String(senderProfile?.username || user.email?.split('@')[0] || 'OPV')
+  await sendMessagePush(client, receiverId, senderName, message, user.id, postId)
+
   return Response.json({ ok: true, message: inserted, post })
 }

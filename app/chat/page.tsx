@@ -61,7 +61,6 @@ export default function ChatPage() {
   const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [userId, setUserId] = useState('')
-  const [currentUsername, setCurrentUsername] = useState('Giocatore')
   const [friends, setFriends] = useState<ProfileItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedFriendId, setSelectedFriendId] = useState('')
@@ -222,14 +221,6 @@ export default function ChatPage() {
 
       const uid = session.user.id
       setUserId(uid)
-      const { data: ownProfile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', uid)
-        .single()
-      setCurrentUsername(
-        String(ownProfile?.username || session.user.email?.split('@')[0] || 'Giocatore').trim()
-      )
       void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
       const params = typeof window === 'undefined'
@@ -400,35 +391,8 @@ export default function ChatPage() {
     }
 
     setText('')
-    void sendPushNotification(selectedFriendId, cleanText)
     await loadMessages(userId)
     setSending(false)
-  }
-
-  const sendPushNotification = async (receiverId: string, body: string) => {
-    try {
-      const accessToken = await getFreshAccessToken()
-      if (!accessToken) return
-
-      const res = await fetch('/api/push/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          receiverId,
-          title: `Nuovo messaggio da ${currentUsername}`,
-          body,
-          url: `/chat?user=${userId}${activePostId ? `&post=${activePostId}` : ''}`
-        })
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        console.warn('Push send failed:', data?.error || res.status)
-      }
-    } catch {
-    }
   }
 
   const toggleBlock = async () => {

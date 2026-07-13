@@ -1064,11 +1064,19 @@ export default function FriendsPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr] lg:grid-cols-[360px_1fr] lg:gap-6 lg:p-5 xl:grid-cols-[420px_1fr]">
-              <CardImage src={selectedFriendCard.image_url} cardId={selectedFriendCard.card_id} alt={selectedFriendCard.name || selectedFriendCard.card_id} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950 lg:max-h-[70vh]" />
-              <div className="space-y-3">
+            <div className="grid max-h-[82dvh] grid-cols-1 gap-4 overflow-y-auto p-3 lg:grid-cols-[minmax(260px,360px)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:p-5 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+              <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-3xl bg-slate-950 sm:max-w-[320px] lg:max-w-none">
+                <CardImage
+                  src={selectedFriendCard.image_url}
+                  cardId={selectedFriendCard.card_id}
+                  alt={selectedFriendCard.name || selectedFriendCard.card_id}
+                  className="aspect-[3/4] w-full"
+                  imgClassName="h-full w-full object-contain"
+                />
+              </div>
+              <div className="min-w-0 space-y-3">
                 <div>
-                  <p className="text-2xl font-black text-white">{selectedFriendCard.name || 'Carta'}</p>
+                  <p className="break-words text-2xl font-black leading-tight text-white">{selectedFriendCard.name || 'Carta'}</p>
                   <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedFriendCard.card_id)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
