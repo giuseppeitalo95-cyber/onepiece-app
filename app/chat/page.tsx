@@ -6,7 +6,8 @@ import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Search, Send, ShieldCheck
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
-import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
+import { getPremiumTier, hasPremiumAccess, premiumClassName, premiumLabel, type PremiumProfile } from '@/lib/premium'
+import { ADMIN_ACCOUNT } from '@/lib/admin'
 import { isProfileOnline } from '@/lib/onlineStatus'
 
 type ProfileItem = {
@@ -53,6 +54,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [userId, setUserId] = useState('')
   const [currentUsername, setCurrentUsername] = useState('Giocatore')
+  const [currentProfile, setCurrentProfile] = useState<PremiumProfile | null>(null)
   const [friends, setFriends] = useState<ProfileItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedFriendId, setSelectedFriendId] = useState('')
@@ -72,7 +74,7 @@ export default function ChatPage() {
     return data?.publicUrl ?? ''
   }
 
-  const loadFriends = async (uid: string) => {
+  const loadFriends = async (uid: string, ownProfile?: PremiumProfile | null) => {
     const { data: requests } = await supabase
       .from('friend_requests')
       .select('requester_id, receiver_id, status')
@@ -83,7 +85,24 @@ export default function ChatPage() {
       .map(request => request.requester_id === uid ? request.receiver_id : request.requester_id)
       .filter(Boolean)
 
-    if (friendIds.length === 0) {
+    const canStartWithEveryone = hasPremiumAccess(ownProfile, { id: uid, email: ownProfile?.email })
+    const { data: premiumProfiles } = canStartWithEveryone
+      ? await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
+        .neq('id', uid)
+        .limit(120)
+      : await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
+        .neq('id', uid)
+        .or(`is_premium.eq.true,is_vip.eq.true,premium_until.gt.${new Date().toISOString()},id.eq.${ADMIN_ACCOUNT.id}`)
+        .limit(80)
+
+    const premiumIds = ((premiumProfiles || []) as ProfileItem[]).map(profile => profile.id)
+    const contactIds = [...new Set([...friendIds, ...premiumIds])].filter(Boolean)
+
+    if (contactIds.length === 0) {
       setFriends([])
       return []
     }
@@ -91,13 +110,13 @@ export default function ChatPage() {
     const { data: profileData, error } = await supabase
       .from('profiles')
         .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
-      .in('id', friendIds)
+      .in('id', contactIds)
 
     if (error) {
       const { data: fallback } = await supabase
         .from('profiles')
         .select('id, username, avatar_url')
-        .in('id', friendIds)
+        .in('id', contactIds)
 
       const fallbackFriends = ((fallback || []) as ProfileItem[]).map(profile => ({
         ...profile,
@@ -182,15 +201,17 @@ export default function ChatPage() {
       setUserId(uid)
       const { data: ownProfile } = await supabase
         .from('profiles')
-        .select('username')
+        .select('id, username, is_premium, premium_until, is_vip')
         .eq('id', uid)
         .single()
+      const ownPremiumProfile = { ...(ownProfile || {}), email: session.user.email } as PremiumProfile
+      setCurrentProfile(ownPremiumProfile)
       setCurrentUsername(
         String(ownProfile?.username || session.user.email?.split('@')[0] || 'Giocatore').trim()
       )
       void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
-      const loadedFriends = await loadFriends(uid)
+      const loadedFriends = await loadFriends(uid, ownPremiumProfile)
       await loadBlocks(uid)
       await loadMessages(uid)
 
@@ -213,11 +234,11 @@ export default function ChatPage() {
 
     const timer = window.setInterval(() => {
       void loadMessages(userId)
-      void loadFriends(userId)
+      void loadFriends(userId, currentProfile)
     }, 8000)
 
     return () => window.clearInterval(timer)
-  }, [userId, chatReady])
+  }, [userId, chatReady, currentProfile])
 
   useEffect(() => {
     if (selectedFriendId) void markConversationRead(selectedFriendId)
@@ -407,7 +428,7 @@ export default function ChatPage() {
             <input
               value={query}
               onChange={event => setQuery(event.target.value)}
-              placeholder="Nuova chat con un amico"
+              placeholder="Cerca nickname"
               className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 py-3 pl-10 pr-3 text-sm text-white outline-none focus:border-cyan-300"
             />
           </label>
@@ -467,7 +488,7 @@ export default function ChatPage() {
               {loading ? (
                 <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Carico amici...</p>
               ) : filteredFriends.length === 0 ? (
-                <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Nessun amico trovato.</p>
+                <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Nessun contatto trovato.</p>
               ) : filteredFriends.map(friend => {
                 const tier = getPremiumTier(friend, { id: friend.id })
                 return (
@@ -526,7 +547,7 @@ export default function ChatPage() {
                         ) : (
                           <>
                             <ShieldCheck size={13} />
-                            Solo amici - 24H
+                            Chat temporanea - 24H
                           </>
                         )}
                       </span>
@@ -617,7 +638,7 @@ export default function ChatPage() {
               <div>
                 <MessageCircle className="mx-auto text-cyan-100" size={36} />
                 <h2 className="mt-3 text-2xl font-black text-white">Seleziona una chat</h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">Puoi scrivere solo agli amici. Le conversazioni restano leggere e temporanee.</p>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">Puoi scrivere agli amici e ai contatti Premium. Le conversazioni restano leggere e temporanee.</p>
               </div>
             </div>
           )}

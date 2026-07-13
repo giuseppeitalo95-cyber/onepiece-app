@@ -8,7 +8,15 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { isAdminAccount } from '@/lib/admin'
-import { FREE_BOARD_POST_DAYS, PREMIUM_BOARD_POST_DAYS, getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
+import {
+  FREE_BOARD_DAILY_POST_LIMIT,
+  FREE_BOARD_POST_DAYS,
+  FREE_BOARD_WEEKLY_POST_LIMIT,
+  PREMIUM_BOARD_POST_DAYS,
+  getPremiumTier,
+  premiumClassName,
+  premiumLabel
+} from '@/lib/premium'
 
 type ProfileItem = {
   id: string
@@ -57,6 +65,7 @@ type LivePriceResult = {
 const BOARD_MAX_POSTS = 30
 const BOARD_FETCH_POSTS = 80
 const BOARD_RETENTION_DAYS = PREMIUM_BOARD_POST_DAYS
+const FREE_DUPLICATE_BLOCK_DAYS = 7
 
 const displayCardId = (value?: string | null) =>
   (value || '')
@@ -305,6 +314,63 @@ export default function BachecaPage() {
     setStatus('')
 
     const fallbackTitle = `Cerco ${selectedPostCard.name}`
+    const ownTier = getPremiumTier(profiles[userId], { id: userId })
+
+    if (ownTier === 'free') {
+      const dayCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const weekCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      const { count: todayCount, error: todayError } = await supabase
+        .from('board_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', dayCutoff)
+
+      const { count: weekCount, error: weekError } = await supabase
+        .from('board_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', weekCutoff)
+
+      if (todayError || weekError) {
+        setPosting(false)
+        setStatus('Non riesco a controllare il limite annunci. Riprova tra poco.')
+        return
+      }
+
+      if ((todayCount || 0) >= FREE_BOARD_DAILY_POST_LIMIT) {
+        setPosting(false)
+        setStatus(`Con il piano Free puoi pubblicare ${FREE_BOARD_DAILY_POST_LIMIT} annuncio al giorno.`)
+        return
+      }
+
+      if ((weekCount || 0) >= FREE_BOARD_WEEKLY_POST_LIMIT) {
+        setPosting(false)
+        setStatus(`Con il piano Free puoi pubblicare massimo ${FREE_BOARD_WEEKLY_POST_LIMIT} annunci a settimana.`)
+        return
+      }
+
+      const duplicateCutoff = new Date(Date.now() - FREE_DUPLICATE_BLOCK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      const { data: recentSimilar, error: duplicateError } = await supabase
+        .from('board_posts')
+        .select('id')
+        .eq('user_id', userId)
+        .or(`card_id.eq.${selectedPostCard.id},card_code.eq.${displayCardId(selectedPostCard.id)}`)
+        .gte('created_at', duplicateCutoff)
+        .limit(1)
+
+      if (duplicateError) {
+        setPosting(false)
+        setStatus('Non riesco a controllare i duplicati. Riprova tra poco.')
+        return
+      }
+
+      if ((recentSimilar || []).length > 0) {
+        setPosting(false)
+        setStatus(`Hai gia pubblicato un annuncio per questa carta negli ultimi ${FREE_DUPLICATE_BLOCK_DAYS} giorni.`)
+        return
+      }
+    }
 
     const { error } = await supabase
       .from('board_posts')
@@ -422,7 +488,7 @@ export default function BachecaPage() {
                 Qui troverai tutte le richieste carte dei tuoi amici.
               </p>
               <p className="mt-1 text-xs font-semibold text-slate-500">
-                Gli annunci Premium, VIP e Admin sono visibili a tutti per {PREMIUM_BOARD_POST_DAYS} giorni. Gli annunci free restano nella cerchia amici per {FREE_BOARD_POST_DAYS} giorni.
+                Free: {FREE_BOARD_DAILY_POST_LIMIT} annuncio al giorno, {FREE_BOARD_WEEKLY_POST_LIMIT} a settimana, visibile agli amici per {FREE_BOARD_POST_DAYS} giorni. Premium/VIP/Admin: annunci globali per {PREMIUM_BOARD_POST_DAYS} giorni.
               </p>
             </div>
           </div>

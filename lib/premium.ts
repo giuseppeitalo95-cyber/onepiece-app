@@ -22,6 +22,8 @@ export const FREE_DECK_LIMIT = 4
 export const FREE_DAILY_SCAN_LIMIT = 12
 export const FREE_BOARD_POST_DAYS = 7
 export const PREMIUM_BOARD_POST_DAYS = 21
+export const FREE_BOARD_DAILY_POST_LIMIT = 1
+export const FREE_BOARD_WEEKLY_POST_LIMIT = 3
 
 const nowMs = () => Date.now()
 

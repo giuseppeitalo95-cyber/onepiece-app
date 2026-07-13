@@ -6,12 +6,24 @@ import { Check, Crown, Infinity, Settings, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
-import { FREE_DAILY_SCAN_LIMIT, FREE_DECK_LIMIT, FREE_BOARD_POST_DAYS, PREMIUM_BOARD_POST_DAYS, getPremiumTier, premiumLabel, type PremiumProfile } from '@/lib/premium'
+import {
+  FREE_BOARD_DAILY_POST_LIMIT,
+  FREE_BOARD_POST_DAYS,
+  FREE_BOARD_WEEKLY_POST_LIMIT,
+  FREE_DAILY_SCAN_LIMIT,
+  FREE_DECK_LIMIT,
+  PREMIUM_BOARD_POST_DAYS,
+  getPremiumTier,
+  premiumLabel,
+  type PremiumProfile
+} from '@/lib/premium'
 
 const freeFeatures = [
   `${FREE_DECK_LIMIT} deck salvati`,
   `${FREE_DAILY_SCAN_LIMIT} scan al giorno`,
+  `${FREE_BOARD_DAILY_POST_LIMIT} annuncio al giorno, ${FREE_BOARD_WEEKLY_POST_LIMIT} a settimana`,
   `Annunci visibili solo agli amici per ${FREE_BOARD_POST_DAYS} giorni`,
+  'Chat con amici e utenti Premium',
   'Nickname standard',
   'Funzioni base OPV'
 ]
@@ -19,7 +31,8 @@ const freeFeatures = [
 const premiumFeatures = [
   'Deck salvati illimitati',
   'Scan giornaliere illimitate',
-  `Annunci visibili globalmente per ${PREMIUM_BOARD_POST_DAYS} giorni`,
+  `Annunci globali e visibili a tutti per ${PREMIUM_BOARD_POST_DAYS} giorni`,
+  'Chat avviabile con tutti gli utenti',
   'Nickname e icona Premium illuminati',
   'Supporto diretto al mantenimento del sito'
 ]
