@@ -10,6 +10,7 @@ import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { getRarityLabel, rarityFilterValue } from '@/lib/rarity'
 
 type UserCard = {
   id?: string
@@ -903,7 +904,7 @@ export default function Dashboard() {
 
   const searchTermNormalized = searchTerm.trim().toLowerCase()
   const availableColors = Array.from(new Set(cards.map(card => card.card_color).filter((value): value is string => Boolean(value && value !== 'Unknown'))))
-  const availableRarities = Array.from(new Set(cards.map(card => card.rarity).filter((value): value is string => Boolean(value && value !== 'Unknown'))))
+  const availableRarities = Array.from(new Set(cards.map(card => getRarityLabel(card)).filter((value): value is string => Boolean(value))))
 
   const filteredCards = cards.filter((item) => {
     const matchesSearch =
@@ -917,7 +918,7 @@ export default function Dashboard() {
 
     const matchesRarity =
       filterRarity === 'all' ||
-      (item.rarity || '').toLowerCase() === filterRarity.toLowerCase()
+      rarityFilterValue(item) === filterRarity
 
     const cost = item.card_cost ?? -1
     let matchesCost = true
@@ -980,7 +981,7 @@ export default function Dashboard() {
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
-      const key = String(card[field] || '')
+      const key = field === 'rarity' ? getRarityLabel(card) || '' : String(card[field] || '')
       if (!key || key === 'Unknown') return acc
       acc[key] = (acc[key] || 0) + card.quantity
       return acc
@@ -1110,7 +1111,7 @@ export default function Dashboard() {
                   >
                     <option value="all">Tutte le rarita</option>
                     {availableRarities.map((rarity) => (
-                      <option key={rarity} value={rarity.toLowerCase()}>{rarity}</option>
+                      <option key={rarity} value={rarityFilterValue(rarity)}>{rarity}</option>
                     ))}
                   </select>
 
@@ -1179,7 +1180,7 @@ export default function Dashboard() {
                 >
                   <option value="all">Tutte le rarità</option>
                   {availableRarities.map((rarity) => (
-                    <option key={rarity} value={rarity.toLowerCase()}>{rarity}</option>
+                    <option key={rarity} value={rarityFilterValue(rarity)}>{rarity}</option>
                   ))}
                 </select>
 
@@ -1232,7 +1233,7 @@ export default function Dashboard() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black text-white sm:text-base">{topSavedCard.name || topSavedCard.card_id}</p>
                       <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{displayCardId(topSavedCard.card_id)}</p>
-                      <p className="mt-1 text-[10px] text-slate-500">{topSavedCard.rarity || '-'}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{getRarityLabel(topSavedCard) || '-'}</p>
                     </div>
 
                     <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -1278,7 +1279,7 @@ export default function Dashboard() {
                 </button>
 
                 <p className="font-bold mt-1 sm:mt-2 text-[10px] sm:text-xs line-clamp-2">{item.name || 'Unknown'}</p>
-                <p className="text-[8px] sm:text-[10px] text-gray-400">{item.rarity || '?'}</p>
+                <p className="text-[8px] sm:text-[10px] text-gray-400">{getRarityLabel(item) || '?'}</p>
                 <p className="text-[7px] sm:text-[9px] text-gray-500 truncate">{displayCardId(item.card_id)}</p>
                 <p className="text-[10px] sm:text-xs text-amber-300 mt-1">x{item.quantity}</p>
 
@@ -1901,7 +1902,7 @@ export default function Dashboard() {
           <div className="hidden">
             <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
               <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Generale</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Rarità:</span> {selectedCard.rarity || '—'}</p>
+              <p className="text-sm text-gray-200"><span className="text-amber-300">Rarità:</span> {getRarityLabel(selectedCard) || '—'}</p>
               <p className="text-sm text-gray-200"><span className="text-amber-300">Colore:</span> {selectedCard.card_color || '—'}</p>
               <p className="text-sm text-gray-200"><span className="text-amber-300">Tipo:</span> {selectedCard.card_type || '—'}</p>
             </div>
@@ -1916,7 +1917,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:gap-3">
             {[
-              ['Rarita', selectedCard.rarity || '-'],
+              ['Rarita', getRarityLabel(selectedCard) || '-'],
               ['Colore', selectedCard.card_color || '-'],
               ['Tipo', selectedCard.card_type || '-'],
               ['Costo', selectedCard.card_cost ?? '-'],

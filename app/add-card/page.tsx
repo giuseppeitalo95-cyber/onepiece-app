@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import CardImage from '@/app/components/CardImage'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { getRarityLabel } from '@/lib/rarity'
 
 type Card = {
   id: string
@@ -309,7 +310,7 @@ useEffect(() => {
             <div className="flex-1">
               <p className="font-bold">{card.name}</p>
               <p className="text-xs text-gray-400">
-                {card.rarity} • {card.card_color}
+                {getRarityLabel(card) || card.rarity} • {card.card_color}
               </p>
               <p className="text-[10px] text-gray-500">{displayCardId(card.id)}</p>
             </div>
@@ -347,7 +348,7 @@ useEffect(() => {
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
-                    ['Rarita', selectedCard.rarity || '-'],
+                    ['Rarita', getRarityLabel(selectedCard) || '-'],
                     ['Colore', selectedCard.card_color || '-'],
                     ['Tipo', selectedCard.card_type || '-'],
                     ['Prezzo', formatPrice(selectedCard.market_price ?? selectedCard.inventory_price)],

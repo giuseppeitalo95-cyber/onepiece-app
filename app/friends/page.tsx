@@ -10,6 +10,7 @@ import CardImage from '@/app/components/CardImage'
 import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 import { isProfileOnline } from '@/lib/onlineStatus'
+import { getRarityLabel } from '@/lib/rarity'
 
 type ProfileItem = {
   id: string
@@ -961,7 +962,7 @@ export default function FriendsPage() {
                               />
                             </button>
                             <p className="mt-1.5 text-xs font-semibold text-white line-clamp-1">{card.name || card.card_id}</p>
-                            <p className="text-[10px] text-slate-500">{card.rarity || '—'}</p>
+                            <p className="text-[10px] text-slate-500">{getRarityLabel(card) || '—'}</p>
                             <p className="text-[10px] text-amber-300">x{card.quantity}</p>
                           </div>
                         ))}
@@ -1081,7 +1082,7 @@ export default function FriendsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
-                    ['Rarita', selectedFriendCard.rarity || '-'],
+                    ['Rarita', getRarityLabel(selectedFriendCard) || '-'],
                     ['Prezzo Medio', selectedFriendCardPriceLoading ? '...' : formatOptionalPrice(selectedFriendCardPrice ?? selectedFriendCard.market_price ?? selectedFriendCard.inventory_price)],
                     ['Copie', selectedFriendCard.quantity || 1],
                   ].map(([label, value]) => (

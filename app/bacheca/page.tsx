@@ -9,6 +9,7 @@ import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { isAdminAccount } from '@/lib/admin'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { getRarityLabel } from '@/lib/rarity'
 import {
   FREE_BOARD_DAILY_POST_LIMIT,
   FREE_BOARD_POST_DAYS,
@@ -518,7 +519,7 @@ export default function BachecaPage() {
                 <div className="min-w-0 py-1">
                   <p className="line-clamp-2 text-sm font-black text-white">{selectedPostCard.name}</p>
                   <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-400">{displayCardId(selectedPostCard.id)}</p>
-                  {selectedPostCard.rarity && <p className="mt-1 text-[10px] font-black text-cyan-100">{selectedPostCard.rarity}</p>}
+                  {getRarityLabel(selectedPostCard) && <p className="mt-1 text-[10px] font-black text-cyan-100">{getRarityLabel(selectedPostCard)}</p>}
                   <button
                     type="button"
                     onClick={() => {
@@ -561,7 +562,7 @@ export default function BachecaPage() {
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-black text-white">{card.name}</span>
                           <span className="mt-1 block text-[10px] uppercase tracking-[0.18em] text-slate-500">{displayCardId(card.id)}</span>
-                          <span className="mt-1 block text-[10px] font-black text-cyan-100">{card.rarity || 'Carta'}</span>
+                          <span className="mt-1 block text-[10px] font-black text-cyan-100">{getRarityLabel(card) || 'Carta'}</span>
                         </span>
                       </button>
                     ))}
@@ -673,7 +674,7 @@ export default function BachecaPage() {
                             <div className="min-w-0">
                               <p className="line-clamp-2 text-sm font-black text-cyan-50">{post.card_name || 'Carta'}</p>
                               <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">{post.card_code}</p>
-                              {post.card_rarity && <p className="mt-1 text-[10px] font-black text-cyan-100">{post.card_rarity}</p>}
+                              {getRarityLabel({ rarity: post.card_rarity, card_id: post.card_id, name: post.card_name }) && <p className="mt-1 text-[10px] font-black text-cyan-100">{getRarityLabel({ rarity: post.card_rarity, card_id: post.card_id, name: post.card_name })}</p>}
                             </div>
                           </button>
                         )}
@@ -737,7 +738,7 @@ export default function BachecaPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
-                    ['Rarita', selectedBoardCard.rarity || '-'],
+                    ['Rarita', getRarityLabel(selectedBoardCard) || '-'],
                     ['Prezzo Medio', selectedBoardCardPriceLoading ? '...' : formatPrice(selectedBoardCardPrice)],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">

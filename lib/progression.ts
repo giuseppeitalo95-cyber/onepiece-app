@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 
+import { getRarityLabel } from './rarity'
+
 export type ProgressCard = {
   card_id: string
   quantity: number
@@ -224,7 +226,7 @@ const buildStats = (cards: ProgressCard[], progress: ProgressData): ProgressStat
     const quantity = Number(card.quantity || 0)
     const price = Number(priceOf(card) || 0)
     const color = normalize(card.card_color || 'unknown')
-    const rarity = normalize(card.rarity || 'unknown')
+    const rarity = normalize(getRarityLabel(card) || card.rarity || 'unknown')
     const prefix = compact(card.card_id).match(/^[a-z]+\d{2}/)?.[0] || 'other'
 
     totalQuantity += quantity

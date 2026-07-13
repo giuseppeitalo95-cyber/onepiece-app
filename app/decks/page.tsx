@@ -9,6 +9,7 @@ import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { FREE_DECK_LIMIT, getPremiumTier, type PremiumProfile } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { getRarityLabel } from '@/lib/rarity'
 
 type DeckCard = {
   card_id: string
@@ -1221,7 +1222,7 @@ export default function DeckBuilderPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
                   {[
-                    ['Rarita', selectedCard.rarity || '-'],
+                    ['Rarita', getRarityLabel(selectedCard) || '-'],
                     ['Colore', selectedCard.card_color || '-'],
                     ['Tipo', selectedCard.card_type || '-'],
                     ['Prezzo Medio', selectedCardPriceLoading ? '...' : formatPrice(selectedCardPrice ?? selectedCard.market_price ?? selectedCard.inventory_price)],

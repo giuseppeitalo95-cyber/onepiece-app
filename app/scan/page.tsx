@@ -9,6 +9,7 @@ import Topbar from '@/app/components/Topbar'
 import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { getRarityLabel } from '@/lib/rarity'
 
 type ScannedCard = {
   id: string
@@ -377,9 +378,9 @@ export default function ScanPage() {
 
   const variantLabel = (card: ScannedCard) => {
     const variant = card.card_id.match(/_p(\d+)$/i)?.[1] || card.card_id.match(/(?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}p(\d+)$/i)?.[1]
-    if (variant) return `Alt ${variant}`
-    const rarity = (card.rarity || '').toUpperCase()
-    if (['SEC', 'SP', 'TR', 'MANGA'].some(label => rarity.includes(label))) return rarity
+    const rarity = getRarityLabel(card)
+    if (rarity && rarity !== 'Common' && rarity !== 'Uncommon' && rarity !== 'Rare') return rarity
+    if (variant) return `Alternative Art ${variant}`
     return 'Base'
   }
 
@@ -1901,7 +1902,7 @@ export default function ScanPage() {
                               <p className={`mt-1 truncate text-[10px] font-black ${selected ? 'text-cyan-100' : 'text-slate-200'}`}>
                                 {variantLabel(variant)}
                               </p>
-                              <p className="truncate text-[9px] text-slate-500">{variant.rarity || '-'}</p>
+                              <p className="truncate text-[9px] text-slate-500">{getRarityLabel(variant) || '-'}</p>
                             </button>
                           )
                         })}
