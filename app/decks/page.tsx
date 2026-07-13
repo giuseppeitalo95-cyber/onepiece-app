@@ -7,7 +7,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
-import { FREE_DECK_LIMIT, getPremiumTier, hasPremiumAccess, type PremiumProfile } from '@/lib/premium'
+import { FREE_DECK_LIMIT, getPremiumTier, type PremiumProfile } from '@/lib/premium'
 
 type DeckCard = {
   card_id: string
@@ -593,9 +593,9 @@ export default function DeckBuilderPage() {
 
   const saveCurrentDeck = async () => {
     if (!userId) return
-    const premiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
+    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
     const isNewDeck = !editingDeckId && !savedDecks.some(deck => deck.name === deckName.trim())
-    if (!premiumAccess && isNewDeck && savedDecks.length >= FREE_DECK_LIMIT) {
+    if (!deckPremiumAccess && isNewDeck && savedDecks.length >= FREE_DECK_LIMIT) {
       alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
       router.push('/premium')
       return
@@ -615,6 +615,13 @@ export default function DeckBuilderPage() {
   }
 
   const loadDeck = (deck: SavedDeck) => {
+    const deckIndex = savedDecks.findIndex(item => item.id === deck.id)
+    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
+    if (deckIndex >= FREE_DECK_LIMIT && !deckPremiumAccess) {
+      router.push('/premium')
+      return
+    }
+
     setMode('create')
     setDeckName(deck.name)
     setDeckNameEditing(false)
@@ -634,6 +641,13 @@ export default function DeckBuilderPage() {
 
   const saveMetaDeckToMine = async (deck: SavedDeck) => {
     if (!userId) return
+    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
+    if (!deckPremiumAccess && savedDecks.length >= FREE_DECK_LIMIT) {
+      alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
+      router.push('/premium')
+      return
+    }
+
     const prices = await fetchLivePriceMap([...(deck.leader ? [deck.leader] : []), ...deck.cards])
     const copiedDeck: SavedDeck = {
       ...deck,
@@ -802,8 +816,13 @@ export default function DeckBuilderPage() {
 
   const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
   const premiumTier = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email })
+  const premiumAccess = premiumTier !== 'free'
+  const isDeckUnlocked = (_deck: SavedDeck, index: number) => premiumAccess || index < FREE_DECK_LIMIT
+  const lockedDeckCount = premiumAccess ? 0 : Math.max(0, savedDecks.length - FREE_DECK_LIMIT)
   const pageDescription = mode === 'saved'
-    ? 'Tutti i deck salvati, apribili e modificabili.'
+    ? premiumAccess
+      ? 'Tutti i deck salvati, apribili e modificabili.'
+      : `Profilo free: puoi usare ${FREE_DECK_LIMIT} deck. Gli altri restano salvati e si sbloccano con Premium.`
     : mode === 'create'
     ? 'Costruisci Leader + 50 carte main. I DON sono nascosti.'
     : 'Decklist reali recenti da Limitless, apribili come i tuoi deck.'
@@ -903,7 +922,14 @@ export default function DeckBuilderPage() {
         {mode === 'saved' ? (
           <section className="mt-4 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-lg font-black text-white">I miei deck</p>
+              <div>
+                <p className="text-lg font-black text-white">I miei deck</p>
+                {lockedDeckCount > 0 ? (
+                  <p className="mt-1 text-xs font-semibold text-amber-100">
+                    {lockedDeckCount} deck bloccati: restano salvati e tornano disponibili con Premium.
+                  </p>
+                ) : null}
+              </div>
               <button onClick={startNewDeck} className="rounded-2xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 active:scale-95">
                 Crea deck
               </button>
@@ -917,12 +943,20 @@ export default function DeckBuilderPage() {
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {savedDecks.map(deck => {
+                {savedDecks.map((deck, index) => {
                   const mainCountSaved = deck.cards.reduce((sum, card) => sum + card.quantity, 0)
                   const uniqueCount = deck.cards.length
+                  const unlocked = isDeckUnlocked(deck, index)
                   return (
-                    <article key={deck.id} className="overflow-hidden rounded-[1.5rem] border border-slate-700 bg-slate-950/65 p-3">
-                      <button onClick={() => setOpenDeck(deck)} className="w-full text-left">
+                    <article key={deck.id} className={`overflow-hidden rounded-[1.5rem] border p-3 transition ${
+                      unlocked
+                        ? 'border-slate-700 bg-slate-950/65'
+                        : 'border-slate-700/60 bg-slate-950/38 opacity-55 grayscale'
+                    }`}>
+                      <button
+                        onClick={() => unlocked ? setOpenDeck(deck) : router.push('/premium')}
+                        className="w-full text-left"
+                      >
                         <div className="flex gap-3">
                           {deck.leader ? (
                             <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="h-28 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-900" />
@@ -933,6 +967,9 @@ export default function DeckBuilderPage() {
                             <p className="truncate text-lg font-black text-white">{deck.name}</p>
                             <p className="mt-1 truncate text-xs text-slate-400">{deck.leader?.name || 'No leader'}</p>
                             <div className="mt-3 flex flex-wrap gap-2">
+                              {!unlocked ? (
+                                <span className="rounded-full bg-amber-300/15 px-2 py-1 text-[10px] font-black text-amber-100">Bloccato</span>
+                              ) : null}
                               <span className="rounded-full bg-cyan-300/12 px-2 py-1 text-[10px] font-black text-cyan-100">{mainCountSaved}/50</span>
                               <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[10px] font-black text-slate-200">{uniqueCount} uniche</span>
                               <span className="rounded-full bg-emerald-300/12 px-2 py-1 text-[10px] font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</span>
@@ -942,8 +979,8 @@ export default function DeckBuilderPage() {
                         </div>
                       </button>
                       <div className="mt-3 grid grid-cols-3 gap-2">
-                        <button onClick={() => setOpenDeck(deck)} className="rounded-xl border border-slate-700 bg-slate-900 px-2 py-2 text-[10px] font-black text-slate-200">Apri</button>
-                        <button onClick={() => loadDeck(deck)} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-2 py-2 text-[10px] font-black text-cyan-100">Modifica</button>
+                        <button onClick={() => unlocked ? setOpenDeck(deck) : router.push('/premium')} className="rounded-xl border border-slate-700 bg-slate-900 px-2 py-2 text-[10px] font-black text-slate-200">{unlocked ? 'Apri' : 'Sblocca'}</button>
+                        <button onClick={() => unlocked ? loadDeck(deck) : router.push('/premium')} className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-2 py-2 text-[10px] font-black text-cyan-100" disabled={!unlocked}>Modifica</button>
                         <button onClick={() => deleteDeck(deck.id)} className="rounded-xl border border-rose-300/25 bg-rose-400/10 px-2 py-2 text-[10px] font-black text-rose-100">Elimina</button>
                       </div>
                     </article>
@@ -1001,16 +1038,20 @@ export default function DeckBuilderPage() {
                 <div className="mt-3 space-y-2">
                   {savedDecks.length === 0 ? (
                     <p className="rounded-2xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">Nessun deck salvato.</p>
-                  ) : savedDecks.map(deck => (
-                    <div key={deck.id} className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-2">
-                      <button onClick={() => setOpenDeck(deck)} className="min-w-0 flex-1 text-left">
+                  ) : savedDecks.map((deck, index) => {
+                    const unlocked = isDeckUnlocked(deck, index)
+                    return (
+                    <div key={deck.id} className={`flex items-center gap-2 rounded-2xl border p-2 ${unlocked ? 'border-slate-700 bg-slate-950/60' : 'border-slate-700/55 bg-slate-950/35 opacity-55 grayscale'}`}>
+                      <button onClick={() => unlocked ? setOpenDeck(deck) : router.push('/premium')} className="min-w-0 flex-1 text-left">
                         <p className="truncate text-sm font-black text-white">{deck.name}</p>
-                        <p className="text-[10px] text-slate-500">{deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50 · {deck.leader?.name || 'No leader'}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {unlocked ? `${deck.cards.reduce((sum, card) => sum + card.quantity, 0)}/50 - ${deck.leader?.name || 'No leader'}` : 'Bloccato: torna Premium per modificarlo'}
+                        </p>
                       </button>
-                      <button onClick={() => loadDeck(deck)} className="grid h-9 w-9 place-items-center rounded-xl text-cyan-100 hover:bg-cyan-300/10" aria-label="Modifica deck"><Eye size={15} /></button>
+                      <button onClick={() => unlocked ? loadDeck(deck) : router.push('/premium')} className="grid h-9 w-9 place-items-center rounded-xl text-cyan-100 hover:bg-cyan-300/10" aria-label={unlocked ? 'Modifica deck' : 'Sblocca deck'}><Eye size={15} /></button>
                       <button onClick={() => deleteDeck(deck.id)} className="grid h-9 w-9 place-items-center rounded-xl text-rose-200 hover:bg-rose-400/10" aria-label="Elimina deck"><Trash2 size={15} /></button>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             </aside>
