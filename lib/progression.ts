@@ -86,7 +86,18 @@ const emitUnlockedBadges = (badges: BadgeDefinition[]) => {
   window.dispatchEvent(new CustomEvent('opv:badges-unlocked', { detail: { badges: badges.map(withScaledXp) } }))
 }
 
-const todayKey = () => new Date().toISOString().slice(0, 10)
+const dateKey = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Rome',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date)
+  const value = (type: string) => parts.find(part => part.type === type)?.value || ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+const todayKey = () => dateKey(new Date())
 
 const normalize = (value?: string | null) =>
   (value || '')
@@ -187,7 +198,7 @@ const getDailyStreak = (dates: string[]) => {
   let streak = 0
 
   for (;;) {
-    const key = cursor.toISOString().slice(0, 10)
+    const key = dateKey(cursor)
     if (!set.has(key)) break
     streak += 1
     cursor.setDate(cursor.getDate() - 1)
@@ -246,7 +257,7 @@ const buildStats = (cards: ProgressCard[], progress: ProgressData): ProgressStat
 
   const hasRarity = (value: string) => {
     const wanted = normalize(value)
-    return cards.some(card => normalize(card.rarity).includes(wanted))
+    return cards.some(card => normalize(getRarityLabel(card) || card.rarity).includes(wanted))
   }
 
   const hasType = (value: string) => {
@@ -562,7 +573,10 @@ export const evaluateProgressSynced = async (
     return evaluateProgress(userId, cards, options)
   }
 
-  const mergedProgress = mergeProgressData(remoteProgress, localProgress)
+  const remoteHasProgress = remoteProgress.dailyClaimDates.length > 0 || remoteProgress.unlockedBadgeIds.length > 0
+  const mergedProgress = remoteHasProgress
+    ? cleanProgressData(remoteProgress)
+    : mergeProgressData(remoteProgress, localProgress)
   const summary = evaluateProgressWithData(userId, cards, mergedProgress, options, true)
 
   const saved = await saveRemoteProgressData(userId, {
@@ -573,6 +587,12 @@ export const evaluateProgressSynced = async (
   })
 
   if (!saved) return evaluateProgress(userId, cards, options)
+  saveProgressData(userId, {
+    dailyClaimDates: summary.dailyClaimedToday
+      ? [...new Set([...mergedProgress.dailyClaimDates, todayKey()])].sort()
+      : mergedProgress.dailyClaimDates,
+    unlockedBadgeIds: summary.badges.filter(badge => badge.unlocked).map(badge => badge.id)
+  })
   return summary
 }
 
