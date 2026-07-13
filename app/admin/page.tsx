@@ -70,56 +70,6 @@ export default function AdminPage() {
   const [priceSyncResult, setPriceSyncResult] = useState<PriceSyncResult | null>(null)
   const [bugReports, setBugReports] = useState<BugReport[]>([])
 
-  const testDatabaseConnection = async () => {
-    console.log('🧪 [ADMIN] Testing database connection...')
-
-    // Test 1: Check if we can access profiles table at all
-    try {
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('count', { count: 'exact', head: true })
-
-      console.log('🧪 [ADMIN] Profiles count query:', { count: profilesData, error: profilesError })
-    } catch (err) {
-      console.error('🧪 [ADMIN] Profiles count error:', err)
-    }
-
-    // Test 2: Check if we can access auth.users (should fail due to RLS)
-    try {
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers()
-      console.log('🧪 [ADMIN] Auth users query:', { count: authData?.users?.length, error: authError })
-    } catch (err) {
-      console.error('🧪 [ADMIN] Auth users error (expected):', err instanceof Error ? err.message : String(err))
-    }
-
-    // Test 3: Check missing_card_reports
-    try {
-      const { data: reportsData, error: reportsError } = await supabase
-        .from('missing_card_reports')
-        .select('count', { count: 'exact', head: true })
-
-      console.log('🧪 [ADMIN] Reports count query:', { count: reportsData, error: reportsError })
-    } catch (err) {
-      console.error('🧪 [ADMIN] Reports count error:', err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const createMissingProfiles = async () => {
-    console.log('🔧 [ADMIN] Creating missing profiles...')
-
-    try {
-      // This is a workaround - we'll try to create profiles for any users that might exist
-      // Note: This won't work if we can't access auth.users, but let's try
-      setActionMessage('Tentativo di creazione profili mancanti...')
-
-      // For now, just show a message that this needs to be done manually
-      setActionMessage('I profili devono essere creati automaticamente dal callback di auth. Verifica che gli utenti abbiano completato la registrazione.')
-
-    } catch (err) {
-      console.error('❌ [ADMIN] Create profiles error:', err)
-      setActionMessage('Errore nella creazione profili.')
-    }
-  }
 
   const refreshData = async () => {
     await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports()])
@@ -309,7 +259,6 @@ export default function AdminPage() {
       }
 
       console.log('✅ [ADMIN] User is admin, loading data...')
-      await testDatabaseConnection()
       await refreshData()
       setLoading(false)
     }
@@ -507,27 +456,6 @@ export default function AdminPage() {
           <div className="w-10"></div>
         </div>
 
-        <div className="mt-6 rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-300">Qui puoi visualizzare gli utenti, bloccarli, eliminarli e gestire le richieste di carte mancanti segnalate dagli utenti. Questa area è visibile solo al founder.</p>
-            <div className="flex gap-2">
-              <button
-                onClick={refreshData}
-                disabled={busy}
-                className="px-3 py-1 text-xs bg-green-500/20 text-green-200 border border-green-500/30 rounded-lg hover:bg-green-500/30 disabled:opacity-50"
-              >
-                Ricarica
-              </button>
-              <button
-                onClick={testDatabaseConnection}
-                className="px-3 py-1 text-xs bg-blue-500/20 text-blue-200 border border-blue-500/30 rounded-lg hover:bg-blue-500/30"
-              >
-                Debug DB
-              </button>
-            </div>
-          </div>
-        </div>
-
         {actionMessage && (
           <div className="mt-5 rounded-3xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             {actionMessage}
@@ -609,6 +537,64 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        </div>
+
+        <div className="mt-6">
+        <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Notifiche</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Richieste carte</h2>
+            </div>
+            <ShieldCheck className="text-amber-400" />
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {requests.length === 0 ? (
+              <div className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4 text-sm text-slate-400">
+                Nessuna richiesta nuova al momento.
+              </div>
+            ) : (
+              requests.map((request) => (
+                <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{request.card_name}</p>
+                      <p className="text-xs text-slate-400">OP: {request.card_op} • Numero: {request.card_number}</p>
+                    </div>
+                    <span className="rounded-full bg-amber-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-amber-200">
+                      {request.status === 'resolved' ? 'Risolto' : 'Nuova'}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <p className="text-xs text-slate-500">Segnalata da {request.reporter_username || 'sconosciuto'}</p>
+                    <div className="flex gap-2">
+                      {request.status !== 'resolved' && (
+                        <button
+                          onClick={() => markRequestResolved(request.id)}
+                          disabled={busy}
+                          className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 border border-emerald-500/20 hover:bg-emerald-500/20"
+                        >
+                          Risolvi
+                        </button>
+                      )}
+                      {(request.status === 'resolved' || !request.status) && (
+                        <button
+                          onClick={() => deleteResolvedRequest(request.id)}
+                          disabled={busy}
+                          className="rounded-2xl bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 border border-red-500/20 hover:bg-red-500/20"
+                        >
+                          Cancella
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </section>
 
@@ -702,12 +688,6 @@ export default function AdminPage() {
                     >
                       Riprova
                     </button>
-                    <button
-                      onClick={testDatabaseConnection}
-                      className="px-4 py-2 bg-blue-500/20 text-blue-200 border border-blue-500/30 rounded-lg hover:bg-blue-500/30"
-                    >
-                      Debug
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -756,62 +736,6 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <aside className="space-y-6">
-          <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Notifiche</p>
-                <h2 className="mt-2 text-xl font-semibold text-white">Richieste carte</h2>
-              </div>
-              <ShieldCheck className="text-amber-400" />
-            </div>
-
-            <div className="mt-6 space-y-3">
-              {requests.length === 0 ? (
-                <div className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4 text-sm text-slate-400">
-                  Nessuna richiesta nuova al momento.
-                </div>
-              ) : (
-                requests.map((request) => (
-                  <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{request.card_name}</p>
-                        <p className="text-xs text-slate-400">OP: {request.card_op} • Numero: {request.card_number}</p>
-                      </div>
-                      <span className="rounded-full bg-amber-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-amber-200">
-                        {request.status === 'resolved' ? 'Risolto' : 'Nuova'}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <p className="text-xs text-slate-500">Segnalata da {request.reporter_username || 'sconosciuto'}</p>
-                      <div className="flex gap-2">
-                        {request.status !== 'resolved' && (
-                          <button
-                            onClick={() => markRequestResolved(request.id)}
-                            disabled={busy}
-                            className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 border border-emerald-500/20 hover:bg-emerald-500/20"
-                          >
-                            Risolvi
-                          </button>
-                        )}
-                        {(request.status === 'resolved' || !request.status) && (
-                          <button
-                            onClick={() => deleteResolvedRequest(request.id)}
-                            disabled={busy}
-                            className="rounded-2xl bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 border border-red-500/20 hover:bg-red-500/20"
-                          >
-                            Cancella
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-          </aside>
         </div>
       </div>
     </div>
