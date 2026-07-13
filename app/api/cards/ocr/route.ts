@@ -74,14 +74,19 @@ const uniqueLines = (value: string) => {
 }
 
 const extractVisionText = (result: any) => {
-  const textParts = [
+  const ocrParts = [
     result?.fullTextAnnotation?.text,
     ...(result?.textAnnotations || []).map((item: any) => item?.description),
+  ].filter(Boolean)
+  const ocrText = uniqueLines(ocrParts.join('\n'))
+  if (ocrText.trim()) return ocrText
+
+  const webParts = [
     ...(result?.webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
     ...(result?.webDetection?.webEntities || []).map((item: any) => item?.description),
   ].filter(Boolean)
 
-  return uniqueLines(textParts.join('\n'))
+  return uniqueLines(webParts.join('\n'))
 }
 
 async function reserveMonthlyScan() {
@@ -268,10 +273,10 @@ export async function POST(req: NextRequest) {
                 type: 'TEXT_DETECTION',
                 maxResults: 50
               },
-              {
+              ...(index > 0 ? [{
                 type: 'WEB_DETECTION',
-                maxResults: 10
-              }
+                maxResults: 6
+              }] : [])
             ],
             imageContext: {
               languageHints: ['en']

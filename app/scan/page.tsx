@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, SwitchCamera } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
@@ -53,6 +53,8 @@ export default function ScanPage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [scannedCards, setScannedCards] = useState<ScannedCard[]>([])
   const [searching, setSearching] = useState(false)
@@ -361,31 +363,47 @@ export default function ScanPage() {
 
   const cameraLabelScore = (labelValue: string) => {
     const label = labelValue.toLowerCase()
-    const isBack = /(back|rear|environment|posteriore|retro|camera 0)/i.test(label)
+    const isBack = /(back|rear|environment|posteriore|retro)/i.test(label)
+    const isMain = /(main|standard|normal|wide camera|back camera|rear camera|camera 0)/i.test(label)
     const isFront = /(front|user|selfie)/i.test(label)
-    const isAuxLens = /(wide|ultra|macro|depth|tele|zoom)/i.test(label)
-    return (isBack ? 20 : 0) - (isFront ? 30 : 0) - (isAuxLens ? 10 : 0) + (label ? 1 : 0)
+    const isUltraWide = /(ultra|ultrawide|ultra wide|0\.5|0,5|super wide|grandangolo)/i.test(label)
+    const isAuxLens = /(macro|depth|tele|zoom|portrait|bokeh)/i.test(label)
+    return (isBack ? 25 : 0) + (isMain ? 8 : 0) - (isFront ? 40 : 0) - (isUltraWide ? 22 : 0) - (isAuxLens ? 14 : 0) + (label ? 1 : 0)
   }
 
-  const getPreferredCameraConstraints = async (): Promise<MediaStreamConstraints[]> => {
+  const getSortedCameraDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      return devices
+        .filter(device => device.kind === 'videoinput' && device.deviceId)
+        .sort((a, b) => cameraLabelScore(b.label) - cameraLabelScore(a.label))
+    } catch {
+      return []
+    }
+  }
+
+  const refreshCameraDevices = async () => {
+    const devices = await getSortedCameraDevices()
+    setCameraDevices(devices)
+    return devices
+  }
+
+  const getPreferredCameraConstraints = async (preferredDeviceId?: string | null): Promise<MediaStreamConstraints[]> => {
     const constraints: MediaStreamConstraints[] = []
 
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const videoDevices = devices
-        .filter(device => device.kind === 'videoinput' && device.label)
-        .map(device => {
-          return {
-            device,
-            score: cameraLabelScore(device.label)
-          }
-        })
-        .sort((a, b) => b.score - a.score)
+      const videoDevices = await getSortedCameraDevices()
+      const orderedDevices = preferredDeviceId
+        ? [
+            ...videoDevices.filter(device => device.deviceId === preferredDeviceId),
+            ...videoDevices.filter(device => device.deviceId !== preferredDeviceId)
+          ]
+        : videoDevices
 
-      for (const item of videoDevices) {
+      for (const device of orderedDevices) {
         constraints.push({
           video: highQualityVideoConstraints({
-            deviceId: { exact: item.device.deviceId },
+            deviceId: { exact: device.deviceId },
             facingMode: { ideal: 'environment' }
           }),
           audio: false
@@ -457,6 +475,51 @@ export default function ScanPage() {
     } catch {
       return stream
     }
+  }
+
+  const openCameraStream = async (preferredDeviceId?: string | null) => {
+    const constraintsList = await getPreferredCameraConstraints(preferredDeviceId)
+
+    let stream: MediaStream | null = null
+    for (const constraints of constraintsList) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+        break
+      } catch {
+        stream = null
+      }
+    }
+
+    if (!stream) {
+      throw new Error('Camera unavailable')
+    }
+
+    if (!preferredDeviceId) {
+      stream = await upgradeToPreferredCameraIfNeeded(stream)
+    }
+
+    return stream
+  }
+
+  const activateCameraStream = async (stream: MediaStream) => {
+    streamRef.current = stream
+    await attachStream(stream)
+    await refreshCameraDevices()
+    const activeDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId
+    setSelectedCameraId(activeDeviceId || null)
+    scanGenerationRef.current += 1
+    scanCooldownUntilRef.current = 0
+    scanSessionRef.current = true
+    showSummaryRef.current = false
+    setCameraActive(true)
+    setCameraReady(true)
+    setCameraError(null)
+    setScanSessionActive(true)
+    setShowSummary(false)
+    setPendingRecognition(null)
+    pendingRecognitionSignatureRef.current = null
+    lastConfirmedSignatureRef.current = null
+    recognitionStreakRef.current = null
   }
 
   const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
@@ -557,6 +620,39 @@ export default function ScanPage() {
     meaningfulTokens(value)
       .flatMap(token => token.split(/\d+/))
       .filter(token => token.length >= 3)
+
+  const hasExactCodeMatch = (ocrText: string, card: ScannedCard) => {
+    const cardCode = extractCardCode(ocrText)
+    return Boolean(cardCode && baseCardCode(cardCode) === baseCardCode(card.card_id || ''))
+  }
+
+  const hasStrongNameMatch = (ocrText: string, card: ScannedCard) => {
+    const name = normalizeText(card.name || '')
+    if (!name) return false
+
+    const normalizedOcr = normalizeText(ocrText)
+    if (name.length >= 5 && normalizedOcr.includes(name)) return true
+
+    const nameTokens = meaningfulTokens(card.name || '')
+    if (nameTokens.length < 2) return false
+
+    const ocrTokenSet = new Set(meaningfulTokens(ocrText))
+    return nameTokens.every(token => ocrTokenSet.has(token))
+  }
+
+  const shouldShowRecognizedCard = (card: ScannedCard, ocrText: string) => {
+    if (hasExactCodeMatch(ocrText, card) || hasStrongNameMatch(ocrText, card)) {
+      recognitionStreakRef.current = null
+      return true
+    }
+
+    const cardKey = compactText(card.card_id || card.name || '')
+    const previous = recognitionStreakRef.current
+    const nextCount = previous?.cardId === cardKey ? previous.count + 1 : 1
+    recognitionStreakRef.current = { cardId: cardKey, count: nextCount }
+
+    return nextCount >= 2
+  }
 
   const isScanStillActive = (generation: number) =>
     scanGenerationRef.current === generation && scanSessionRef.current && !showSummaryRef.current
@@ -1367,6 +1463,12 @@ export default function ScanPage() {
 
     const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
+      if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
+        setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Verifico un altro frame...`)
+        scanCooldownUntilRef.current = Date.now() + 90
+        return
+      }
+
       pendingRecognitionSignatureRef.current = frameSignature
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Aggiungila alla collezione o scartala.`)
@@ -1406,56 +1508,13 @@ export default function ScanPage() {
     }
 
     if (streamRef.current) {
-      await attachStream(streamRef.current)
-      scanGenerationRef.current += 1
-      scanCooldownUntilRef.current = 0
-      scanSessionRef.current = true
-      showSummaryRef.current = false
-      setCameraActive(true)
-      setCameraReady(true)
-      setCameraError(null)
-      setScanSessionActive(true)
-      setShowSummary(false)
-      setPendingRecognition(null)
-      pendingRecognitionSignatureRef.current = null
-      lastConfirmedSignatureRef.current = null
-      recognitionStreakRef.current = null
+      await activateCameraStream(streamRef.current)
       return
     }
 
     try {
-      const constraintsList = await getPreferredCameraConstraints()
-
-      let stream: MediaStream | null = null
-      for (const constraints of constraintsList) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints)
-          break
-        } catch {
-          stream = null
-        }
-      }
-
-      if (!stream) {
-        throw new Error('Camera unavailable')
-      }
-
-      stream = await upgradeToPreferredCameraIfNeeded(stream)
-      streamRef.current = stream
-      await attachStream(stream)
-      scanGenerationRef.current += 1
-      scanCooldownUntilRef.current = 0
-      scanSessionRef.current = true
-      showSummaryRef.current = false
-      setCameraActive(true)
-      setCameraReady(true)
-      setCameraError(null)
-      setScanSessionActive(true)
-      setShowSummary(false)
-      setPendingRecognition(null)
-      pendingRecognitionSignatureRef.current = null
-      lastConfirmedSignatureRef.current = null
-      recognitionStreakRef.current = null
+      const stream = await openCameraStream(selectedCameraId)
+      await activateCameraStream(stream)
       setRecognitionMessage('Scanner attivo. Tieni la carta al centro.')
     } catch (err) {
       console.error('Camera error:', err)
@@ -1464,6 +1523,38 @@ export default function ScanPage() {
       setCameraActive(false)
       setCameraReady(false)
       setCameraError('Funzionalità non disponibile su versione Desktop, utilizzare un dispositivo mobile. ')
+    }
+  }
+
+  const switchCameraDevice = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || !cameraActive) return
+
+    try {
+      setRecognitionMessage('Cambio camera...')
+      const devices = cameraDevices.length > 0 ? cameraDevices : await refreshCameraDevices()
+      if (devices.length <= 1) {
+        setRecognitionMessage('Nessun altra camera disponibile su questo dispositivo.')
+        return
+      }
+
+      const currentTrack = streamRef.current?.getVideoTracks()[0]
+      const currentDeviceId = currentTrack?.getSettings?.().deviceId || selectedCameraId
+      const currentIndex = Math.max(0, devices.findIndex(device => device.deviceId === currentDeviceId))
+      const nextDevice = devices[(currentIndex + 1) % devices.length]
+      if (!nextDevice?.deviceId) return
+
+      scanGenerationRef.current += 1
+      detectionInProgressRef.current = false
+      streamRef.current?.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+      setSelectedCameraId(nextDevice.deviceId)
+
+      const stream = await openCameraStream(nextDevice.deviceId)
+      await activateCameraStream(stream)
+      setRecognitionMessage(`Camera cambiata${nextDevice.label ? `: ${nextDevice.label}` : ''}. Tieni la carta al centro.`)
+    } catch (err) {
+      console.error('Switch camera error:', err)
+      setRecognitionMessage('Cambio camera non riuscito. Riprova o riapri lo scanner.')
     }
   }
 
@@ -1481,6 +1572,7 @@ export default function ScanPage() {
     }
     setCameraActive(false)
     setCameraReady(false)
+    setSelectedCameraId(null)
     setCameraError(null)
     setScanSessionActive(false)
     setShowSummary(true)
@@ -1798,12 +1890,23 @@ export default function ScanPage() {
                 )}
 
                 {cameraActive && (
-                  <button
-                    onClick={stopCamera}
-                    className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
-                  >
-                    Vai ai risultati
-                  </button>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <button
+                      onClick={stopCamera}
+                      className="rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
+                    >
+                      Vai ai risultati
+                    </button>
+                    <button
+                      onClick={switchCameraDevice}
+                      className="grid h-full min-h-12 w-14 place-items-center rounded-2xl border border-cyan-300/40 bg-cyan-300/12 text-cyan-100 shadow-lg shadow-cyan-950/15 transition hover:bg-cyan-300/20 disabled:opacity-40"
+                      disabled={cameraDevices.length <= 1}
+                      title="Cambia camera"
+                      aria-label="Cambia camera"
+                    >
+                      <SwitchCamera size={20} />
+                    </button>
+                  </div>
                 )}
 
                 {cameraError && (
