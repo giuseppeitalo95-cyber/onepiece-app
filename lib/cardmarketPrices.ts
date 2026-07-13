@@ -74,6 +74,15 @@ type LookupInput = {
   setName?: string | null
 }
 
+// Cardmarket exports share one metacard across these visually distinct promos.
+const PRODUCT_OVERRIDES: Record<string, number> = {
+  'OP03-112_P1': 719412,
+  'OP03-112_P2': 773423,
+  'OP03-112_P3': 794885,
+  'OP03-112_P4': 787813,
+  'OP03-112_P6': 842356
+}
+
 const getSupabaseUrl = () => {
   const value = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
   try {
@@ -221,7 +230,11 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   }
 
   const wantedVariant = variantRank(input.cardId)
-  const best = rows
+  const exactProductId = PRODUCT_OVERRIDES[(input.cardId || '').trim().toUpperCase()]
+  const exactRow = exactProductId
+    ? rows.find(row => row.product_id === exactProductId)
+    : null
+  const scoredBest = rows
     .map(row => ({ row, score: scoreRow(row, input) }))
     .filter(item => item.score > 0)
     .sort((a, b) => {
@@ -234,6 +247,9 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
       if (aDate !== bDate) return bDate - aDate
       return a.row.product_id - b.row.product_id
     })[0]
+  const best = exactRow
+    ? { row: exactRow, score: Number.MAX_SAFE_INTEGER }
+    : scoredBest
 
   if (!best) return null
 
