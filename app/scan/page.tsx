@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight, SwitchCamera } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
@@ -53,8 +53,6 @@ export default function ScanPage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [scannedCards, setScannedCards] = useState<ScannedCard[]>([])
   const [searching, setSearching] = useState(false)
@@ -275,8 +273,28 @@ export default function ScanPage() {
         focusMode?: string[]
       }
 
-      if (capabilities.focusMode?.includes('continuous')) {
-        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints)
+      if (capabilities.focusMode?.includes('single-shot')) {
+        await track.applyConstraints({
+          advanced: [
+            { focusMode: 'single-shot', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
+          ]
+        } as unknown as MediaTrackConstraints)
+
+        if (capabilities.focusMode?.includes('continuous')) {
+          window.setTimeout(() => {
+            track.applyConstraints({
+              advanced: [
+                { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
+              ]
+            } as unknown as MediaTrackConstraints).catch(() => undefined)
+          }, 550)
+        }
+      } else if (capabilities.focusMode?.includes('continuous')) {
+        await track.applyConstraints({
+          advanced: [
+            { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
+          ]
+        } as unknown as MediaTrackConstraints)
       }
     } catch {
       // Android/WebView spesso ignora il fuoco manuale: in quel caso lasciamo continuous.
@@ -286,7 +304,7 @@ export default function ScanPage() {
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
 
-    stream = await applyMaxCameraResolution(stream)
+    stream = await applyBestCameraResolution(stream)
     await optimizeCameraTrack(stream)
 
     videoRef.current.srcObject = stream
@@ -327,14 +345,15 @@ export default function ScanPage() {
   }
 
   const highQualityVideoConstraints = (extra: MediaTrackConstraints = {}): MediaTrackConstraints => ({
-    width: { ideal: 3840, min: 1280 },
-    height: { ideal: 2160, min: 720 },
+    width: { ideal: 2560, min: 1280 },
+    height: { ideal: 1920, min: 720 },
+    aspectRatio: { ideal: 4 / 3 },
     frameRate: { ideal: 30, min: 24 },
     resizeMode: 'none',
     ...extra
   } as MediaTrackConstraints)
 
-  const applyMaxCameraResolution = async (stream: MediaStream) => {
+  const applyBestCameraResolution = async (stream: MediaStream) => {
     const [track] = stream.getVideoTracks()
     if (!track?.getCapabilities || !track.applyConstraints) return stream
 
@@ -349,8 +368,9 @@ export default function ScanPage() {
 
       if (maxWidth && maxHeight) {
         await track.applyConstraints({
-          width: { ideal: maxWidth },
-          height: { ideal: maxHeight },
+          width: { ideal: Math.min(maxWidth, 2560) },
+          height: { ideal: Math.min(maxHeight, 1920) },
+          aspectRatio: { ideal: 4 / 3 },
           frameRate: { ideal: Math.min(capabilities.frameRate?.max || 30, 30) }
         } as MediaTrackConstraints)
       }
@@ -382,25 +402,13 @@ export default function ScanPage() {
     }
   }
 
-  const refreshCameraDevices = async () => {
-    const devices = await getSortedCameraDevices()
-    setCameraDevices(devices)
-    return devices
-  }
-
-  const getPreferredCameraConstraints = async (preferredDeviceId?: string | null): Promise<MediaStreamConstraints[]> => {
+  const getPreferredCameraConstraints = async (): Promise<MediaStreamConstraints[]> => {
     const constraints: MediaStreamConstraints[] = []
 
     try {
       const videoDevices = await getSortedCameraDevices()
-      const orderedDevices = preferredDeviceId
-        ? [
-            ...videoDevices.filter(device => device.deviceId === preferredDeviceId),
-            ...videoDevices.filter(device => device.deviceId !== preferredDeviceId)
-          ]
-        : videoDevices
 
-      for (const device of orderedDevices) {
+      for (const device of videoDevices) {
         constraints.push({
           video: highQualityVideoConstraints({
             deviceId: { exact: device.deviceId },
@@ -414,7 +422,6 @@ export default function ScanPage() {
     }
 
     return [
-      ...constraints,
       {
         video: highQualityVideoConstraints({ facingMode: { exact: 'environment' } }),
         audio: false
@@ -427,11 +434,13 @@ export default function ScanPage() {
         video: {
           facingMode: { ideal: 'environment' },
           width: { ideal: 1920, min: 960 },
-          height: { ideal: 1080, min: 540 },
+          height: { ideal: 1440, min: 720 },
+          aspectRatio: { ideal: 4 / 3 },
           frameRate: { ideal: 30 }
         },
         audio: false
       },
+      ...constraints,
       {
         video: {
           facingMode: { ideal: 'environment' },
@@ -461,7 +470,8 @@ export default function ScanPage() {
       const best = candidates[0]
       if (!best?.device.deviceId) return stream
       if (best.device.deviceId === currentSettings.deviceId && currentWidth >= 1280) return stream
-      if (best.score <= currentScore && currentWidth >= 1280) return stream
+      if (currentScore >= 0 && currentWidth >= 1280) return stream
+      if (best.score <= currentScore + 12 && currentWidth >= 960) return stream
 
       const upgraded = await navigator.mediaDevices.getUserMedia({
         video: highQualityVideoConstraints({
@@ -477,8 +487,8 @@ export default function ScanPage() {
     }
   }
 
-  const openCameraStream = async (preferredDeviceId?: string | null) => {
-    const constraintsList = await getPreferredCameraConstraints(preferredDeviceId)
+  const openCameraStream = async () => {
+    const constraintsList = await getPreferredCameraConstraints()
 
     let stream: MediaStream | null = null
     for (const constraints of constraintsList) {
@@ -494,9 +504,7 @@ export default function ScanPage() {
       throw new Error('Camera unavailable')
     }
 
-    if (!preferredDeviceId) {
-      stream = await upgradeToPreferredCameraIfNeeded(stream)
-    }
+    stream = await upgradeToPreferredCameraIfNeeded(stream)
 
     return stream
   }
@@ -504,11 +512,8 @@ export default function ScanPage() {
   const activateCameraStream = async (stream: MediaStream) => {
     streamRef.current = stream
     await attachStream(stream)
-    await refreshCameraDevices()
-    const activeDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId
-    setSelectedCameraId(activeDeviceId || null)
     scanGenerationRef.current += 1
-    scanCooldownUntilRef.current = 0
+    scanCooldownUntilRef.current = Date.now() + 850
     scanSessionRef.current = true
     showSummaryRef.current = false
     setCameraActive(true)
@@ -520,6 +525,7 @@ export default function ScanPage() {
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
     recognitionStreakRef.current = null
+    window.setTimeout(() => void pulseCameraFocus(), 120)
   }
 
   const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
@@ -928,6 +934,13 @@ export default function ScanPage() {
   const signatureDistance = (a?: number[] | null, b?: number[] | null) => {
     if (!a || !b || a.length !== b.length) return Number.POSITIVE_INFINITY
     return a.reduce((sum, value, index) => sum + Math.abs(value - b[index]), 0) / a.length
+  }
+
+  const isCapturedFrameStillLive = (capturedSignature?: number[] | null, threshold = 24) => {
+    if (!capturedSignature) return true
+    const currentSignature = frameSignatureFromVideo()
+    if (!currentSignature) return true
+    return signatureDistance(capturedSignature, currentSignature) < threshold
   }
 
   const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
@@ -1444,6 +1457,12 @@ export default function ScanPage() {
       scanCooldownUntilRef.current = Date.now() + 500
       return
     }
+    if (!isCapturedFrameStillLive(frameSignature)) {
+      recognitionStreakRef.current = null
+      scanCooldownUntilRef.current = Date.now() + 20
+      setRecognitionMessage('Inquadratura cambiata. Leggo la carta attuale...')
+      return
+    }
 
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
@@ -1462,6 +1481,13 @@ export default function ScanPage() {
     if (!isScanStillActive(generation)) return
 
     const cardMatch = localMatch || serverMatch || searchMatch
+    if (!isCapturedFrameStillLive(frameSignature, 28)) {
+      recognitionStreakRef.current = null
+      scanCooldownUntilRef.current = Date.now() + 20
+      setRecognitionMessage('Risultato vecchio scartato. Tieni ferma la carta attuale...')
+      return
+    }
+
     if (cardMatch) {
       if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
         setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Verifico un altro frame...`)
@@ -1513,7 +1539,7 @@ export default function ScanPage() {
     }
 
     try {
-      const stream = await openCameraStream(selectedCameraId)
+      const stream = await openCameraStream()
       await activateCameraStream(stream)
       setRecognitionMessage('Scanner attivo. Tieni la carta al centro.')
     } catch (err) {
@@ -1523,38 +1549,6 @@ export default function ScanPage() {
       setCameraActive(false)
       setCameraReady(false)
       setCameraError('Funzionalità non disponibile su versione Desktop, utilizzare un dispositivo mobile. ')
-    }
-  }
-
-  const switchCameraDevice = async () => {
-    if (!navigator.mediaDevices?.getUserMedia || !cameraActive) return
-
-    try {
-      setRecognitionMessage('Cambio camera...')
-      const devices = cameraDevices.length > 0 ? cameraDevices : await refreshCameraDevices()
-      if (devices.length <= 1) {
-        setRecognitionMessage('Nessun altra camera disponibile su questo dispositivo.')
-        return
-      }
-
-      const currentTrack = streamRef.current?.getVideoTracks()[0]
-      const currentDeviceId = currentTrack?.getSettings?.().deviceId || selectedCameraId
-      const currentIndex = Math.max(0, devices.findIndex(device => device.deviceId === currentDeviceId))
-      const nextDevice = devices[(currentIndex + 1) % devices.length]
-      if (!nextDevice?.deviceId) return
-
-      scanGenerationRef.current += 1
-      detectionInProgressRef.current = false
-      streamRef.current?.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-      setSelectedCameraId(nextDevice.deviceId)
-
-      const stream = await openCameraStream(nextDevice.deviceId)
-      await activateCameraStream(stream)
-      setRecognitionMessage(`Camera cambiata${nextDevice.label ? `: ${nextDevice.label}` : ''}. Tieni la carta al centro.`)
-    } catch (err) {
-      console.error('Switch camera error:', err)
-      setRecognitionMessage('Cambio camera non riuscito. Riprova o riapri lo scanner.')
     }
   }
 
@@ -1572,7 +1566,6 @@ export default function ScanPage() {
     }
     setCameraActive(false)
     setCameraReady(false)
-    setSelectedCameraId(null)
     setCameraError(null)
     setScanSessionActive(false)
     setShowSummary(true)
@@ -1890,23 +1883,12 @@ export default function ScanPage() {
                 )}
 
                 {cameraActive && (
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <button
-                      onClick={stopCamera}
-                      className="rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
-                    >
-                      Vai ai risultati
-                    </button>
-                    <button
-                      onClick={switchCameraDevice}
-                      className="grid h-full min-h-12 w-14 place-items-center rounded-2xl border border-cyan-300/40 bg-cyan-300/12 text-cyan-100 shadow-lg shadow-cyan-950/15 transition hover:bg-cyan-300/20 disabled:opacity-40"
-                      disabled={cameraDevices.length <= 1}
-                      title="Cambia camera"
-                      aria-label="Cambia camera"
-                    >
-                      <SwitchCamera size={20} />
-                    </button>
-                  </div>
+                  <button
+                    onClick={stopCamera}
+                    className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
+                  >
+                    Vai ai risultati
+                  </button>
                 )}
 
                 {cameraError && (
