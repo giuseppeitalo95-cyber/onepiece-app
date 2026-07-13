@@ -83,13 +83,12 @@ export default function ScanPage() {
   const showSummaryRef = useRef(false)
   const pendingRecognitionSignatureRef = useRef<number[] | null>(null)
   const lastConfirmedSignatureRef = useRef<number[] | null>(null)
-  const lastObservedSignatureRef = useRef<number[] | null>(null)
-  const stableFrameSinceRef = useRef(0)
   const ocrMissStreakRef = useRef(0)
   const candidateImageCacheRef = useRef(new Map<string, Promise<ImageData | null>>())
+  const workCanvasesRef = useRef<Record<string, HTMLCanvasElement>>({})
   const manualSearchRunRef = useRef(0)
 
-  const scanCanvasSize = { width: 1440, height: 1920 }
+  const scanCanvasSize = { width: 1080, height: 1440 }
 
   useEffect(() => {
     const checkUser = async () => {
@@ -99,6 +98,14 @@ export default function ScanPage() {
         return
       }
       setUserId(session.user.id)
+      void fetch('/api/cards/ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ warmup: true })
+      }).catch(() => undefined)
     }
     checkUser()
   }, [router])
@@ -178,7 +185,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 120)
+    }, 70)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -484,7 +491,7 @@ export default function ScanPage() {
     streamRef.current = stream
     await attachStream(stream)
     scanGenerationRef.current += 1
-    scanCooldownUntilRef.current = Date.now() + 180
+    scanCooldownUntilRef.current = Date.now() + 60
     scanSessionRef.current = true
     showSummaryRef.current = false
     setCameraActive(true)
@@ -495,8 +502,6 @@ export default function ScanPage() {
     setPendingRecognition(null)
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
-    lastObservedSignatureRef.current = null
-    stableFrameSinceRef.current = 0
     ocrMissStreakRef.current = 0
     recognitionStreakRef.current = null
     window.setTimeout(() => void pulseCameraFocus(), 120)
@@ -620,8 +625,8 @@ export default function ScanPage() {
     return nameTokens.every(token => ocrTokenSet.has(token))
   }
 
-  const shouldShowRecognizedCard = (card: ScannedCard, ocrText: string) => {
-    if (hasExactCodeMatch(ocrText, card) || hasStrongNameMatch(ocrText, card)) {
+  const shouldShowRecognizedCard = (card: ScannedCard, ocrText: string, trustedMatch = false) => {
+    if (trustedMatch || hasExactCodeMatch(ocrText, card) || hasStrongNameMatch(ocrText, card)) {
       recognitionStreakRef.current = null
       return true
     }
@@ -672,8 +677,7 @@ export default function ScanPage() {
         compactName: compactText(card.name || ''),
         idText: compactText(card.card_id || card.id || ''),
         nameTokens: splitNameParts(card.name || ''),
-        cardTokenSet: new Set(meaningfulTokens(strongHaystack)),
-        effectTokenSet: new Set(meaningfulTokens(card.card_text || ''))
+        cardTokenSet: new Set(meaningfulTokens(strongHaystack))
       }
     })
     const byBaseCode = new Map<string, ReferenceCard[]>()
@@ -772,7 +776,7 @@ export default function ScanPage() {
 
     const scored = referenceLookup.entries
       .map(entry => {
-        const { card, nameText, compactName, idText, nameTokens, cardTokenSet, effectTokenSet } = entry
+        const { card, nameText, compactName, idText, nameTokens, cardTokenSet } = entry
         const compactOcr = compactText(ocrText)
 
         let score = 0
@@ -783,7 +787,6 @@ export default function ScanPage() {
 
         for (const token of ocrTokens) {
           if (cardTokenSet.has(token)) score += nameText.includes(token) ? 1 : 1.5
-          else if (identityScore > 0 && effectTokenSet.has(token)) score += 0.25
           for (const nameToken of nameTokens) {
             if (tokenSimilarity(token, nameToken) >= 0.78) identityScore += 3
           }
@@ -858,7 +861,19 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.8)
+  const getWorkCanvas = (key: string, width: number, height: number) => {
+    let canvas = workCanvasesRef.current[key]
+    if (!canvas) {
+      canvas = document.createElement('canvas')
+      workCanvasesRef.current[key] = canvas
+    }
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+    canvas.getContext('2d')?.clearRect(0, 0, width, height)
+    return canvas
+  }
+
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.76)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -1194,7 +1209,7 @@ export default function ScanPage() {
         }
       }
 
-      return bestMatch && bestMatch.score > 1.6 ? bestMatch.card : null
+      return bestMatch && bestMatch.score > 2.2 ? bestMatch.card : null
     } catch {
       return null
     }
@@ -1217,7 +1232,6 @@ export default function ScanPage() {
       setScannedCards(prev => [savedCard, ...prev])
       recognitionStreakRef.current = null
       ocrMissStreakRef.current = 0
-      stableFrameSinceRef.current = 0
       lastConfirmedSignatureRef.current = pendingRecognitionSignatureRef.current
       pendingRecognitionSignatureRef.current = null
       setCarouselIndex(0)
@@ -1269,7 +1283,6 @@ export default function ScanPage() {
     pendingRecognitionSignatureRef.current = null
     recognitionStreakRef.current = null
     ocrMissStreakRef.current = 0
-    stableFrameSinceRef.current = 0
     scanCooldownUntilRef.current = Date.now() + 80
     setPendingRecognition(null)
     setRecognitionMessage('Carta scartata. Tieni al centro la prossima carta.')
@@ -1298,9 +1311,13 @@ export default function ScanPage() {
     const ctx = canvas.getContext('2d')
 
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
-    canvas.width = scanCanvasSize.width
-    canvas.height = scanCanvasSize.height
-    setVideoSize({ width: canvas.width, height: canvas.height })
+    if (canvas.width !== scanCanvasSize.width) canvas.width = scanCanvasSize.width
+    if (canvas.height !== scanCanvasSize.height) canvas.height = scanCanvasSize.height
+    setVideoSize(current => (
+      current.width === canvas.width && current.height === canvas.height
+        ? current
+        : { width: canvas.width, height: canvas.height }
+    ))
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
 
@@ -1339,23 +1356,12 @@ export default function ScanPage() {
 
     if (!isScanStillActive(generation)) return
 
-    setDetectedRect(rect)
+    setDetectedRect(current => (
+      current && current.x === rect.x && current.y === rect.y && current.width === rect.width && current.height === rect.height
+        ? current
+        : rect
+    ))
     const frameSignature = frameSignatureFromCanvas(canvas, rect)
-    const now = Date.now()
-    const previousFrameSignature = lastObservedSignatureRef.current
-    lastObservedSignatureRef.current = frameSignature
-
-    if (!previousFrameSignature) {
-      stableFrameSinceRef.current = now - 100
-    } else if (signatureDistance(previousFrameSignature, frameSignature) > 11) {
-      stableFrameSinceRef.current = now
-      scanCooldownUntilRef.current = now + 35
-      setRecognitionMessage('Carta rilevata. Stabilizzo la messa a fuoco...')
-      return
-    } else if (now - stableFrameSinceRef.current < 70) {
-      scanCooldownUntilRef.current = now + 25
-      return
-    }
 
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) < 12) {
       setRecognitionMessage('Carta già aggiunta. Cambiala o muovila per continuare.')
@@ -1369,15 +1375,11 @@ export default function ScanPage() {
     setRecognitionMessage('Analisi del frame in corso...')
 
     // Ritaglio CODICE (striscia in basso: il codice puo stare anche verso destra)
-    const codeCropCanvas = document.createElement('canvas')
-    codeCropCanvas.width = 900
-    codeCropCanvas.height = 420
+    const codeCropCanvas = getWorkCanvas('code', 760, 330)
     const codeCropCtx = codeCropCanvas.getContext('2d')
 
     // Ritagli leggibili: effetto, nome e riga codice sono le zone piu utili per il match.
-    const nameCropCanvas = document.createElement('canvas')
-    nameCropCanvas.width = 980
-    nameCropCanvas.height = 540
+    const nameCropCanvas = getWorkCanvas('name', 820, 450)
     const nameCropCtx = nameCropCanvas.getContext('2d')
 
     if (!codeCropCtx || !nameCropCtx) return
@@ -1400,9 +1402,9 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 140,
+        index * 110,
         codeCropCanvas.width,
-        140
+        110
       )
     })
 
@@ -1420,15 +1422,13 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 180,
+        index * 150,
         nameCropCanvas.width,
-        180
+        150
       )
     })
 
-    const preprocessedCode = document.createElement('canvas')
-    preprocessedCode.width = 900
-    preprocessedCode.height = 420
+    const preprocessedCode = getWorkCanvas('preprocessed-code', 760, 330)
     preprocessForOcr(codeCropCanvas, preprocessedCode)
 
     if (!ocrReady) {
@@ -1436,22 +1436,18 @@ export default function ScanPage() {
       return
     }
 
-    const fastOcrCanvas = document.createElement('canvas')
-    fastOcrCanvas.width = 1040
-    fastOcrCanvas.height = 1000
+    const fastOcrCanvas = getWorkCanvas('fast-ocr', 860, 780)
     const fastOcrCtx = fastOcrCanvas.getContext('2d')
     if (!fastOcrCtx) return
     fastOcrCtx.imageSmoothingEnabled = true
     fastOcrCtx.imageSmoothingQuality = 'high'
     fastOcrCtx.fillStyle = '#ffffff'
     fastOcrCtx.fillRect(0, 0, fastOcrCanvas.width, fastOcrCanvas.height)
-    fastOcrCtx.drawImage(codeCropCanvas, 0, 0, fastOcrCanvas.width, 240)
-    fastOcrCtx.drawImage(preprocessedCode, 0, 240, fastOcrCanvas.width, 240)
-    fastOcrCtx.drawImage(nameCropCanvas, 0, 480, fastOcrCanvas.width, 520)
+    fastOcrCtx.drawImage(codeCropCanvas, 0, 0, fastOcrCanvas.width, 190)
+    fastOcrCtx.drawImage(preprocessedCode, 0, 190, fastOcrCanvas.width, 190)
+    fastOcrCtx.drawImage(nameCropCanvas, 0, 380, fastOcrCanvas.width, 400)
 
-    const imageMatchCanvas = document.createElement('canvas')
-    imageMatchCanvas.width = 420
-    imageMatchCanvas.height = 588
+    const imageMatchCanvas = getWorkCanvas('image-match', 336, 470)
     const imageMatchCtx = imageMatchCanvas.getContext('2d')
     if (imageMatchCtx) {
       imageMatchCtx.imageSmoothingEnabled = true
@@ -1500,7 +1496,7 @@ export default function ScanPage() {
 
     if (cardMatch) {
       ocrMissStreakRef.current = 0
-      if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
+      if (!shouldShowRecognizedCard(cardMatch, allOcrText, Boolean(localMatch || serverMatch))) {
         setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Verifico un altro frame...`)
         scanCooldownUntilRef.current = Date.now() + 45
         return
@@ -1577,7 +1573,7 @@ export default function ScanPage() {
 
     const variants = (referenceLookup.byBaseCode.get(baseCardCode(cardCode)) || [])
       .filter(card => card.image_url || card.card_image)
-      .slice(0, 12)
+      .slice(0, 6)
     if (variants.length < 2) return
 
     const capturedCanvas = document.createElement('canvas')
@@ -1638,8 +1634,6 @@ export default function ScanPage() {
     setPendingRecognition(null)
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
-    lastObservedSignatureRef.current = null
-    stableFrameSinceRef.current = 0
     ocrMissStreakRef.current = 0
     recognitionStreakRef.current = null
     setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')

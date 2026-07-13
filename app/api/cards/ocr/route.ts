@@ -2,6 +2,10 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { FREE_DAILY_SCAN_LIMIT, getPremiumTier } from '@/lib/premium'
 
+export const runtime = 'edge'
+export const preferredRegion = 'fra1'
+export const dynamic = 'force-dynamic'
+
 const MONTHLY_SCAN_LIMIT = 1000
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 
@@ -33,6 +37,12 @@ type DailyScanUsageResult = {
   allowed?: boolean
   used?: number
   daily_limit?: number
+}
+
+type ScanAccessResult = {
+  userId?: string
+  tier?: string
+  error?: string | null
 }
 
 const adminSupabase = supabaseServiceRoleKey
@@ -135,12 +145,9 @@ async function reserveMonthlyScan() {
   }
 }
 
-async function reserveDailyUserScan(req: NextRequest) {
+async function resolveScanAccess(req: NextRequest): Promise<ScanAccessResult> {
   if (!adminSupabase) {
     return {
-      allowed: false,
-      used: 0,
-      limit: FREE_DAILY_SCAN_LIMIT,
       error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
     }
   }
@@ -149,50 +156,23 @@ async function reserveDailyUserScan(req: NextRequest) {
   const token = auth.replace(/^Bearer\s+/i, '')
   if (!token) {
     return {
-      allowed: false,
-      used: 0,
-      limit: FREE_DAILY_SCAN_LIMIT,
       error: 'Sessione utente mancante'
     }
   }
 
   const cachedAccess = scanAccessCache.get(token)
   if (cachedAccess && cachedAccess.expiresAt > Date.now()) {
-    if (cachedAccess.tier !== 'free') {
-      return {
-        allowed: true,
-        used: 0,
-        limit: Number.POSITIVE_INFINITY,
-        error: null
-      }
+    return {
+      userId: cachedAccess.userId,
+      tier: cachedAccess.tier,
+      error: null
     }
-
-    const { data, error } = await adminSupabase
-      .rpc('increment_user_daily_scan_usage', {
-        p_user_id: cachedAccess.userId,
-        p_day: currentDayKey(),
-        p_limit: FREE_DAILY_SCAN_LIMIT
-      })
-      .single()
-
-    if (!error) {
-      const usage = data as DailyScanUsageResult | null
-      return {
-        allowed: Boolean(usage?.allowed),
-        used: Number(usage?.used || 0),
-        limit: Number(usage?.daily_limit || FREE_DAILY_SCAN_LIMIT),
-        error: null
-      }
-    }
-    scanAccessCache.delete(token)
   }
+  if (cachedAccess) scanAccessCache.delete(token)
 
   const { data: { user }, error: userError } = await adminSupabase.auth.getUser(token)
   if (userError || !user) {
     return {
-      allowed: false,
-      used: 0,
-      limit: FREE_DAILY_SCAN_LIMIT,
       error: 'Sessione utente non valida'
     }
   }
@@ -213,9 +193,37 @@ async function reserveDailyUserScan(req: NextRequest) {
   scanAccessCache.set(token, {
     userId: user.id,
     tier,
-    expiresAt: Date.now() + 60_000
+    expiresAt: Date.now() + 10 * 60_000
   })
-  if (tier !== 'free') {
+
+  return {
+    userId: user.id,
+    tier,
+    error: null
+  }
+}
+
+async function reserveDailyUserScan(req: NextRequest) {
+  if (!adminSupabase) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
+    }
+  }
+
+  const access = await resolveScanAccess(req)
+  if (access.error || !access.userId || !access.tier) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: access.error || 'Sessione utente non valida'
+    }
+  }
+
+  if (access.tier !== 'free') {
     return {
       allowed: true,
       used: 0,
@@ -226,7 +234,7 @@ async function reserveDailyUserScan(req: NextRequest) {
 
   const { data, error } = await adminSupabase
     .rpc('increment_user_daily_scan_usage', {
-      p_user_id: user.id,
+      p_user_id: access.userId,
       p_day: currentDayKey(),
       p_limit: FREE_DAILY_SCAN_LIMIT
     })
@@ -254,6 +262,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const ocrMode = body?.mode === 'accurate' ? 'accurate' : 'fast'
+
+    if (!googleVisionApiKey) {
+      return Response.json({ text: '', error: 'Missing GOOGLE_VISION_API_KEY' }, { status: 503 })
+    }
+
+    if (body?.warmup === true) {
+      const access = await resolveScanAccess(req)
+      if (access.error) {
+        return Response.json({ ready: false, error: access.error }, { status: 401 })
+      }
+      return Response.json({ ready: true })
+    }
+
     const rawImages = Array.isArray(body?.images)
       ? body.images
       : [body?.image || body?.dataUrl || body?.base64Image]
@@ -264,10 +285,6 @@ export async function POST(req: NextRequest) {
 
     if (images.length === 0) {
       return Response.json({ text: '', error: 'Missing image' }, { status: 400 })
-    }
-
-    if (!googleVisionApiKey) {
-      return Response.json({ text: '', error: 'Missing GOOGLE_VISION_API_KEY' }, { status: 503 })
     }
 
     const dailyUsage = await reserveDailyUserScan(req)
