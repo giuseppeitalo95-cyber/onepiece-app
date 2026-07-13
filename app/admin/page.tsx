@@ -607,27 +607,6 @@ export default function AdminPage() {
     }
   }
 
-  const updateBugStatus = async (id: string, status: 'new' | 'resolved') => {
-    const token = await getAccessToken()
-    if (!token) return
-
-    setBusy(true)
-    const res = await fetch('/api/bug-reports', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ id, status })
-    })
-    const data = await res.json().catch(() => null)
-    setActionMessage(res.ok && data?.ok
-      ? status === 'resolved' ? 'Bug marcato come risolto.' : 'Bug riaperto.'
-      : data?.error || 'Errore aggiornamento bug.')
-    await fetchBugReports()
-    setBusy(false)
-  }
-
   const deleteBugReport = async (id: string) => {
     if (!confirm('Eliminare definitivamente questa segnalazione bug dal database?')) return
 
@@ -641,6 +620,26 @@ export default function AdminPage() {
     })
     const data = await res.json().catch(() => null)
     setActionMessage(res.ok && data?.ok ? 'Bug eliminato dal database.' : data?.error || 'Errore eliminazione bug.')
+    await fetchBugReports()
+    setBusy(false)
+  }
+
+  const deleteAllBugReports = async () => {
+    if (bugReports.length === 0) return
+    if (!confirm(`Eliminare definitivamente tutte le ${bugReports.length} segnalazioni bug?`)) return
+
+    const token = await getAccessToken()
+    if (!token) return
+
+    setBusy(true)
+    const results = await Promise.all(bugReports.map(report =>
+      fetch(`/api/bug-reports?id=${encodeURIComponent(report.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => res.ok).catch(() => false)
+    ))
+    const deleted = results.filter(Boolean).length
+    setActionMessage(`Segnalazioni eliminate: ${deleted}/${bugReports.length}.`)
     await fetchBugReports()
     setBusy(false)
   }
@@ -683,13 +682,26 @@ export default function AdminPage() {
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Bug report</p>
               <h2 className="mt-2 text-xl font-semibold text-white">Segnalazioni bug</h2>
             </div>
-            <div className="relative">
-              <Bug className="text-cyan-200" />
-              {bugReports.filter(report => report.status !== 'resolved').length > 0 ? (
-                <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black text-white">
-                  {bugReports.filter(report => report.status !== 'resolved').length}
-                </span>
+            <div className="flex items-center gap-2">
+              {bugReports.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={deleteAllBugReports}
+                  disabled={busy}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-60"
+                >
+                  <Trash2 size={14} />
+                  Elimina tutte
+                </button>
               ) : null}
+              <div className="relative">
+                <Bug className="text-cyan-200" />
+                {bugReports.length > 0 ? (
+                  <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black text-white">
+                    {bugReports.length}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -707,47 +719,18 @@ export default function AdminPage() {
                       {new Date(report.created_at).toLocaleString('it-IT')} · {report.page_path || 'pagina non indicata'}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
-                    report.status === 'resolved'
-                      ? 'bg-emerald-300/12 text-emerald-100'
-                      : 'bg-rose-400/12 text-rose-100'
-                  }`}>
-                    {report.status === 'resolved' ? 'Risolto' : 'Nuovo'}
-                  </span>
+                  <button
+                    onClick={() => deleteBugReport(report.id)}
+                    disabled={busy}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 disabled:opacity-60"
+                  >
+                    <Trash2 size={14} />
+                    Elimina
+                  </button>
                 </div>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{report.message}</p>
                 <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
                   <p>Segnalato da: <span className="text-slate-200">{report.reporter_username || report.reporter_email || 'sconosciuto'}</span></p>
-                  {report.resolved_at ? <p>Risolto il: {new Date(report.resolved_at).toLocaleString('it-IT')}</p> : null}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {report.status === 'resolved' ? (
-                    <button
-                      onClick={() => updateBugStatus(report.id, 'new')}
-                      disabled={busy}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100"
-                    >
-                      <RotateCcw size={14} />
-                      Riapri
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => updateBugStatus(report.id, 'resolved')}
-                      disabled={busy}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100"
-                    >
-                      <CheckCircle2 size={14} />
-                      Risolto
-                    </button>
-                  )}
-                  <button
-                    onClick={() => deleteBugReport(report.id)}
-                    disabled={busy}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
-                  >
-                    <Trash2 size={14} />
-                    Elimina DB
-                  </button>
                 </div>
               </div>
             ))}
