@@ -373,6 +373,7 @@ export default function Dashboard() {
       cardsToSync.map(card => [card.card_id, getLivePriceNumber(prices[card.card_id])] as const)
     )
     setAnalyticsLivePrices(prev => ({ ...prev, ...liveMap }))
+    setPricesReady(true)
 
     const progressCards = cardsToSync.map(card => {
       const live = liveMap[card.card_id]
@@ -402,7 +403,6 @@ export default function Dashboard() {
         return backfilled ? { ...card, market_price: backfilled.market_price, inventory_price: null } : card
       }))
     }
-    setPricesReady(true)
   }
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
@@ -935,9 +935,9 @@ export default function Dashboard() {
     return live ?? saved
   }
   const savedCollectionValue = cards.reduce((sum, card) => sum + ((getAnalyticsPrice(card) || 0) * card.quantity), 0)
-  const topSavedCard = pricesReady ? [...cards]
+  const topSavedCard = [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
-    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null : null
+    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null
   const topSavedCardPrice = topSavedCard ? getAnalyticsPrice(topSavedCard) : null
   const topSavedCardTotal = topSavedCard && topSavedCardPrice != null
     ? topSavedCardPrice * topSavedCard.quantity
