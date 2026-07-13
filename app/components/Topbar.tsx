@@ -8,7 +8,7 @@ import {
   evaluateProgressSynced,
   type ProgressSummary,
 } from '@/lib/progression'
-import { Crown, MessageCircle, ShieldCheck, Sparkle } from 'lucide-react'
+import { Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucide-react'
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
@@ -21,6 +21,12 @@ export default function Topbar() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
   const [chatUnread, setChatUnread] = useState(0)
+  const [bugUnread, setBugUnread] = useState(0)
+  const [bugOpen, setBugOpen] = useState(false)
+  const [bugTitle, setBugTitle] = useState('')
+  const [bugMessage, setBugMessage] = useState('')
+  const [bugStatus, setBugStatus] = useState('')
+  const [bugSending, setBugSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
@@ -88,8 +94,10 @@ export default function Topbar() {
 
       setUsername(profileData?.username || 'Utente')
       setAvatarUrl(profileData?.avatar_url || '')
-      setPremiumTier(getPremiumTier(profileData, session.user))
+      const nextTier = getPremiumTier(profileData, session.user)
+      setPremiumTier(nextTier)
       await loadChatUnread(session.user.id)
+      if (nextTier === 'admin') await loadBugUnread()
       setLoading(false)
     }
 
@@ -112,6 +120,19 @@ export default function Topbar() {
         .eq('id', uid)
     }
 
+    const loadBugUnread = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
+      const res = await fetch('/api/bug-reports', {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      }).catch(() => null)
+      const data = await res?.json().catch(() => null)
+      if (!cancelled && data?.ok && Array.isArray(data.reports)) {
+        setBugUnread(data.reports.filter((report: any) => report.status !== 'resolved').length)
+      }
+    }
+
     loadProfile()
 
     const timer = window.setInterval(async () => {
@@ -120,6 +141,7 @@ export default function Topbar() {
         await Promise.all([
           loadChatUnread(session.user.id),
           touchLastSeen(session.user.id),
+          loadBugUnread(),
         ])
       }
     }, 30000)
@@ -146,6 +168,53 @@ export default function Topbar() {
     }
   }, [pathname, router])
 
+  const submitBugReport = async () => {
+    if (bugSending) return
+    setBugStatus('')
+
+    if (bugMessage.trim().length < 5) {
+      setBugStatus('Scrivi almeno una breve descrizione.')
+      return
+    }
+
+    setBugSending(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      setBugStatus('Sessione scaduta. Accedi di nuovo.')
+      setBugSending(false)
+      return
+    }
+
+    const res = await fetch('/api/bug-reports', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        title: bugTitle,
+        message: bugMessage,
+        pagePath: pathname
+      })
+    })
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok || !data?.ok) {
+      setBugStatus(data?.error || 'Invio segnalazione fallito.')
+      setBugSending(false)
+      return
+    }
+
+    setBugTitle('')
+    setBugMessage('')
+    setBugStatus('Segnalazione inviata.')
+    setBugSending(false)
+    window.setTimeout(() => {
+      setBugOpen(false)
+      setBugStatus('')
+    }, 900)
+  }
+
   return (
     <>
       <AchievementToasts />
@@ -155,7 +224,7 @@ export default function Topbar() {
           <button
             type="button"
             onClick={() => router.push(premiumTier === 'admin' ? '/admin' : '/premium')}
-            className={`op-premium-topbar flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
+            className={`op-premium-topbar relative flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
               premiumTier === 'admin'
                 ? 'border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] hover:border-amber-100/60 hover:bg-amber-300/22'
                 : premiumTier === 'vip'
@@ -168,6 +237,11 @@ export default function Topbar() {
           >
             <TierIcon size={15} />
             <span className="hidden min-[380px]:inline">{tierLabel}</span>
+            {premiumTier === 'admin' && bugUnread > 0 ? (
+              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_16px_rgba(251,113,133,0.65)] ring-2 ring-[#173842]">
+                {bugUnread > 9 ? '9+' : bugUnread}
+              </span>
+            ) : null}
           </button>
           <button
             type="button"
@@ -189,6 +263,14 @@ export default function Topbar() {
         </div>
 
         <div className="flex min-w-0 shrink-0 items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setBugOpen(true)}
+            className="mr-1 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-slate-300 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-cyan-50 active:scale-95 sm:mr-2 sm:h-10 sm:w-10"
+            aria-label="Segnala bug"
+          >
+            <HelpCircle size={16} />
+          </button>
           <button
             type="button"
             onClick={() => router.push('/profile')}
@@ -244,6 +326,64 @@ export default function Topbar() {
           </button>
         </div>
       </div>
+
+      {bugOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/65 p-2 backdrop-blur-md sm:items-center sm:p-4"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !bugSending) setBugOpen(false)
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-[1.5rem] border border-slate-700 bg-slate-950/97 p-4 shadow-2xl shadow-black/50"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Supporto</p>
+                <h2 className="mt-1 text-lg font-black text-white">Segnala bug</h2>
+                <p className="mt-1 text-xs text-slate-400">{pathname}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBugOpen(false)}
+                disabled={bugSending}
+                className="grid h-9 w-9 place-items-center rounded-xl border border-slate-700 bg-slate-900 text-slate-200 disabled:opacity-50"
+                aria-label="Chiudi"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <input
+                value={bugTitle}
+                onChange={(event) => setBugTitle(event.target.value)}
+                placeholder="Titolo breve, opzionale"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+              />
+              <textarea
+                value={bugMessage}
+                onChange={(event) => setBugMessage(event.target.value)}
+                rows={5}
+                placeholder="Descrivi cosa succede e cosa stavi facendo."
+                className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+              />
+              {bugStatus ? (
+                <p className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-sm text-slate-300">{bugStatus}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={submitBugReport}
+                disabled={bugSending}
+                className="w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition active:scale-[0.98] disabled:opacity-60"
+              >
+                {bugSending ? 'Invio...' : 'Invia segnalazione'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   )
 }
