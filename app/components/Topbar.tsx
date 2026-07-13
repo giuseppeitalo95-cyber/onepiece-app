@@ -207,7 +207,7 @@ export default function Topbar() {
       if (getPremiumTier(profileData as any, session.user) === 'admin') {
         await loadBugUnread()
       }
-    }, 5000)
+    }, 15000)
 
     const onChatChanged = async () => {
       const { data: { session } } = await supabase.auth.getSession()

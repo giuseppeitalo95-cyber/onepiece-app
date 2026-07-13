@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 
@@ -95,6 +95,22 @@ type AdminAnalytics = {
   }>
 }
 
+type SystemHealth = {
+  ok?: boolean
+  month?: string
+  tables?: Record<string, { count: number; error?: string | null }>
+  scans?: { used: number; limit: number; error?: string | null }
+  prices?: { latestSync?: string | null; error?: string | null }
+  config?: {
+    serviceRoleConfigured: boolean
+    cronSecretConfigured: boolean
+    cardmarketSyncSecretConfigured: boolean
+    maintenanceSecretConfigured: boolean
+    analyticsRetentionDays: number
+  }
+  error?: string
+}
+
 const analyticsRanges = [
   { key: '24h', label: '24H', description: 'ultime 24 ore', days: 1 },
   { key: 'week', label: 'Settimana', description: 'ultima settimana', days: 7 },
@@ -129,10 +145,12 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null)
   const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRangeKey>('week')
   const [chartGranularity, setChartGranularity] = useState<ChartGranularityKey>('daily')
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null)
+  const [systemHealthLoading, setSystemHealthLoading] = useState(false)
 
 
   const refreshData = async () => {
-    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports()])
+    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports(), fetchSystemHealth()])
   }
 
   const syncPricesNow = async () => {
@@ -143,7 +161,11 @@ export default function AdminPage() {
     setActionMessage('Aggiornamento prezzi in corso...')
 
     try {
-      const res = await fetch('/api/cardmarket/sync', { method: 'POST' })
+      const token = await getAccessToken()
+      const res = await fetch('/api/cardmarket/sync', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
       const data = await res.json()
       setPriceSyncResult(data)
 
@@ -182,6 +204,19 @@ export default function AdminPage() {
   const getAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token || ''
+  }
+
+  const fetchSystemHealth = async () => {
+    const token = await getAccessToken()
+    if (!token) return
+
+    setSystemHealthLoading(true)
+    const res = await fetch('/api/admin/system-health', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => null)
+    const data = await res?.json().catch(() => null)
+    setSystemHealth(data?.ok ? data : { ok: false, error: data?.error || 'Salute sistema non disponibile.' })
+    setSystemHealthLoading(false)
   }
 
   const fetchBugReports = async () => {
@@ -1016,6 +1051,69 @@ export default function AdminPage() {
               <p className="mt-2 text-xs text-slate-400">
                 Rimaste {Math.max((scanUsage?.scansLimit ?? 1000) - (scanUsage?.scansUsed ?? 0), 0)}
               </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/80">Sistema</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Salute sistema</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Controllo rapido su Supabase, notifiche, analytics, chat, scan e prezzi.
+              </p>
+              {systemHealth?.error ? <p className="mt-2 text-sm text-red-300">{systemHealth.error}</p> : null}
+            </div>
+            <button
+              onClick={fetchSystemHealth}
+              disabled={systemHealthLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/40 bg-emerald-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/20 transition hover:bg-emerald-200 disabled:opacity-60"
+            >
+              <Database size={17} />
+              {systemHealthLoading ? 'Controllo...' : 'Aggiorna stato'}
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ['Utenti', systemHealth?.tables?.profiles?.count ?? profiles.length],
+              ['Carte salvate', systemHealth?.tables?.userCards?.count ?? '-'],
+              ['Deck salvati', systemHealth?.tables?.userDecks?.count ?? '-'],
+              ['Analytics rows', systemHealth?.tables?.analyticsEvents?.count ?? '-'],
+              ['Chat 24H', systemHealth?.tables?.chatMessages?.count ?? '-'],
+              ['Push device', systemHealth?.tables?.pushSubscriptions?.count ?? '-'],
+              ['Annunci', systemHealth?.tables?.boardPosts?.count ?? '-'],
+              ['Prezzi CM', systemHealth?.tables?.cardmarketPrices?.count ?? '-'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                <p className="mt-2 text-2xl font-black text-emerald-100">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Google Vision</p>
+              <p className="mt-2 text-sm font-black text-white">
+                {systemHealth?.scans ? `${systemHealth.scans.used}/${systemHealth.scans.limit} scan mese` : 'Dato non caricato'}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Prezzi</p>
+              <p className="mt-2 text-sm font-black text-white">
+                {systemHealth?.prices?.latestSync ? new Date(systemHealth.prices.latestSync).toLocaleString('it-IT') : 'Nessun sync trovato'}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cron e retention</p>
+              <div className="mt-2 space-y-1 text-xs font-bold text-slate-300">
+                <p>CRON_SECRET: {systemHealth?.config?.cronSecretConfigured ? 'OK' : 'manca'}</p>
+                <p>CARDMARKET_SYNC_SECRET: {systemHealth?.config?.cardmarketSyncSecretConfigured ? 'OK' : 'manca'}</p>
+                <p>MAINTENANCE_SECRET: {systemHealth?.config?.maintenanceSecretConfigured ? 'OK' : 'manca'}</p>
+                <p>Analytics retention: {systemHealth?.config?.analyticsRetentionDays ?? 180} giorni</p>
+              </div>
             </div>
           </div>
         </div>

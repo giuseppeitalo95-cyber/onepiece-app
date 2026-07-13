@@ -4,6 +4,10 @@
     {
       "path": "/api/cardmarket/sync",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/maintenance/cleanup",
+      "schedule": "30 4 * * *"
     }
   ]
 }
