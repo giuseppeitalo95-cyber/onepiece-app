@@ -534,6 +534,86 @@ export default function AdminPage() {
           </div>
         )}
 
+        <div className="mt-6">
+        <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Bug report</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Segnalazioni bug</h2>
+            </div>
+            <div className="relative">
+              <Bug className="text-cyan-200" />
+              {bugReports.filter(report => report.status !== 'resolved').length > 0 ? (
+                <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black text-white">
+                  {bugReports.filter(report => report.status !== 'resolved').length}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {bugReports.length === 0 ? (
+              <div className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4 text-sm text-slate-400">
+                Nessuna segnalazione bug.
+              </div>
+            ) : bugReports.map(report => (
+              <div key={report.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{report.title || 'Bug senza titolo'}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(report.created_at).toLocaleString('it-IT')} · {report.page_path || 'pagina non indicata'}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+                    report.status === 'resolved'
+                      ? 'bg-emerald-300/12 text-emerald-100'
+                      : 'bg-rose-400/12 text-rose-100'
+                  }`}>
+                    {report.status === 'resolved' ? 'Risolto' : 'Nuovo'}
+                  </span>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{report.message}</p>
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
+                  <p>Segnalato da: <span className="text-slate-200">{report.reporter_username || report.reporter_email || 'sconosciuto'}</span></p>
+                  {report.resolved_at ? <p>Risolto il: {new Date(report.resolved_at).toLocaleString('it-IT')}</p> : null}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {report.status === 'resolved' ? (
+                    <button
+                      onClick={() => updateBugStatus(report.id, 'new')}
+                      disabled={busy}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100"
+                    >
+                      <RotateCcw size={14} />
+                      Riapri
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updateBugStatus(report.id, 'resolved')}
+                      disabled={busy}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100"
+                    >
+                      <CheckCircle2 size={14} />
+                      Risolto
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteBugReport(report.id)}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
+                  >
+                    <Trash2 size={14} />
+                    Elimina DB
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        </div>
+
         <div className="mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -677,83 +757,6 @@ export default function AdminPage() {
           </section>
 
           <aside className="space-y-6">
-          <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Bug report</p>
-                <h2 className="mt-2 text-xl font-semibold text-white">Segnalazioni bug</h2>
-              </div>
-              <div className="relative">
-                <Bug className="text-cyan-200" />
-                {bugReports.filter(report => report.status !== 'resolved').length > 0 ? (
-                  <span className="absolute -right-2 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black text-white">
-                    {bugReports.filter(report => report.status !== 'resolved').length}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {bugReports.length === 0 ? (
-                <div className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4 text-sm text-slate-400">
-                  Nessuna segnalazione bug.
-                </div>
-              ) : bugReports.map(report => (
-                <div key={report.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{report.title || 'Bug senza titolo'}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {new Date(report.created_at).toLocaleString('it-IT')} · {report.page_path || 'pagina non indicata'}
-                      </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
-                      report.status === 'resolved'
-                        ? 'bg-emerald-300/12 text-emerald-100'
-                        : 'bg-rose-400/12 text-rose-100'
-                    }`}>
-                      {report.status === 'resolved' ? 'Risolto' : 'Nuovo'}
-                    </span>
-                  </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{report.message}</p>
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
-                    <p>Segnalato da: <span className="text-slate-200">{report.reporter_username || report.reporter_email || 'sconosciuto'}</span></p>
-                    {report.resolved_at ? <p>Risolto il: {new Date(report.resolved_at).toLocaleString('it-IT')}</p> : null}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {report.status === 'resolved' ? (
-                      <button
-                        onClick={() => updateBugStatus(report.id, 'new')}
-                        disabled={busy}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100"
-                      >
-                        <RotateCcw size={14} />
-                        Riapri
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => updateBugStatus(report.id, 'resolved')}
-                        disabled={busy}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100"
-                      >
-                        <CheckCircle2 size={14} />
-                        Risolto
-                      </button>
-                    )}
-                    <button
-                      onClick={() => deleteBugReport(report.id)}
-                      disabled={busy}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
-                    >
-                      <Trash2 size={14} />
-                      Elimina DB
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
             <div className="flex items-center justify-between gap-3">
               <div>

@@ -48,10 +48,33 @@ const notifyAdmins = async (title: string, body: string) => {
   const client = db()
   if (!client || !configureWebPush()) return
 
+  const adminIds = new Set<string>([ADMIN_ACCOUNT.id])
+
+  try {
+    const { data: usersData } = await client.auth.admin.listUsers()
+    usersData?.users?.forEach(user => {
+      if ((user.email || '').toLowerCase() === ADMIN_ACCOUNT.email) adminIds.add(user.id)
+    })
+  } catch {
+    // Keep bug reports working even if auth admin lookup is temporarily unavailable.
+  }
+
+  try {
+    const { data: profileAdmins } = await client
+      .from('profiles')
+      .select('id, username')
+      .ilike('username', ADMIN_ACCOUNT.username)
+    ;(profileAdmins || []).forEach(profile => {
+      if (profile.id) adminIds.add(profile.id)
+    })
+  } catch {
+    // The fixed admin id above is still enough when profiles cannot be read.
+  }
+
   const { data: subscriptions } = await client
     .from('push_subscriptions')
     .select('id, subscription')
-    .eq('user_id', ADMIN_ACCOUNT.id)
+    .in('user_id', [...adminIds])
 
   const payload = JSON.stringify({ title, body, url: '/admin' })
   await Promise.all(((subscriptions || []) as PushSubscriptionRow[]).map(async item => {
