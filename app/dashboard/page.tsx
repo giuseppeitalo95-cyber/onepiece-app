@@ -87,6 +87,35 @@ const SET_RELEASE_ORDER: Record<string, number> = {
   OP01: 1000,
 }
 
+const knownCardColors = ['Red', 'Green', 'Blue', 'Purple', 'Black', 'Yellow']
+const colorAliases: Record<string, string> = {
+  red: 'Red',
+  rosso: 'Red',
+  green: 'Green',
+  verde: 'Green',
+  blue: 'Blue',
+  blu: 'Blue',
+  purple: 'Purple',
+  viola: 'Purple',
+  black: 'Black',
+  nero: 'Black',
+  yellow: 'Yellow',
+  giallo: 'Yellow',
+}
+
+const normalizeCardColors = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw || raw === 'Unknown') return []
+
+  const parts = raw
+    .split(/[\/,|+&]/)
+    .map(part => part.trim().toLowerCase())
+    .filter(Boolean)
+
+  const values = parts.length > 0 ? parts : [raw.toLowerCase()]
+  return [...new Set(values.map(color => colorAliases[color] || raw).filter(Boolean))]
+}
+
 const setDisplayName = (setCode: string) => {
   if (setCode === 'OTHER') return 'Altre carte'
   return setCode.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
@@ -958,7 +987,13 @@ export default function Dashboard() {
     }, {})
   ).sort((a, b) => b[1] - a[1])
   const rarityStats = groupByQuantity('rarity').slice(0, 5)
-  const colorStats = groupByQuantity('card_color').slice(0, 5)
+  const colorCounts = cards.reduce<Record<string, number>>((acc, card) => {
+    for (const color of normalizeCardColors(card.card_color)) {
+      acc[color] = (acc[color] || 0) + card.quantity
+    }
+    return acc
+  }, {})
+  const colorStats = knownCardColors.map(color => [color, colorCounts[color] || 0] as const)
   const analyticsPricedCards = [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
     .sort((a, b) => ((getAnalyticsPrice(b) || 0) * b.quantity) - ((getAnalyticsPrice(a) || 0) * a.quantity))
