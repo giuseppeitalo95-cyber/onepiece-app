@@ -840,9 +840,6 @@ export default function ScanPage() {
     return a.reduce((sum, value, index) => sum + Math.abs(value - b[index]), 0) / a.length
   }
 
-  const isFrameStillCurrent = (signature: number[] | null) =>
-    signatureDistance(signature, frameSignatureFromVideo()) < 32
-
   const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -1354,12 +1351,6 @@ export default function ScanPage() {
       fullCardOcrCanvas
     ])
     if (!isScanStillActive(generation)) return
-    if (!isFrameStillCurrent(frameSignature)) {
-      recognitionStreakRef.current = null
-      scanCooldownUntilRef.current = Date.now() + 45
-      setRecognitionMessage('Immagine cambiata durante la lettura. Riprovo sul frame attuale.')
-      return
-    }
 
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
@@ -1381,13 +1372,6 @@ export default function ScanPage() {
     if (cardMatch) {
       if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
         setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Tienila ferma per confermare.`)
-        return
-      }
-
-      if (!isFrameStillCurrent(frameSignature)) {
-        recognitionStreakRef.current = null
-        scanCooldownUntilRef.current = Date.now() + 45
-        setRecognitionMessage('Risultato scartato: la carta non è più inquadrata. Riprovo.')
         return
       }
 
