@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { FREE_DAILY_SCAN_LIMIT } from '@/lib/premium'
+import { FREE_DAILY_SCAN_LIMIT, getPremiumTier } from '@/lib/premium'
 
 const MONTHLY_SCAN_LIMIT = 1000
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
@@ -157,6 +157,22 @@ async function reserveDailyUserScan(req: NextRequest) {
       used: 0,
       limit: FREE_DAILY_SCAN_LIMIT,
       error: 'Sessione utente non valida'
+    }
+  }
+
+  const { data: profile } = await adminSupabase
+    .from('profiles')
+    .select('username, is_premium, premium_until, is_vip')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const tier = getPremiumTier(profile, user)
+  if (tier !== 'free') {
+    return {
+      allowed: true,
+      used: 0,
+      limit: Number.POSITIVE_INFINITY,
+      error: null
     }
   }
 

@@ -217,6 +217,18 @@ export default function ScanPage() {
     }
   }, [cameraActive, cameraReady, ocrReady, scanSessionActive, showSummary, pendingRecognition])
 
+  useEffect(() => {
+    if (!cameraActive || !cameraReady || !scanSessionActive || showSummary) return
+
+    const focusTimer = window.setInterval(() => {
+      if (!detectionInProgressRef.current && !pendingRecognition) {
+        void pulseCameraFocus()
+      }
+    }, 3500)
+
+    return () => window.clearInterval(focusTimer)
+  }, [cameraActive, cameraReady, scanSessionActive, showSummary, pendingRecognition])
+
   const optimizeCameraTrack = async (stream: MediaStream) => {
     const [track] = stream.getVideoTracks()
     if (!track?.getCapabilities || !track.applyConstraints) return
@@ -1331,6 +1343,11 @@ export default function ScanPage() {
       fullCardOcrCanvas
     ])
     if (!isScanStillActive(generation)) return
+    if (ocrText === null) {
+      recognitionStreakRef.current = null
+      scanCooldownUntilRef.current = Date.now() + 500
+      return
+    }
 
     const codeQuery = ocrText ? extractCardQuery(ocrText) : null
     const allOcrText = [codeQuery, ocrText].filter(Boolean).join(' ')
