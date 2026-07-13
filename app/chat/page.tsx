@@ -721,7 +721,7 @@ export default function ChatPage() {
               <div>
                 <MessageCircle className="mx-auto text-cyan-100" size={36} />
                 <h2 className="mt-3 text-2xl font-black text-white">Seleziona una chat</h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">Puoi scrivere agli amici e ai contatti Premium. Le conversazioni restano leggere e temporanee.</p>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">Le chat partono dagli annunci in bacheca e restano temporanee per 24H.</p>
               </div>
             </div>
           )}
