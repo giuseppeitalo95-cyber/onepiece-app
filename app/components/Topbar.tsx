@@ -174,6 +174,35 @@ export default function Topbar() {
     }
   }, [pathname, router])
 
+  const showLocalBugNotification = async (title: string, message: string) => {
+    if (premiumTier !== 'admin') return
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'granted') return
+
+    const notificationTitle = 'Nuova segnalazione bug'
+    const notificationBody = `${username || 'Admin'}: ${title || message.slice(0, 80)}`
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready
+        await registration.showNotification(notificationTitle, {
+          body: notificationBody,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          data: { url: '/admin' }
+        })
+        return
+      }
+
+      new Notification(notificationTitle, {
+        body: notificationBody,
+        icon: '/icon-192.png'
+      })
+    } catch {
+      // Remote push still handles the notification when local display is blocked.
+    }
+  }
+
   const submitBugReport = async () => {
     if (bugSending) return
     setBugStatus('')
@@ -209,6 +238,11 @@ export default function Topbar() {
       setBugStatus(data?.error || 'Invio segnalazione fallito.')
       setBugSending(false)
       return
+    }
+
+    if (premiumTier === 'admin') {
+      setBugUnread(current => current + 1)
+      void showLocalBugNotification(bugTitle, bugMessage)
     }
 
     setBugTitle('')
