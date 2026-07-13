@@ -9,6 +9,7 @@ import CardImage from '@/app/components/CardImage'
 import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 
 type UserCard = {
   id?: string
@@ -257,6 +258,7 @@ export default function Dashboard() {
 
       try {
         setCatalogLoading(true)
+        void trackAnalyticsEvent('manual_search', { source: 'collection', length: q.length }, '/dashboard')
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)
         const data = await res.json()
         if (runId !== catalogSearchRunRef.current) return

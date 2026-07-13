@@ -8,6 +8,7 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { FREE_DECK_LIMIT, getPremiumTier, type PremiumProfile } from '@/lib/premium'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 
 type DeckCard = {
   card_id: string
@@ -346,6 +347,7 @@ export default function DeckBuilderPage() {
       try {
         if (deckSearchSource === 'collection') {
           const normalizedSearch = compact(search)
+          void trackAnalyticsEvent('deck_search', { source: 'collection', length: search.trim().length }, '/decks')
           const data = collectionCards
             .filter(card => compact(card.name).includes(normalizedSearch) || compact(displayCardId(card.card_id)).includes(normalizedSearch) || compact(card.card_id).includes(normalizedSearch))
             .slice(0, 32)
@@ -355,6 +357,7 @@ export default function DeckBuilderPage() {
           return
         }
 
+        void trackAnalyticsEvent('deck_search', { source: 'global', length: search.trim().length }, '/decks')
         const res = await fetch(`/api/cards/search?q=${encodeURIComponent(search.trim())}`)
         const data = await res.json()
         if (runId !== deckSearchRunRef.current) return

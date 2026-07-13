@@ -12,6 +12,7 @@ import { Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucid
 import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 
 export default function Topbar() {
   const router = useRouter()
@@ -40,6 +41,11 @@ export default function Topbar() {
       ? 'Premium'
       : 'Free'
   const TierIcon = premiumTier === 'admin' ? ShieldCheck : premiumTier === 'free' ? Sparkle : Crown
+
+  useEffect(() => {
+    if (!pathname || pathname === '/') return
+    void trackAnalyticsEvent('page_view', {}, pathname)
+  }, [pathname])
 
   useEffect(() => {
     let cancelled = false

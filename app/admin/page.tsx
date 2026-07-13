@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 
@@ -58,6 +58,43 @@ type BugReport = {
   updated_at?: string | null
 }
 
+type AdminAnalytics = {
+  ok?: boolean
+  days?: number
+  analyticsReady?: boolean
+  analyticsError?: string | null
+  totals?: {
+    users: number
+    activeToday: number
+    vip: number
+    premium: number
+    admin: number
+    free: number
+    pageViews: number
+    manualSearches: number
+    deckSearches: number
+    scans: number
+  }
+  daySeries?: Array<{
+    day: string
+    pageViews: number
+    searches: number
+    scans: number
+    activeUsers: number
+  }>
+  topPages?: Array<{ page: string; count: number }>
+  topUsers?: Array<{
+    userId: string
+    username: string
+    tier: string
+    pageViews: number
+    searches: number
+    scans: number
+    lastSeen: string | null
+    topPage: string
+  }>
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -69,6 +106,9 @@ export default function AdminPage() {
   const [priceSyncing, setPriceSyncing] = useState(false)
   const [priceSyncResult, setPriceSyncResult] = useState<PriceSyncResult | null>(null)
   const [bugReports, setBugReports] = useState<BugReport[]>([])
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null)
 
 
   const refreshData = async () => {
@@ -135,6 +175,33 @@ export default function AdminPage() {
     if (data?.ok && Array.isArray(data.reports)) {
       setBugReports(data.reports)
     }
+  }
+
+  const fetchAnalytics = async () => {
+    const token = await getAccessToken()
+    if (!token) return
+
+    setAnalyticsLoading(true)
+    const res = await fetch('/api/admin/analytics?days=14', {
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => null)
+    const data = await res?.json().catch(() => null)
+    if (data?.ok) {
+      setAnalytics(data)
+    } else {
+      setAnalytics({
+        ok: false,
+        analyticsReady: false,
+        analyticsError: data?.error || 'Statistiche non disponibili.'
+      })
+    }
+    setAnalyticsLoading(false)
+  }
+
+  const toggleAnalytics = async () => {
+    const nextOpen = !analyticsOpen
+    setAnalyticsOpen(nextOpen)
+    if (nextOpen && !analytics) await fetchAnalytics()
   }
 
   const fetchProfiles = async () => {
@@ -598,6 +665,154 @@ export default function AdminPage() {
           </div>
         </section>
 
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Statistiche</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Abbonati e utilizzo sito</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Abbonamenti, VIP, free, pagine usate, ricerche manuali e scan degli ultimi 14 giorni.
+              </p>
+            </div>
+            <button
+              onClick={toggleAnalytics}
+              disabled={analyticsLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-200/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 disabled:opacity-60"
+            >
+              <BarChart3 size={17} />
+              {analyticsLoading ? 'Carico...' : analyticsOpen ? 'Nascondi statistiche' : 'Apri statistiche'}
+            </button>
+          </div>
+
+          {analyticsOpen ? (
+            <div className="mt-5 space-y-5">
+              {analytics?.analyticsReady === false ? (
+                <div className="rounded-3xl border border-amber-300/25 bg-amber-300/10 p-4 text-sm text-amber-100">
+                  Tracking non ancora attivo su Supabase: esegui `analytics.sql`. I dati abbonati e scan possono comunque funzionare, ma pagine e ricerche partono solo dopo la creazione della tabella.
+                  {analytics.analyticsError ? <span className="mt-1 block text-xs text-amber-100/75">{analytics.analyticsError}</span> : null}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ['Utenti', analytics?.totals?.users ?? profiles.length],
+                  ['Premium', analytics?.totals?.premium ?? profiles.filter(profile => profile.is_premium).length],
+                  ['VIP', analytics?.totals?.vip ?? profiles.filter(profile => profile.is_vip).length],
+                  ['Free', analytics?.totals?.free ?? profiles.filter(profile => !profile.is_premium && !profile.is_vip).length],
+                  ['Attivi oggi', analytics?.totals?.activeToday ?? 0],
+                  ['Scan', analytics?.totals?.scans ?? 0],
+                  ['Ricerche manuali', analytics?.totals?.manualSearches ?? 0],
+                  ['Ricerche deck', analytics?.totals?.deckSearches ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-2xl font-black text-cyan-100">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <section className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+                  <div className="flex items-center gap-2">
+                    <Activity size={16} className="text-cyan-100" />
+                    <h3 className="text-sm font-black text-white">Andamento giornaliero</h3>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {(analytics?.daySeries || []).map(day => {
+                      const maxValue = Math.max(...(analytics?.daySeries || []).map(item => Math.max(item.pageViews, item.searches, item.scans, item.activeUsers)), 1)
+                      return (
+                        <div key={day.day} className="grid gap-2 sm:grid-cols-[92px_1fr] sm:items-center">
+                          <p className="text-xs font-bold text-slate-400">{new Date(day.day).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}</p>
+                          <div className="space-y-1">
+                            {[
+                              ['Pagine', day.pageViews, 'bg-cyan-300'],
+                              ['Ricerche', day.searches, 'bg-emerald-300'],
+                              ['Scan', day.scans, 'bg-amber-300'],
+                              ['Utenti', day.activeUsers, 'bg-rose-300'],
+                            ].map(([label, value, color]) => (
+                              <div key={label} className="grid grid-cols-[72px_1fr_38px] items-center gap-2 text-[10px]">
+                                <span className="font-bold text-slate-500">{label}</span>
+                                <span className="h-2 overflow-hidden rounded-full bg-slate-800">
+                                  <span
+                                    className={`block h-full rounded-full ${color}`}
+                                    style={{ width: `${Math.max(4, (Number(value) / maxValue) * 100)}%` }}
+                                  />
+                                </span>
+                                <span className="text-right font-black text-slate-300">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {(analytics?.daySeries || []).length === 0 ? (
+                      <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Nessun evento ancora registrato.</p>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+                  <h3 className="text-sm font-black text-white">Pagine più usate</h3>
+                  <div className="mt-4 space-y-2">
+                    {(analytics?.topPages || []).map(page => {
+                      const maxPage = Math.max(...(analytics?.topPages || []).map(item => item.count), 1)
+                      return (
+                        <div key={page.page} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="truncate font-bold text-slate-200">{page.page}</span>
+                            <span className="font-black text-cyan-100">{page.count}</span>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+                            <div className="h-full rounded-full bg-cyan-300" style={{ width: `${Math.max(5, (page.count / maxPage) * 100)}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {(analytics?.topPages || []).length === 0 ? (
+                      <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Le pagine compariranno dopo aver eseguito `analytics.sql` e usato il sito.</p>
+                    ) : null}
+                  </div>
+                </section>
+              </div>
+
+              <section className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+                <h3 className="text-sm font-black text-white">Utenti più attivi</h3>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="text-slate-500">
+                      <tr>
+                        <th className="py-2 pr-3">Utente</th>
+                        <th className="py-2 pr-3">Piano</th>
+                        <th className="py-2 pr-3">Pagine</th>
+                        <th className="py-2 pr-3">Ricerche</th>
+                        <th className="py-2 pr-3">Scan</th>
+                        <th className="py-2 pr-3">Pagina top</th>
+                        <th className="py-2 pr-3">Ultimo accesso</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-slate-300">
+                      {(analytics?.topUsers || []).map(user => (
+                        <tr key={user.userId}>
+                          <td className="py-2 pr-3 font-black text-white">{user.username}</td>
+                          <td className="py-2 pr-3 uppercase">{user.tier}</td>
+                          <td className="py-2 pr-3">{user.pageViews}</td>
+                          <td className="py-2 pr-3">{user.searches}</td>
+                          <td className="py-2 pr-3">{user.scans}</td>
+                          <td className="py-2 pr-3">{user.topPage}</td>
+                          <td className="py-2 pr-3">{user.lastSeen ? new Date(user.lastSeen).toLocaleString('it-IT') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(analytics?.topUsers || []).length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Nessun dettaglio utente ancora disponibile.</p>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import CardImage from '@/app/components/CardImage'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 
 type Card = {
   id: string
@@ -74,6 +75,7 @@ useEffect(() => {
 
     const runId = ++searchRunRef.current
     setLoading(true)
+    void trackAnalyticsEvent('manual_search', { source: 'add-card', length: q.length }, '/add-card')
 
     try {
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(q)}`)

@@ -8,6 +8,7 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { isAdminAccount } from '@/lib/admin'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 import {
   FREE_BOARD_DAILY_POST_LIMIT,
   FREE_BOARD_POST_DAYS,
@@ -399,6 +400,7 @@ export default function BachecaPage() {
     setCardResults([])
     setSelectedPostCard(null)
     setStatus('Annuncio pubblicato in bacheca.')
+    void trackAnalyticsEvent('board_post', { cardId: selectedPostCard.id }, '/bacheca')
     await cleanupOwnPosts(userId)
     await loadPosts(visibleUserIds)
   }

@@ -8,6 +8,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
+import { trackAnalyticsEvent } from '@/lib/analytics'
 
 type ScannedCard = {
   id: string
@@ -1461,6 +1462,7 @@ export default function ScanPage() {
 
     const runId = ++manualSearchRunRef.current
     setSearching(true)
+    void trackAnalyticsEvent('manual_search', { source: 'scan', length: query.trim().length }, '/scan')
     try {
       const res = await fetch(`/api/cards/search?q=${encodeURIComponent(query)}`)
       const results = await res.json()
