@@ -104,6 +104,15 @@ const analyticsRanges = [
 
 type AnalyticsRangeKey = typeof analyticsRanges[number]['key']
 
+const chartGranularities = [
+  { key: 'daily', label: 'Giornaliero' },
+  { key: 'weekly', label: 'Settimanale' },
+  { key: 'monthly', label: 'Mensile' },
+  { key: 'yearly', label: 'Annuale' },
+] as const
+
+type ChartGranularityKey = typeof chartGranularities[number]['key']
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -119,6 +128,7 @@ export default function AdminPage() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null)
   const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRangeKey>('week')
+  const [chartGranularity, setChartGranularity] = useState<ChartGranularityKey>('daily')
 
 
   const refreshData = async () => {
@@ -192,17 +202,16 @@ export default function AdminPage() {
     const source = analytics?.daySeries || []
     if (source.length === 0) return []
 
-    if (selectedAnalyticsRange.key === '24h') {
-      return [{
-        label: '24H',
-        pageViews: analytics?.totals?.pageViews || 0,
-        searches: (analytics?.totals?.manualSearches || 0) + (analytics?.totals?.deckSearches || 0),
-        scans: analytics?.totals?.scans || 0,
-        activeUsers: analytics?.totals?.activeToday || 0,
-      }]
-    }
-
-    if (selectedAnalyticsRange.key === 'week') {
+    if (selectedAnalyticsRange.key === '24h' || chartGranularity === 'daily') {
+      if (selectedAnalyticsRange.key === '24h') {
+        return [{
+          label: '24H',
+          pageViews: analytics?.totals?.pageViews || 0,
+          searches: (analytics?.totals?.manualSearches || 0) + (analytics?.totals?.deckSearches || 0),
+          scans: analytics?.totals?.scans || 0,
+          activeUsers: analytics?.totals?.activeToday || 0,
+        }]
+      }
       return source.map(day => ({
         label: new Date(day.day).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }),
         pageViews: day.pageViews,
@@ -210,6 +219,16 @@ export default function AdminPage() {
         scans: day.scans,
         activeUsers: day.activeUsers,
       }))
+    }
+
+    if (chartGranularity === 'yearly') {
+      return [{
+        label: 'Anno',
+        pageViews: analytics?.totals?.pageViews || 0,
+        searches: (analytics?.totals?.manualSearches || 0) + (analytics?.totals?.deckSearches || 0),
+        scans: analytics?.totals?.scans || 0,
+        activeUsers: Math.max(...source.map(day => day.activeUsers), analytics?.totals?.activeToday || 0),
+      }]
     }
 
     const grouped = new Map<string, {
@@ -222,10 +241,10 @@ export default function AdminPage() {
 
     source.forEach(day => {
       const date = new Date(day.day)
-      const key = selectedAnalyticsRange.key === 'year'
+      const key = chartGranularity === 'monthly'
         ? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
         : `W${Math.ceil(date.getUTCDate() / 7)}-${date.getUTCFullYear()}-${date.getUTCMonth()}`
-      const label = selectedAnalyticsRange.key === 'year'
+      const label = chartGranularity === 'monthly'
         ? date.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
         : `Sett. ${Math.ceil(date.getUTCDate() / 7)} ${date.toLocaleDateString('it-IT', { month: 'short' })}`
       const current = grouped.get(key) || { label, pageViews: 0, searches: 0, scans: 0, activeUsers: 0 }
@@ -237,7 +256,32 @@ export default function AdminPage() {
     })
 
     return [...grouped.values()]
-  }, [analytics, selectedAnalyticsRange.key])
+  }, [analytics, selectedAnalyticsRange.key, chartGranularity])
+
+  const chartMaxValue = Math.max(
+    ...analyticsChartSeries.map(item => Math.max(item.pageViews, item.searches, item.scans, item.activeUsers)),
+    1
+  )
+
+  const chartWidth = 720
+  const chartHeight = 280
+  const chartPadding = { top: 18, right: 18, bottom: 44, left: 46 }
+  const chartInnerWidth = chartWidth - chartPadding.left - chartPadding.right
+  const chartInnerHeight = chartHeight - chartPadding.top - chartPadding.bottom
+  const chartX = (index: number) =>
+    chartPadding.left + (analyticsChartSeries.length <= 1 ? chartInnerWidth / 2 : (index / (analyticsChartSeries.length - 1)) * chartInnerWidth)
+  const chartY = (value: number) =>
+    chartPadding.top + chartInnerHeight - (Number(value || 0) / chartMaxValue) * chartInnerHeight
+  const chartPath = (key: 'pageViews' | 'searches' | 'scans' | 'activeUsers') =>
+    analyticsChartSeries
+      .map((item, index) => `${index === 0 ? 'M' : 'L'} ${chartX(index).toFixed(1)} ${chartY(Number(item[key] || 0)).toFixed(1)}`)
+      .join(' ')
+  const chartLines = [
+    { key: 'pageViews' as const, label: 'Pagine', color: '#67e8f9' },
+    { key: 'searches' as const, label: 'Ricerche', color: '#6ee7b7' },
+    { key: 'scans' as const, label: 'Scan', color: '#fbbf24' },
+    { key: 'activeUsers' as const, label: 'Utenti', color: '#fda4af' },
+  ]
 
   const fetchAnalytics = async (rangeKey: AnalyticsRangeKey = analyticsRange) => {
     const token = await getAccessToken()
@@ -802,38 +846,74 @@ export default function AdminPage() {
 
               <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                 <section className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
-                  <div className="flex items-center gap-2">
-                    <Activity size={16} className="text-cyan-100" />
-                    <h3 className="text-sm font-black text-white">Andamento {selectedAnalyticsRange.description}</h3>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Activity size={16} className="text-cyan-100" />
+                        <h3 className="text-sm font-black text-white">Grafico utilizzo</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">Periodo: {selectedAnalyticsRange.description}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {chartGranularities.map(item => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setChartGranularity(item.key)}
+                          className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition active:scale-95 ${
+                            chartGranularity === item.key
+                              ? 'border-cyan-200 bg-cyan-300 text-slate-950'
+                              : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-100'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-4 space-y-3">
-                    {analyticsChartSeries.map((day, index) => {
-                      const maxValue = Math.max(...analyticsChartSeries.map(item => Math.max(item.pageViews, item.searches, item.scans, item.activeUsers)), 1)
-                      return (
-                        <div key={`${day.label}-${index}`} className="grid gap-2 sm:grid-cols-[92px_1fr] sm:items-center">
-                          <p className="text-xs font-bold text-slate-400">{day.label}</p>
-                          <div className="space-y-1">
-                            {[
-                              ['Pagine', day.pageViews, 'bg-cyan-300'],
-                              ['Ricerche', day.searches, 'bg-emerald-300'],
-                              ['Scan', day.scans, 'bg-amber-300'],
-                              ['Utenti', day.activeUsers, 'bg-rose-300'],
-                            ].map(([label, value, color]) => (
-                              <div key={label} className="grid grid-cols-[72px_1fr_38px] items-center gap-2 text-[10px]">
-                                <span className="font-bold text-slate-500">{label}</span>
-                                <span className="h-2 overflow-hidden rounded-full bg-slate-800">
-                                  <span
-                                    className={`block h-full rounded-full ${color}`}
-                                    style={{ width: `${Math.max(4, (Number(value) / maxValue) * 100)}%` }}
-                                  />
-                                </span>
-                                <span className="text-right font-black text-slate-300">{value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
+                  <div className="mt-4 overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/50 p-3">
+                    <div className="mb-3 flex flex-wrap gap-3">
+                      {chartLines.map(line => (
+                        <span key={line.key} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: line.color }} />
+                          {line.label}
+                        </span>
+                      ))}
+                    </div>
+                    {analyticsChartSeries.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="min-w-[620px] w-full">
+                          {[0, 0.25, 0.5, 0.75, 1].map(step => {
+                            const y = chartPadding.top + chartInnerHeight - step * chartInnerHeight
+                            const value = Math.round(chartMaxValue * step)
+                            return (
+                              <g key={step}>
+                                <line x1={chartPadding.left} y1={y} x2={chartWidth - chartPadding.right} y2={y} stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+                                <text x={chartPadding.left - 10} y={y + 4} textAnchor="end" className="fill-slate-500 text-[10px] font-bold">{value}</text>
+                              </g>
+                            )
+                          })}
+                          <line x1={chartPadding.left} y1={chartPadding.top} x2={chartPadding.left} y2={chartHeight - chartPadding.bottom} stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" />
+                          <line x1={chartPadding.left} y1={chartHeight - chartPadding.bottom} x2={chartWidth - chartPadding.right} y2={chartHeight - chartPadding.bottom} stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" />
+                          {analyticsChartSeries.map((item, index) => (
+                            <g key={`${item.label}-${index}`}>
+                              <line x1={chartX(index)} y1={chartPadding.top} x2={chartX(index)} y2={chartHeight - chartPadding.bottom} stroke="rgba(148,163,184,0.08)" strokeWidth="1" />
+                              <text x={chartX(index)} y={chartHeight - 16} textAnchor="middle" className="fill-slate-400 text-[10px] font-bold">{item.label}</text>
+                            </g>
+                          ))}
+                          {chartLines.map(line => (
+                            <g key={line.key}>
+                              <path d={chartPath(line.key)} fill="none" stroke={line.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                              {analyticsChartSeries.map((item, index) => (
+                                <circle key={`${line.key}-${index}`} cx={chartX(index)} cy={chartY(Number(item[line.key] || 0))} r="4" fill={line.color}>
+                                  <title>{`${line.label} - ${item.label}: ${item[line.key]}`}</title>
+                                </circle>
+                              ))}
+                            </g>
+                          ))}
+                        </svg>
+                      </div>
+                    ) : null}
                     {analyticsChartSeries.length === 0 ? (
                       <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Nessun evento ancora registrato.</p>
                     ) : null}
