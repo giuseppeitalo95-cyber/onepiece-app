@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -95,6 +95,15 @@ type AdminAnalytics = {
   }>
 }
 
+const analyticsRanges = [
+  { key: '24h', label: '24H', description: 'ultime 24 ore', days: 1 },
+  { key: 'week', label: 'Settimana', description: 'ultima settimana', days: 7 },
+  { key: 'month', label: 'Mese', description: 'ultimo mese', days: 30 },
+  { key: 'year', label: 'Anno', description: 'ultimo anno', days: 365 },
+] as const
+
+type AnalyticsRangeKey = typeof analyticsRanges[number]['key']
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -109,6 +118,7 @@ export default function AdminPage() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null)
+  const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRangeKey>('week')
 
 
   const refreshData = async () => {
@@ -177,12 +187,65 @@ export default function AdminPage() {
     }
   }
 
-  const fetchAnalytics = async () => {
+  const selectedAnalyticsRange = analyticsRanges.find(range => range.key === analyticsRange) || analyticsRanges[1]
+  const analyticsChartSeries = useMemo(() => {
+    const source = analytics?.daySeries || []
+    if (source.length === 0) return []
+
+    if (selectedAnalyticsRange.key === '24h') {
+      return [{
+        label: '24H',
+        pageViews: analytics?.totals?.pageViews || 0,
+        searches: (analytics?.totals?.manualSearches || 0) + (analytics?.totals?.deckSearches || 0),
+        scans: analytics?.totals?.scans || 0,
+        activeUsers: analytics?.totals?.activeToday || 0,
+      }]
+    }
+
+    if (selectedAnalyticsRange.key === 'week') {
+      return source.map(day => ({
+        label: new Date(day.day).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }),
+        pageViews: day.pageViews,
+        searches: day.searches,
+        scans: day.scans,
+        activeUsers: day.activeUsers,
+      }))
+    }
+
+    const grouped = new Map<string, {
+      label: string
+      pageViews: number
+      searches: number
+      scans: number
+      activeUsers: number
+    }>()
+
+    source.forEach(day => {
+      const date = new Date(day.day)
+      const key = selectedAnalyticsRange.key === 'year'
+        ? `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+        : `W${Math.ceil(date.getUTCDate() / 7)}-${date.getUTCFullYear()}-${date.getUTCMonth()}`
+      const label = selectedAnalyticsRange.key === 'year'
+        ? date.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })
+        : `Sett. ${Math.ceil(date.getUTCDate() / 7)} ${date.toLocaleDateString('it-IT', { month: 'short' })}`
+      const current = grouped.get(key) || { label, pageViews: 0, searches: 0, scans: 0, activeUsers: 0 }
+      current.pageViews += day.pageViews
+      current.searches += day.searches
+      current.scans += day.scans
+      current.activeUsers = Math.max(current.activeUsers, day.activeUsers)
+      grouped.set(key, current)
+    })
+
+    return [...grouped.values()]
+  }, [analytics, selectedAnalyticsRange.key])
+
+  const fetchAnalytics = async (rangeKey: AnalyticsRangeKey = analyticsRange) => {
     const token = await getAccessToken()
     if (!token) return
 
+    const range = analyticsRanges.find(item => item.key === rangeKey) || analyticsRanges[1]
     setAnalyticsLoading(true)
-    const res = await fetch('/api/admin/analytics?days=14', {
+    const res = await fetch(`/api/admin/analytics?days=${range.days}`, {
       headers: { Authorization: `Bearer ${token}` }
     }).catch(() => null)
     const data = await res?.json().catch(() => null)
@@ -202,6 +265,11 @@ export default function AdminPage() {
     const nextOpen = !analyticsOpen
     setAnalyticsOpen(nextOpen)
     if (nextOpen && !analytics) await fetchAnalytics()
+  }
+
+  const changeAnalyticsRange = async (rangeKey: AnalyticsRangeKey) => {
+    setAnalyticsRange(rangeKey)
+    await fetchAnalytics(rangeKey)
   }
 
   const fetchProfiles = async () => {
@@ -673,7 +741,7 @@ export default function AdminPage() {
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Statistiche</p>
               <h2 className="mt-2 text-xl font-semibold text-white">Abbonati e utilizzo sito</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Abbonamenti, VIP, free, pagine usate, ricerche manuali e scan degli ultimi 14 giorni.
+                Abbonamenti, VIP, free, pagine usate, ricerche manuali e scan per periodo selezionato.
               </p>
             </div>
             <button
@@ -688,6 +756,25 @@ export default function AdminPage() {
 
           {analyticsOpen ? (
             <div className="mt-5 space-y-5">
+              <div className="flex flex-wrap gap-2">
+                {analyticsRanges.map(range => (
+                  <button
+                    key={range.key}
+                    type="button"
+                    onClick={() => void changeAnalyticsRange(range.key)}
+                    disabled={analyticsLoading}
+                    className={`rounded-2xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition active:scale-95 disabled:opacity-60 ${
+                      analyticsRange === range.key
+                        ? 'border-cyan-200 bg-cyan-300 text-slate-950'
+                        : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-cyan-300/40'
+                    }`}
+                    title={range.description}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+
               {analytics?.analyticsReady === false ? (
                 <div className="rounded-3xl border border-amber-300/25 bg-amber-300/10 p-4 text-sm text-amber-100">
                   Tracking non ancora attivo su Supabase: esegui `analytics.sql`. I dati abbonati e scan possono comunque funzionare, ma pagine e ricerche partono solo dopo la creazione della tabella.
@@ -717,14 +804,14 @@ export default function AdminPage() {
                 <section className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
                   <div className="flex items-center gap-2">
                     <Activity size={16} className="text-cyan-100" />
-                    <h3 className="text-sm font-black text-white">Andamento giornaliero</h3>
+                    <h3 className="text-sm font-black text-white">Andamento {selectedAnalyticsRange.description}</h3>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {(analytics?.daySeries || []).map(day => {
-                      const maxValue = Math.max(...(analytics?.daySeries || []).map(item => Math.max(item.pageViews, item.searches, item.scans, item.activeUsers)), 1)
+                    {analyticsChartSeries.map((day, index) => {
+                      const maxValue = Math.max(...analyticsChartSeries.map(item => Math.max(item.pageViews, item.searches, item.scans, item.activeUsers)), 1)
                       return (
-                        <div key={day.day} className="grid gap-2 sm:grid-cols-[92px_1fr] sm:items-center">
-                          <p className="text-xs font-bold text-slate-400">{new Date(day.day).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}</p>
+                        <div key={`${day.label}-${index}`} className="grid gap-2 sm:grid-cols-[92px_1fr] sm:items-center">
+                          <p className="text-xs font-bold text-slate-400">{day.label}</p>
                           <div className="space-y-1">
                             {[
                               ['Pagine', day.pageViews, 'bg-cyan-300'],
@@ -747,7 +834,7 @@ export default function AdminPage() {
                         </div>
                       )
                     })}
-                    {(analytics?.daySeries || []).length === 0 ? (
+                    {analyticsChartSeries.length === 0 ? (
                       <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Nessun evento ancora registrato.</p>
                     ) : null}
                   </div>

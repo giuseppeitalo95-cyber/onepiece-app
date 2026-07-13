@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     return Response.json({ ok: false, error: 'Forbidden' }, { status: 403 })
   }
 
-  const days = Math.max(1, Math.min(90, Number(new URL(request.url).searchParams.get('days') || 14)))
+  const days = Math.max(1, Math.min(365, Number(new URL(request.url).searchParams.get('days') || 7)))
   const since = sinceDate(days)
   const sinceIso = since.toISOString()
   const today = dayKey(new Date())
