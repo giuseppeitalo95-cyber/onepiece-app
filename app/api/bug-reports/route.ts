@@ -13,6 +13,14 @@ type PushSubscriptionRow = {
   subscription: webPush.PushSubscription
 }
 
+type PushNotifyResult = {
+  configured: boolean
+  adminIds: string[]
+  subscriptions: number
+  sent: number
+  failures: string[]
+}
+
 const db = () => {
   if (!SERVICE_ROLE_KEY) return null
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -44,9 +52,10 @@ const configureWebPush = () => {
   return true
 }
 
-const notifyAdmins = async (title: string, body: string) => {
+const notifyAdmins = async (title: string, body: string): Promise<PushNotifyResult> => {
   const client = db()
-  if (!client || !configureWebPush()) return
+  const empty = { configured: false, adminIds: [], subscriptions: 0, sent: 0, failures: [] }
+  if (!client || !configureWebPush()) return empty
 
   const adminIds = new Set<string>([ADMIN_ACCOUNT.id])
 
@@ -63,7 +72,7 @@ const notifyAdmins = async (title: string, body: string) => {
     const { data: profileAdmins } = await client
       .from('profiles')
       .select('id, username')
-      .ilike('username', ADMIN_ACCOUNT.username)
+      .or(`id.eq.${ADMIN_ACCOUNT.id},username.ilike.${ADMIN_ACCOUNT.username}`)
     ;(profileAdmins || []).forEach(profile => {
       if (profile.id) adminIds.add(profile.id)
     })
@@ -77,16 +86,28 @@ const notifyAdmins = async (title: string, body: string) => {
     .in('user_id', [...adminIds])
 
   const payload = JSON.stringify({ title, body, url: '/admin' })
+  let sent = 0
+  const failures: string[] = []
   await Promise.all(((subscriptions || []) as PushSubscriptionRow[]).map(async item => {
     try {
       await webPush.sendNotification(item.subscription, payload)
+      sent += 1
     } catch (error: any) {
       const statusCode = Number(error?.statusCode || 0)
+      failures.push(String(statusCode || error?.message || 'send_failed'))
       if (statusCode === 404 || statusCode === 410) {
         await client.from('push_subscriptions').delete().eq('id', item.id)
       }
     }
   }))
+
+  return {
+    configured: true,
+    adminIds: [...adminIds],
+    subscriptions: subscriptions?.length || 0,
+    sent,
+    failures
+  }
 }
 
 export async function GET(request: Request) {
@@ -139,12 +160,12 @@ export async function POST(request: Request) {
 
   if (insertError) return Response.json({ ok: false, error: insertError.message }, { status: 500 })
 
-  await notifyAdmins(
+  const push = await notifyAdmins(
     'Nuova segnalazione bug',
     `${profile?.username || user.email || 'Utente'}: ${title || message.slice(0, 80)}`
   )
 
-  return Response.json({ ok: true, id: data?.id })
+  return Response.json({ ok: true, id: data?.id, push })
 }
 
 export async function PATCH(request: Request) {
