@@ -1264,6 +1264,7 @@ export default function ScanPage() {
 
     try {
       await saveCardToCollection(savedCard)
+      await confirmDailyScanUsage()
       void refreshProgressAfterCollectionChange()
 
       setScannedCards(prev => [savedCard, ...prev])
@@ -1587,6 +1588,27 @@ export default function ScanPage() {
       setCameraActive(false)
       setCameraReady(false)
       setCameraError('Funzionalità non disponibile su versione Desktop, utilizzare un dispositivo mobile. ')
+    }
+  }
+
+  const confirmDailyScanUsage = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const response = await fetch('/api/cards/ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : ''
+        },
+        body: JSON.stringify({ confirm: true })
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        console.error('Daily scan confirmation error:', data?.error || response.status)
+      }
+    } catch (error) {
+      console.error('Daily scan confirmation error:', error)
     }
   }
 

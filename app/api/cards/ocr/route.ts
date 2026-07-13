@@ -258,6 +258,60 @@ async function reserveDailyUserScan(req: NextRequest) {
   }
 }
 
+async function checkDailyUserScan(req: NextRequest) {
+  if (!adminSupabase) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
+    }
+  }
+
+  const access = await resolveScanAccess(req)
+  if (access.error || !access.userId || !access.tier) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: access.error || 'Sessione utente non valida'
+    }
+  }
+
+  if (access.tier !== 'free') {
+    return {
+      allowed: true,
+      used: 0,
+      limit: Number.POSITIVE_INFINITY,
+      error: null
+    }
+  }
+
+  const { data, error } = await adminSupabase
+    .from('user_scan_usage_daily')
+    .select('scan_count')
+    .eq('user_id', access.userId)
+    .eq('day', currentDayKey())
+    .maybeSingle()
+
+  if (error) {
+    return {
+      allowed: false,
+      used: 0,
+      limit: FREE_DAILY_SCAN_LIMIT,
+      error: `${error.message}. Esegui premium.sql su Supabase.`
+    }
+  }
+
+  const used = Number(data?.scan_count || 0)
+  return {
+    allowed: used < FREE_DAILY_SCAN_LIMIT,
+    used,
+    limit: FREE_DAILY_SCAN_LIMIT,
+    error: null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -275,6 +329,20 @@ export async function POST(req: NextRequest) {
       return Response.json({ ready: true })
     }
 
+    if (body?.confirm === true) {
+      const dailyUsage = await reserveDailyUserScan(req)
+      return Response.json(
+        {
+          confirmed: dailyUsage.allowed,
+          error: dailyUsage.error,
+          dailyScanLimitReached: !dailyUsage.allowed && !dailyUsage.error,
+          dailyScansUsed: dailyUsage.used,
+          dailyScansLimit: dailyUsage.limit
+        },
+        { status: dailyUsage.allowed ? 200 : dailyUsage.error ? 503 : 429 }
+      )
+    }
+
     const rawImages = Array.isArray(body?.images)
       ? body.images
       : [body?.image || body?.dataUrl || body?.base64Image]
@@ -287,7 +355,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ text: '', error: 'Missing image' }, { status: 400 })
     }
 
-    const dailyUsage = await reserveDailyUserScan(req)
+    const dailyUsage = await checkDailyUserScan(req)
     if (!dailyUsage.allowed) {
       return Response.json(
         {
