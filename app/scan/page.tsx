@@ -66,6 +66,7 @@ export default function ScanPage() {
   const [recognitionVariantsLoading, setRecognitionVariantsLoading] = useState(false)
   const [ocrReady] = useState(true)
   const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
+  const [cameraDisplayZoom, setCameraDisplayZoom] = useState(1.1)
   const [scanSessionActive, setScanSessionActive] = useState(false)
   const [showSummary, setShowSummary] = useState(false)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null)
@@ -89,6 +90,19 @@ export default function ScanPage() {
   const manualSearchRunRef = useRef(0)
 
   const scanCanvasSize = { width: 1080, height: 1440 }
+
+  useEffect(() => {
+    const userAgent = navigator.userAgent || ''
+    if (/Android/i.test(userAgent)) {
+      setCameraDisplayZoom(2.35)
+      return
+    }
+    if (/iPhone|iPad|iPod/i.test(userAgent)) {
+      setCameraDisplayZoom(1.12)
+      return
+    }
+    setCameraDisplayZoom(1.08)
+  }, [])
 
   useEffect(() => {
     const checkUser = async () => {
@@ -202,7 +216,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition) {
         void pulseCameraFocus()
       }
-    }, 3500)
+    }, 2600)
 
     return () => window.clearInterval(focusTimer)
   }, [cameraActive, cameraReady, scanSessionActive, showSummary, pendingRecognition])
@@ -230,8 +244,12 @@ export default function ScanPage() {
       if (capabilities.whiteBalanceMode?.includes('continuous')) {
         advanced.push({ whiteBalanceMode: 'continuous' })
       }
-      if (advanced.length > 0) {
-        await track.applyConstraints({ advanced } as unknown as MediaTrackConstraints)
+      for (const constraint of advanced) {
+        try {
+          await track.applyConstraints({ advanced: [constraint] } as unknown as MediaTrackConstraints)
+        } catch {
+          // Mantiene gli altri controlli supportati anche se uno viene rifiutato.
+        }
       }
     } catch {
       // Alcuni browser Android espongono le capability ma rifiutano i constraint.
@@ -240,7 +258,7 @@ export default function ScanPage() {
 
   const pulseCameraFocus = async () => {
     const now = Date.now()
-    if (now - lastFocusPulseRef.current < 1600) return
+    if (now - lastFocusPulseRef.current < 900) return
     lastFocusPulseRef.current = now
 
     const [track] = streamRef.current?.getVideoTracks() || []
@@ -251,28 +269,30 @@ export default function ScanPage() {
         focusMode?: string[]
       }
 
+      const applyFocusMode = async (focusMode: string) => {
+        try {
+          await track.applyConstraints({
+            advanced: [
+              { focusMode, pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
+            ]
+          } as unknown as MediaTrackConstraints)
+        } catch {
+          await track.applyConstraints({
+            advanced: [{ focusMode }]
+          } as unknown as MediaTrackConstraints)
+        }
+      }
+
       if (capabilities.focusMode?.includes('single-shot')) {
-        await track.applyConstraints({
-          advanced: [
-            { focusMode: 'single-shot', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
-          ]
-        } as unknown as MediaTrackConstraints)
+        await applyFocusMode('single-shot')
 
         if (capabilities.focusMode?.includes('continuous')) {
           window.setTimeout(() => {
-            track.applyConstraints({
-              advanced: [
-                { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
-              ]
-            } as unknown as MediaTrackConstraints).catch(() => undefined)
-          }, 550)
+            void applyFocusMode('continuous').catch(() => undefined)
+          }, 400)
         }
       } else if (capabilities.focusMode?.includes('continuous')) {
-        await track.applyConstraints({
-          advanced: [
-            { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] }
-          ]
-        } as unknown as MediaTrackConstraints)
+        await applyFocusMode('continuous')
       }
     } catch {
       // Android/WebView spesso ignora il fuoco manuale: in quel caso lasciamo continuous.
@@ -299,7 +319,8 @@ export default function ScanPage() {
         width: videoRef.current.videoWidth || 1,
         height: videoRef.current.videoHeight || 1
       })
-      window.setTimeout(() => void pulseCameraFocus(), 350)
+      window.setTimeout(() => void pulseCameraFocus(), 160)
+      window.setTimeout(() => void pulseCameraFocus(), 1250)
     } catch {
       videoRef.current.onloadedmetadata = () => {
         setVideoSize({
@@ -307,7 +328,8 @@ export default function ScanPage() {
           height: videoRef.current?.videoHeight || 1
         })
         videoRef.current?.play().catch(() => undefined)
-        window.setTimeout(() => void pulseCameraFocus(), 350)
+        window.setTimeout(() => void pulseCameraFocus(), 160)
+        window.setTimeout(() => void pulseCameraFocus(), 1250)
       }
     }
   }
@@ -504,7 +526,6 @@ export default function ScanPage() {
     lastConfirmedSignatureRef.current = null
     ocrMissStreakRef.current = 0
     recognitionStreakRef.current = null
-    window.setTimeout(() => void pulseCameraFocus(), 120)
   }
 
   const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
@@ -896,6 +917,31 @@ export default function ScanPage() {
     return signature
   }
 
+  const getVideoSourceRect = (videoWidth: number, videoHeight: number, targetAspect: number) => {
+    const sourceAspect = videoWidth / videoHeight
+    let x = 0
+    let y = 0
+    let width = videoWidth
+    let height = videoHeight
+
+    if (sourceAspect > targetAspect) {
+      width = videoHeight * targetAspect
+      x = (videoWidth - width) / 2
+    } else {
+      height = videoWidth / targetAspect
+      y = (videoHeight - height) / 2
+    }
+
+    const zoomedWidth = width / cameraDisplayZoom
+    const zoomedHeight = height / cameraDisplayZoom
+    return {
+      x: x + (width - zoomedWidth) / 2,
+      y: y + (height - zoomedHeight) / 2,
+      width: zoomedWidth,
+      height: zoomedHeight
+    }
+  }
+
   const frameSignatureFromVideo = () => {
     const video = videoRef.current
     if (!video || video.videoWidth === 0 || video.videoHeight === 0) return null
@@ -906,22 +952,13 @@ export default function ScanPage() {
     const ctx = signatureCanvas.getContext('2d')
     if (!ctx) return null
 
-    const targetAspect = signatureCanvas.width / signatureCanvas.height
-    const sourceAspect = video.videoWidth / video.videoHeight
-    let sourceX = 0
-    let sourceY = 0
-    let sourceWidth = video.videoWidth
-    let sourceHeight = video.videoHeight
+    const source = getVideoSourceRect(
+      video.videoWidth,
+      video.videoHeight,
+      signatureCanvas.width / signatureCanvas.height
+    )
 
-    if (sourceAspect > targetAspect) {
-      sourceWidth = video.videoHeight * targetAspect
-      sourceX = (video.videoWidth - sourceWidth) / 2
-    } else {
-      sourceHeight = video.videoWidth / targetAspect
-      sourceY = (video.videoHeight - sourceHeight) / 2
-    }
-
-    ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, signatureCanvas.width, signatureCanvas.height)
+    ctx.drawImage(video, source.x, source.y, source.width, source.height, 0, 0, signatureCanvas.width, signatureCanvas.height)
     return frameSignatureFromCanvas(signatureCanvas, {
       x: signatureCanvas.width * 0.08,
       y: signatureCanvas.height * 0.08,
@@ -1321,27 +1358,18 @@ export default function ScanPage() {
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
 
-    const targetAspect = canvas.width / canvas.height
-    const sourceAspect = video.videoWidth / video.videoHeight
-    let sourceX = 0
-    let sourceY = 0
-    let sourceWidth = video.videoWidth
-    let sourceHeight = video.videoHeight
-
-    if (sourceAspect > targetAspect) {
-      sourceWidth = video.videoHeight * targetAspect
-      sourceX = (video.videoWidth - sourceWidth) / 2
-    } else {
-      sourceHeight = video.videoWidth / targetAspect
-      sourceY = (video.videoHeight - sourceHeight) / 2
-    }
+    const source = getVideoSourceRect(
+      video.videoWidth,
+      video.videoHeight,
+      canvas.width / canvas.height
+    )
 
     ctx.drawImage(
       video,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
       0,
       0,
       canvas.width,
@@ -1894,6 +1922,11 @@ export default function ScanPage() {
                     playsInline
                     muted
                     className={`h-full w-full object-cover ${cameraActive && cameraReady ? 'opacity-100' : 'opacity-0'}`}
+                    style={{
+                      transform: `scale(${cameraDisplayZoom})`,
+                      transformOrigin: 'center',
+                      willChange: 'transform'
+                    }}
                   />
                   <canvas ref={processingCanvasRef} className="hidden" />
 
