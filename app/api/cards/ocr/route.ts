@@ -247,6 +247,14 @@ export async function POST(req: NextRequest) {
               {
                 type: 'DOCUMENT_TEXT_DETECTION',
                 maxResults: 50
+              },
+              {
+                type: 'TEXT_DETECTION',
+                maxResults: 50
+              },
+              {
+                type: 'WEB_DETECTION',
+                maxResults: 10
               }
             ],
             imageContext: {

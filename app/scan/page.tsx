@@ -1339,8 +1339,19 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, imageMatchCanvas.width, imageMatchCanvas.height)
     }
 
+    const fullCardOcrCanvas = document.createElement('canvas')
+    fullCardOcrCanvas.width = 820
+    fullCardOcrCanvas.height = 1148
+    const fullCardOcrCtx = fullCardOcrCanvas.getContext('2d')
+    if (fullCardOcrCtx) {
+      fullCardOcrCtx.imageSmoothingEnabled = true
+      fullCardOcrCtx.imageSmoothingQuality = 'high'
+      fullCardOcrCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardOcrCanvas.width, fullCardOcrCanvas.height)
+    }
+
     const ocrText = await runOcrOnCanvases([
-      fastOcrCanvas
+      fastOcrCanvas,
+      fullCardOcrCanvas
     ])
     if (!isScanStillActive(generation)) return
     if (!isFrameStillCurrent(frameSignature)) {
