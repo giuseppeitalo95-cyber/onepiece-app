@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {
@@ -29,6 +29,7 @@ export default function Topbar() {
   const [bugStatus, setBugStatus] = useState('')
   const [bugSending, setBugSending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const bugUnreadRef = useRef<number | null>(null)
   const [progress, setProgress] = useState<ProgressSummary>(
     emptyProgressSummary()
   )
@@ -46,6 +47,31 @@ export default function Topbar() {
     if (!pathname || pathname === '/') return
     void trackAnalyticsEvent('page_view', {}, pathname)
   }, [pathname])
+
+  const showBrowserNotification = async (title: string, body: string, url = '/admin') => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'granted') return
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready
+        await registration.showNotification(title, {
+          body,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          data: { url }
+        })
+        return
+      }
+
+      new Notification(title, {
+        body,
+        icon: '/icon-192.png'
+      })
+    } catch {
+      // Remote push remains the fallback when local display is blocked.
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -103,7 +129,11 @@ export default function Topbar() {
       const nextTier = getPremiumTier(profileData, session.user)
       setPremiumTier(nextTier)
       await loadChatUnread(session.user.id)
-      if (nextTier === 'admin') await loadBugUnread()
+      if (nextTier === 'admin') {
+        await loadBugUnread()
+      } else {
+        bugUnreadRef.current = null
+      }
       setLoading(false)
     }
 
@@ -135,7 +165,20 @@ export default function Topbar() {
       }).catch(() => null)
       const data = await res?.json().catch(() => null)
       if (!cancelled && data?.ok && Array.isArray(data.reports)) {
-        setBugUnread(data.reports.filter((report: any) => report.status !== 'resolved').length)
+        const unresolvedReports = data.reports.filter((report: any) => report.status !== 'resolved')
+        const nextCount = unresolvedReports.length
+        const previousCount = bugUnreadRef.current
+        setBugUnread(nextCount)
+        bugUnreadRef.current = nextCount
+
+        if (previousCount !== null && nextCount > previousCount) {
+          const latest = unresolvedReports[0]
+          void showBrowserNotification(
+            'Nuova segnalazione bug',
+            `${latest?.reporter_username || latest?.reporter_email || 'Utente'}: ${latest?.title || latest?.message || 'Nuovo bug'}`,
+            '/admin'
+          )
+        }
       }
     }
 
@@ -147,10 +190,24 @@ export default function Topbar() {
         await Promise.all([
           loadChatUnread(session.user.id),
           touchLastSeen(session.user.id),
-          loadBugUnread(),
         ])
       }
     }, 30000)
+
+    const bugTimer = window.setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('username, is_premium, premium_until, is_vip')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (getPremiumTier(profileData as any, session.user) === 'admin') {
+        await loadBugUnread()
+      }
+    }, 5000)
 
     const onChatChanged = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -169,6 +226,7 @@ export default function Topbar() {
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.clearInterval(bugTimer)
       window.removeEventListener('opv:chat-unread-changed', onChatChanged)
       navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
     }
@@ -176,31 +234,11 @@ export default function Topbar() {
 
   const showLocalBugNotification = async (title: string, message: string) => {
     if (premiumTier !== 'admin') return
-    if (typeof window === 'undefined' || !('Notification' in window)) return
-    if (Notification.permission !== 'granted') return
-
-    const notificationTitle = 'Nuova segnalazione bug'
-    const notificationBody = `${username || 'Admin'}: ${title || message.slice(0, 80)}`
-
-    try {
-      if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready
-        await registration.showNotification(notificationTitle, {
-          body: notificationBody,
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          data: { url: '/admin' }
-        })
-        return
-      }
-
-      new Notification(notificationTitle, {
-        body: notificationBody,
-        icon: '/icon-192.png'
-      })
-    } catch {
-      // Remote push still handles the notification when local display is blocked.
-    }
+    await showBrowserNotification(
+      'Nuova segnalazione bug',
+      `${username || 'Admin'}: ${title || message.slice(0, 80)}`,
+      '/admin'
+    )
   }
 
   const submitBugReport = async () => {
