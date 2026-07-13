@@ -63,15 +63,31 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Chat bloccata da uno dei due utenti.' }, { status: 403 })
   }
 
-  const { data: inserted, error: insertError } = await client
+  let { data: inserted, error: insertError } = await client
     .from('chat_messages')
     .insert({
+      post_id: postId,
       sender_id: user.id,
       receiver_id: receiverId,
       body: message
     })
-    .select('id, sender_id, receiver_id, body, read_at, created_at')
+    .select('id, post_id, sender_id, receiver_id, body, read_at, created_at')
     .single()
+
+  if (insertError && insertError.message.toLowerCase().includes('post_id')) {
+    const fallback = await client
+      .from('chat_messages')
+      .insert({
+        sender_id: user.id,
+        receiver_id: receiverId,
+        body: message
+      })
+      .select('id, sender_id, receiver_id, body, read_at, created_at')
+      .single()
+
+    inserted = fallback.data ? { ...fallback.data, post_id: null } : null
+    insertError = fallback.error
+  }
 
   if (insertError) return Response.json({ ok: false, error: insertError.message }, { status: 500 })
   return Response.json({ ok: true, message: inserted, post })

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Send, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Send, ShieldCheck, X } from 'lucide-react'
+import CardImage from '@/app/components/CardImage'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
@@ -21,6 +22,7 @@ type ProfileItem = {
 
 type ChatMessage = {
   id: string
+  post_id: string | null
   sender_id: string
   receiver_id: string
   body: string
@@ -35,6 +37,7 @@ type ChatBlock = {
 
 type BoardPostSummary = {
   id: string
+  card_id: string | null
   user_id: string
   title: string
   message: string | null
@@ -46,6 +49,7 @@ type BoardPostSummary = {
 
 const cutoffIso = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 const badgeLabel = (value: number) => value > 9 ? '9+' : String(value)
+const legacyPostKey = 'legacy'
 
 const timeLabel = (value: string) => {
   const date = new Date(value)
@@ -63,6 +67,7 @@ export default function ChatPage() {
   const [selectedFriendId, setSelectedFriendId] = useState('')
   const [activePostId, setActivePostId] = useState('')
   const [activePost, setActivePost] = useState<BoardPostSummary | null>(null)
+  const [selectedPostCard, setSelectedPostCard] = useState<BoardPostSummary | null>(null)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -114,13 +119,28 @@ export default function ChatPage() {
   }
 
   const loadMessages = async (uid: string) => {
-    const { data, error } = await supabase
+    const query = supabase
       .from('chat_messages')
-      .select('id, sender_id, receiver_id, body, read_at, created_at')
+      .select('id, post_id, sender_id, receiver_id, body, read_at, created_at')
       .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
       .gte('created_at', cutoffIso())
       .order('created_at', { ascending: true })
       .limit(300)
+
+    let { data, error } = await query
+
+    if (error && error.message.toLowerCase().includes('post_id')) {
+      const fallback = await supabase
+        .from('chat_messages')
+        .select('id, sender_id, receiver_id, body, read_at, created_at')
+        .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+        .gte('created_at', cutoffIso())
+        .order('created_at', { ascending: true })
+        .limit(300)
+
+      data = (fallback.data || []).map(message => ({ ...message, post_id: null }))
+      error = fallback.error
+    }
 
     if (error) {
       setChatReady(false)
@@ -159,7 +179,7 @@ export default function ChatPage() {
 
     const { data, error } = await supabase
       .from('board_posts')
-      .select('id, user_id, title, message, card_name, card_code, card_image_url, created_at')
+      .select('id, card_id, user_id, title, message, card_name, card_code, card_image_url, created_at')
       .eq('id', postId)
       .maybeSingle()
 
@@ -226,11 +246,22 @@ export default function ChatPage() {
       )
       if (initialFriendId) contactIds.push(initialFriendId)
       const loadedContacts = await loadContacts(contactIds)
-      if (initialPostId) await loadPostSummary(initialPostId)
-
       const safeInitial = loadedContacts.some(friend => friend.id === initialFriendId)
         ? initialFriendId
         : ''
+      const lastInitialMessage = safeInitial
+        ? [...loadedMessages].reverse().find(message =>
+          (message.sender_id === safeInitial || message.receiver_id === safeInitial) && message.post_id
+        )
+        : null
+      const resolvedPostId = initialPostId || lastInitialMessage?.post_id || ''
+      if (resolvedPostId) {
+        setActivePostId(resolvedPostId)
+        await loadPostSummary(resolvedPostId)
+      } else {
+        setActivePostId('')
+        setActivePost(null)
+      }
       setSelectedFriendId(safeInitial)
       if (safeInitial) await markConversationRead(safeInitial, uid)
       setLoading(false)
@@ -264,29 +295,56 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [selectedFriendId, messages.length])
 
+  const openConversation = async (friendId: string, postId?: string | null) => {
+    setSelectedFriendId(friendId)
+    const resolvedPostId = postId || ''
+    setActivePostId(resolvedPostId)
+    if (resolvedPostId) {
+      await loadPostSummary(resolvedPostId)
+    } else {
+      setActivePost(null)
+    }
+    await markConversationRead(friendId)
+  }
+
   const friendMap = useMemo(() => new Map(friends.map(friend => [friend.id, friend])), [friends])
   const selectedFriend = selectedFriendId ? friendMap.get(selectedFriendId) || null : null
   const blockedByMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === userId && block.blocked_id === selectedFriendId))
   const blockedMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === selectedFriendId && block.blocked_id === userId))
 
   const conversations = useMemo(() => {
-    return friends
-      .map(friend => {
-        const friendMessages = messages.filter(message =>
-          message.sender_id === friend.id || message.receiver_id === friend.id
-        )
-        const last = friendMessages[friendMessages.length - 1] || null
-        const unread = friendMessages.filter(message =>
-          message.sender_id === friend.id && message.receiver_id === userId && !message.read_at
+    const grouped = new Map<string, { friend: ProfileItem; postId: string; messages: ChatMessage[] }>()
+
+    messages.forEach(message => {
+      const friendId = message.sender_id === userId ? message.receiver_id : message.sender_id
+      const friend = friendMap.get(friendId)
+      if (!friend) return
+      const postId = message.post_id || legacyPostKey
+      const key = `${friendId}:${postId}`
+      const current = grouped.get(key)
+      if (current) {
+        current.messages.push(message)
+      } else {
+        grouped.set(key, { friend, postId, messages: [message] })
+      }
+    })
+
+    return [...grouped.values()]
+      .map(item => {
+        const last = item.messages[item.messages.length - 1] || null
+        const unread = item.messages.filter(message =>
+          message.sender_id === item.friend.id && message.receiver_id === userId && !message.read_at
         ).length
-        return { friend, last, unread }
+        return { friend: item.friend, postId: item.postId === legacyPostKey ? '' : item.postId, last, unread }
       })
       .filter(item => item.last)
       .sort((a, b) => new Date(b.last!.created_at).getTime() - new Date(a.last!.created_at).getTime())
-  }, [friends, messages, userId])
+  }, [friendMap, messages, userId])
 
   const activeMessages = messages.filter(message =>
-    selectedFriendId && (message.sender_id === selectedFriendId || message.receiver_id === selectedFriendId)
+    selectedFriendId &&
+    (message.sender_id === selectedFriendId || message.receiver_id === selectedFriendId) &&
+    (activePostId ? message.post_id === activePostId : !message.post_id)
   )
 
   const getFreshAccessToken = async () => {
@@ -449,15 +507,16 @@ export default function ChatPage() {
 
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {conversations.length > 0 ? (
-              conversations.map(({ friend, last, unread }) => {
+              conversations.map(({ friend, postId, last, unread }) => {
                 const tier = getPremiumTier(friend, { id: friend.id })
                 const label = premiumLabel(tier)
+                const isActiveConversation = selectedFriendId === friend.id && (activePostId || '') === postId
                 return (
                   <button
-                    key={friend.id}
-                    onClick={() => setSelectedFriendId(friend.id)}
+                    key={`${friend.id}:${postId || legacyPostKey}`}
+                    onClick={() => void openConversation(friend.id, postId)}
                     className={`flex w-full items-center gap-3 rounded-2xl border p-2 text-left transition active:scale-[0.99] ${
-                      selectedFriendId === friend.id
+                      isActiveConversation
                         ? 'border-cyan-200/45 bg-cyan-300/14'
                         : 'border-slate-700 bg-slate-950/62 hover:border-cyan-300/30'
                     }`}
@@ -560,7 +619,22 @@ export default function ChatPage() {
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/80">Annuncio collegato</p>
                     <div className="mt-2 flex gap-3">
                       {activePost.card_image_url ? (
-                        <img src={activePost.card_image_url} alt={activePost.card_name || activePost.title} className="h-16 w-11 shrink-0 rounded-xl object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPostCard(activePost)}
+                          className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-cyan-300/20 bg-slate-950/55 transition hover:border-cyan-200 active:scale-95"
+                          aria-label="Apri carta annuncio"
+                        >
+                          <CardImage
+                            src={activePost.card_image_url}
+                            cardId={activePost.card_id || activePost.card_code}
+                            alt={activePost.card_name || activePost.title}
+                            className="h-full w-full"
+                            imgClassName="h-full w-full object-cover"
+                            loading="eager"
+                            fetchPriority="high"
+                          />
+                        </button>
                       ) : null}
                       <div className="min-w-0">
                         <p className="truncate text-sm font-black text-white">{activePost.card_name || activePost.title}</p>
@@ -653,6 +727,44 @@ export default function ChatPage() {
           )}
         </section>
       </main>
+      {selectedPostCard ? (
+        <div
+          className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/82 px-4 py-8 backdrop-blur-md"
+          onClick={() => setSelectedPostCard(null)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-[1.6rem] border border-white/12 bg-slate-900 p-4 shadow-2xl shadow-black/40"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedPostCard(null)}
+              className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-slate-950/80 text-white transition hover:bg-slate-800 active:scale-95"
+              aria-label="Chiudi carta"
+            >
+              <X size={17} />
+            </button>
+            <CardImage
+              src={selectedPostCard.card_image_url}
+              cardId={selectedPostCard.card_id || selectedPostCard.card_code}
+              alt={selectedPostCard.card_name || selectedPostCard.title}
+              className="mx-auto aspect-[5/7] w-full max-w-[260px] overflow-hidden rounded-2xl bg-slate-950/70"
+              imgClassName="h-full w-full object-contain"
+              loading="eager"
+              fetchPriority="high"
+            />
+            <div className="mt-4 text-center">
+              <p className="text-lg font-black text-white">{selectedPostCard.card_name || selectedPostCard.title}</p>
+              <p className="mt-1 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/78">{selectedPostCard.card_code || 'Annuncio'}</p>
+              {selectedPostCard.message ? (
+                <p className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left text-sm leading-6 text-slate-200">
+                  {selectedPostCard.message}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

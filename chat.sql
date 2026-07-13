@@ -4,6 +4,7 @@
 
 create table if not exists public.chat_messages (
   id uuid primary key default gen_random_uuid(),
+  post_id uuid references public.board_posts(id) on delete set null,
   sender_id uuid not null references auth.users(id) on delete cascade,
   receiver_id uuid not null references auth.users(id) on delete cascade,
   body text not null,
@@ -12,6 +13,9 @@ create table if not exists public.chat_messages (
   constraint chat_messages_body_length check (char_length(trim(body)) between 1 and 800),
   constraint chat_messages_no_self_message check (sender_id <> receiver_id)
 );
+
+alter table public.chat_messages
+add column if not exists post_id uuid references public.board_posts(id) on delete set null;
 
 create table if not exists public.chat_blocks (
   blocker_id uuid not null references auth.users(id) on delete cascade,
@@ -69,6 +73,9 @@ using (blocker_id = auth.uid());
 
 create index if not exists chat_messages_receiver_unread_idx
 on public.chat_messages (receiver_id, read_at, created_at desc);
+
+create index if not exists chat_messages_post_created_idx
+on public.chat_messages (post_id, created_at desc);
 
 create index if not exists chat_messages_sender_created_idx
 on public.chat_messages (sender_id, created_at desc);
