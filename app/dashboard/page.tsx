@@ -100,6 +100,10 @@ const numberOrNull = (value: unknown) => {
 const compactCardCode = (value?: string | null) =>
   String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
+const priceCache = new Map<string, LivePriceResult | null>()
+const priceCacheKey = (card: { card_id: string; name?: string | null; set_name?: string | null }) =>
+  [card.card_id, card.name || '', card.set_name || ''].join('|').toLowerCase()
+
 const parseCollectionSet = (cardId: string) => {
   const normalized = (cardId || '').toUpperCase().replace(/_/g, '-')
   const match = normalized.match(/^(OP|EB|ST|PRB|SP|EX|CP)(\d{1,2})-?(\d{3})/)
@@ -153,6 +157,7 @@ export default function Dashboard() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsLivePrices, setAnalyticsLivePrices] = useState<Record<string, number | null>>({})
+  const [pricesReady, setPricesReady] = useState(false)
   const [soldOpen, setSoldOpen] = useState(false)
   const [soldCards, setSoldCards] = useState<SoldCard[]>([])
   const [soldLivePrices, setSoldLivePrices] = useState<Record<string, number | null>>({})
@@ -195,11 +200,12 @@ export default function Dashboard() {
 
   const loadCards = async (uid: string) => {
     setLoadingCards(true)
+    setPricesReady(false)
 
     const { data, error } = await supabase
       .from('user_cards')
       .select(
-        'card_id, quantity, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price'
+        'id, card_id, quantity, name, image_url, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price'
       )
       .eq('user_id', uid)
 
@@ -214,12 +220,16 @@ export default function Dashboard() {
       ...card,
       rarity: card.rarity === 'Unknown' ? null : card.rarity,
       card_color: card.card_color === 'Unknown' ? null : card.card_color,
-      market_price: card.market_price ? Number(card.market_price) : null,
-      inventory_price: card.inventory_price ? Number(card.inventory_price) : null
+      card_type: card.card_type === 'Unknown' ? null : card.card_type,
+      card_cost: numberOrNull(card.card_cost),
+      card_power: numberOrNull(card.card_power),
+      market_price: card.market_price == null ? null : Number(card.market_price),
+      inventory_price: card.inventory_price == null ? null : Number(card.inventory_price)
     }))
     setCards(loadedCards)
     void evaluateProgressSynced(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
+    void backfillMissingCardDetails(uid, loadedCards)
     void syncLivePricesForCards(uid, loadedCards)
   }
 
@@ -307,10 +317,26 @@ export default function Dashboard() {
 
   const fetchLivePricesForCards = async (cardsToPrice: Array<{ card_id: string; name?: string | null; set_name?: string | null }>) => {
     const allPrices: Record<string, LivePriceResult | null> = {}
+    const missingCards: Array<{ card_id: string; name?: string | null; set_name?: string | null }> = []
+    const seenKeys = new Set<string>()
+
+    cardsToPrice.forEach(card => {
+      const key = priceCacheKey(card)
+      if (priceCache.has(key)) {
+        allPrices[card.card_id] = priceCache.get(key) ?? null
+        return
+      }
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key)
+        missingCards.push(card)
+      }
+    })
+
+    if (missingCards.length === 0) return allPrices
 
     try {
-      for (let index = 0; index < cardsToPrice.length; index += 120) {
-        const chunk = cardsToPrice.slice(index, index + 120)
+      for (let index = 0; index < missingCards.length; index += 120) {
+        const chunk = missingCards.slice(index, index + 120)
         const res = await fetch('/api/cards/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -323,7 +349,12 @@ export default function Dashboard() {
           })
         })
         const data = await res.json()
-        Object.assign(allPrices, (data?.prices || {}) as Record<string, LivePriceResult | null>)
+        const chunkPrices = (data?.prices || {}) as Record<string, LivePriceResult | null>
+        chunk.forEach(card => {
+          const value = chunkPrices[card.card_id] ?? null
+          priceCache.set(priceCacheKey(card), value)
+          allPrices[card.card_id] = value
+        })
       }
     } catch {
     }
@@ -332,7 +363,10 @@ export default function Dashboard() {
   }
 
   const syncLivePricesForCards = async (uid: string, cardsToSync: UserCard[]) => {
-    if (cardsToSync.length === 0) return
+    if (cardsToSync.length === 0) {
+      setPricesReady(true)
+      return
+    }
 
     const prices = await fetchLivePricesForCards(cardsToSync)
     const liveMap = Object.fromEntries(
@@ -368,6 +402,7 @@ export default function Dashboard() {
         return backfilled ? { ...card, market_price: backfilled.market_price, inventory_price: null } : card
       }))
     }
+    setPricesReady(true)
   }
 
   const fetchLivePriceForCard = async (card: { id?: string; card_id?: string; name?: string | null; set_name?: string | null }) => {
@@ -445,6 +480,70 @@ export default function Dashboard() {
     } catch {
       return null
     }
+  }
+
+  const needsDetailBackfill = (card: UserCard) =>
+    !card.name ||
+    card.name === 'Unknown' ||
+    !card.image_url ||
+    !card.rarity ||
+    card.rarity === 'Unknown' ||
+    !card.card_color ||
+    card.card_color === 'Unknown' ||
+    !card.card_type ||
+    card.card_type === 'Unknown' ||
+    card.card_cost == null ||
+    card.card_power == null
+
+  const backfillMissingCardDetails = async (uid: string, cardsToBackfill: UserCard[]) => {
+    const targets = cardsToBackfill.filter(needsDetailBackfill).slice(0, 120)
+    if (targets.length === 0) return
+
+    const updates = await Promise.all(targets.map(async card => {
+      const detail = await fetchCatalogDetailsForCard(card)
+      if (!detail) return null
+
+      return {
+        ...card,
+        ...detail,
+        name: detail.name || card.name,
+        image_url: detail.image_url || card.image_url,
+        rarity: detail.rarity || card.rarity,
+        card_color: detail.card_color || card.card_color,
+        card_type: detail.card_type || card.card_type,
+        card_cost: detail.card_cost ?? card.card_cost ?? null,
+        card_power: detail.card_power ?? card.card_power ?? null,
+      } as UserCard
+    }))
+
+    const cleanUpdates = updates.filter((card): card is UserCard => Boolean(card))
+    if (cleanUpdates.length === 0) return
+
+    setCards(current => current.map(card => {
+      const update = cleanUpdates.find(item =>
+        (item.id && card.id === item.id) || (!item.id && card.card_id === item.card_id)
+      )
+      return update ? { ...card, ...update } : card
+    }))
+
+    await Promise.all(cleanUpdates.map(card => {
+      const query = supabase
+        .from('user_cards')
+        .update({
+          name: card.name,
+          image_url: card.image_url,
+          rarity: card.rarity,
+          card_color: card.card_color,
+          card_type: card.card_type,
+          card_cost: card.card_cost,
+          card_power: card.card_power,
+        })
+        .eq('user_id', uid)
+
+      return card.id
+        ? query.eq('id', card.id)
+        : query.eq('card_id', card.card_id)
+    }))
   }
 
   const openCollectionCard = (card: UserCard) => {
@@ -580,17 +679,23 @@ export default function Dashboard() {
 
     const remainingQuantity = sellingCard.quantity - quantity
     if (remainingQuantity > 0) {
-      await supabase
+      let updateQuery = supabase
         .from('user_cards')
         .update({ quantity: remainingQuantity })
         .eq('user_id', userId)
-        .eq('card_id', sellingCard.card_id)
+      updateQuery = sellingCard.id
+        ? updateQuery.eq('id', sellingCard.id)
+        : updateQuery.eq('card_id', sellingCard.card_id)
+      await updateQuery
     } else {
-      await supabase
+      let deleteQuery = supabase
         .from('user_cards')
         .delete()
         .eq('user_id', userId)
-        .eq('card_id', sellingCard.card_id)
+      deleteQuery = sellingCard.id
+        ? deleteQuery.eq('id', sellingCard.id)
+        : deleteQuery.eq('card_id', sellingCard.card_id)
+      await deleteQuery
     }
 
     setSellingBusy(false)
@@ -731,28 +836,30 @@ export default function Dashboard() {
   }
 
   // 🔥 DELETE FIX DEFINITIVO
-  const removeCard = async (cardId: string, qty: number) => {
+  const removeCard = async (cardId: string, qty: number, rowId?: string | null) => {
     if (!userId) return
 
     console.log('DELETE CLICK:', cardId, qty)
 
     if (qty > 1) {
-      const { error } = await supabase
+      let query = supabase
         .from('user_cards')
         .update({ quantity: qty - 1 })
         .eq('user_id', userId)
-        .eq('card_id', cardId)
+      query = rowId ? query.eq('id', rowId) : query.eq('card_id', cardId)
+      const { error } = await query
 
       if (error) {
         console.error('UPDATE ERROR:', error)
         return
       }
     } else {
-      const { error } = await supabase
+      let query = supabase
         .from('user_cards')
         .delete()
         .eq('user_id', userId)
-        .eq('card_id', cardId)
+      query = rowId ? query.eq('id', rowId) : query.eq('card_id', cardId)
+      const { error } = await query
 
       if (error) {
         console.error('DELETE ERROR:', error)
@@ -828,9 +935,9 @@ export default function Dashboard() {
     return live ?? saved
   }
   const savedCollectionValue = cards.reduce((sum, card) => sum + ((getAnalyticsPrice(card) || 0) * card.quantity), 0)
-  const topSavedCard = [...cards]
+  const topSavedCard = pricesReady ? [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
-    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null
+    .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))[0] || null : null
   const topSavedCardPrice = topSavedCard ? getAnalyticsPrice(topSavedCard) : null
   const topSavedCardTotal = topSavedCard && topSavedCardPrice != null
     ? topSavedCardPrice * topSavedCard.quantity
@@ -1700,7 +1807,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await removeCard(selectedCard.card_id, selectedCard.quantity)
+                  await removeCard(selectedCard.card_id, selectedCard.quantity, selectedCard.id)
                   setSelectedCard(null)
                   setLivePrice(null)
                 }}
