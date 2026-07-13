@@ -86,6 +86,8 @@ export default function ScanPage() {
   const lastConfirmedSignatureRef = useRef<number[] | null>(null)
   const manualSearchRunRef = useRef(0)
 
+  const scanCanvasSize = { width: 1120, height: 1493 }
+
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -293,6 +295,7 @@ export default function ScanPage() {
 
     try {
       await videoRef.current.play()
+      await waitForCameraDimensions()
       setVideoSize({
         width: videoRef.current.videoWidth || 1,
         height: videoRef.current.videoHeight || 1
@@ -307,6 +310,125 @@ export default function ScanPage() {
         videoRef.current?.play().catch(() => undefined)
         window.setTimeout(() => void pulseCameraFocus(), 350)
       }
+    }
+  }
+
+  const waitForCameraDimensions = async () => {
+    const video = videoRef.current
+    if (!video) return
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (video.videoWidth >= 640 && video.videoHeight >= 480) return
+      await new Promise(resolve => window.setTimeout(resolve, 80))
+    }
+  }
+
+  const highQualityVideoConstraints = (extra: MediaTrackConstraints = {}): MediaTrackConstraints => ({
+    width: { ideal: 2560, min: 1280 },
+    height: { ideal: 1440, min: 720 },
+    frameRate: { ideal: 30, min: 24 },
+    aspectRatio: { ideal: 16 / 9 },
+    resizeMode: 'none',
+    ...extra
+  } as MediaTrackConstraints)
+
+  const cameraLabelScore = (labelValue: string) => {
+    const label = labelValue.toLowerCase()
+    const isBack = /(back|rear|environment|posteriore|retro|camera 0)/i.test(label)
+    const isFront = /(front|user|selfie)/i.test(label)
+    const isAuxLens = /(wide|ultra|macro|depth|tele|zoom)/i.test(label)
+    return (isBack ? 20 : 0) - (isFront ? 30 : 0) - (isAuxLens ? 10 : 0) + (label ? 1 : 0)
+  }
+
+  const getPreferredCameraConstraints = async (): Promise<MediaStreamConstraints[]> => {
+    const constraints: MediaStreamConstraints[] = []
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices
+        .filter(device => device.kind === 'videoinput' && device.label)
+        .map(device => {
+          return {
+            device,
+            score: cameraLabelScore(device.label)
+          }
+        })
+        .sort((a, b) => b.score - a.score)
+
+      for (const item of videoDevices) {
+        constraints.push({
+          video: highQualityVideoConstraints({
+            deviceId: { exact: item.device.deviceId },
+            facingMode: { ideal: 'environment' }
+          }),
+          audio: false
+        })
+      }
+    } catch {
+      // enumerateDevices puo essere limitato prima del permesso camera.
+    }
+
+    return [
+      ...constraints,
+      {
+        video: highQualityVideoConstraints({ facingMode: { exact: 'environment' } }),
+        audio: false
+      },
+      {
+        video: highQualityVideoConstraints({ facingMode: { ideal: 'environment' } }),
+        audio: false
+      },
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920, min: 960 },
+          height: { ideal: 1080, min: 540 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      },
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      }
+    ]
+  }
+
+  const upgradeToPreferredCameraIfNeeded = async (stream: MediaStream) => {
+    const [currentTrack] = stream.getVideoTracks()
+    if (!currentTrack) return stream
+
+    try {
+      const currentSettings = currentTrack.getSettings?.() || {}
+      const currentScore = cameraLabelScore(currentTrack.label || '')
+      const currentWidth = Number(currentSettings.width || 0)
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const candidates = devices
+        .filter(device => device.kind === 'videoinput' && device.label)
+        .map(device => ({ device, score: cameraLabelScore(device.label) }))
+        .sort((a, b) => b.score - a.score)
+
+      const best = candidates[0]
+      if (!best?.device.deviceId) return stream
+      if (best.device.deviceId === currentSettings.deviceId && currentWidth >= 1280) return stream
+      if (best.score <= currentScore && currentWidth >= 1280) return stream
+
+      const upgraded = await navigator.mediaDevices.getUserMedia({
+        video: highQualityVideoConstraints({
+          deviceId: { exact: best.device.deviceId },
+          facingMode: { ideal: 'environment' }
+        }),
+        audio: false
+      })
+      stream.getTracks().forEach(track => track.stop())
+      return upgraded
+    } catch {
+      return stream
     }
   }
 
@@ -656,7 +778,7 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.62)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.92)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -1072,9 +1194,11 @@ export default function ScanPage() {
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
     void pulseCameraFocus()
 
-    canvas.width = 820
-    canvas.height = 1094
+    canvas.width = scanCanvasSize.width
+    canvas.height = scanCanvasSize.height
     setVideoSize({ width: canvas.width, height: canvas.height })
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
 
     const targetAspect = canvas.width / canvas.height
     const sourceAspect = video.videoWidth / video.videoHeight
@@ -1126,17 +1250,21 @@ export default function ScanPage() {
 
     // Ritaglio CODICE (striscia in basso: il codice puo stare anche verso destra)
     const codeCropCanvas = document.createElement('canvas')
-    codeCropCanvas.width = 640
-    codeCropCanvas.height = 300
+    codeCropCanvas.width = 900
+    codeCropCanvas.height = 420
     const codeCropCtx = codeCropCanvas.getContext('2d')
 
     // Ritagli leggibili: effetto, nome e riga codice sono le zone piu utili per il match.
     const nameCropCanvas = document.createElement('canvas')
-    nameCropCanvas.width = 760
-    nameCropCanvas.height = 420
+    nameCropCanvas.width = 980
+    nameCropCanvas.height = 540
     const nameCropCtx = nameCropCanvas.getContext('2d')
 
     if (!codeCropCtx || !nameCropCtx) return
+    codeCropCtx.imageSmoothingEnabled = true
+    codeCropCtx.imageSmoothingQuality = 'high'
+    nameCropCtx.imageSmoothingEnabled = true
+    nameCropCtx.imageSmoothingQuality = 'high'
 
     const codeRegions = [
       { x: 0.02, y: 0.84, width: 0.96, height: 0.15 },
@@ -1152,9 +1280,9 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 100,
+        index * 140,
         codeCropCanvas.width,
-        100
+        140
       )
     })
 
@@ -1172,15 +1300,15 @@ export default function ScanPage() {
         rect.width * region.width,
         rect.height * region.height,
         0,
-        index * 140,
+        index * 180,
         nameCropCanvas.width,
-        140
+        180
       )
     })
 
     const preprocessedCode = document.createElement('canvas')
-    preprocessedCode.width = 640
-    preprocessedCode.height = 300
+    preprocessedCode.width = 900
+    preprocessedCode.height = 420
     preprocessForOcr(codeCropCanvas, preprocessedCode)
 
     if (!ocrReady) {
@@ -1189,21 +1317,25 @@ export default function ScanPage() {
     }
 
     const fastOcrCanvas = document.createElement('canvas')
-    fastOcrCanvas.width = 760
-    fastOcrCanvas.height = 760
+    fastOcrCanvas.width = 1040
+    fastOcrCanvas.height = 1000
     const fastOcrCtx = fastOcrCanvas.getContext('2d')
     if (!fastOcrCtx) return
+    fastOcrCtx.imageSmoothingEnabled = true
+    fastOcrCtx.imageSmoothingQuality = 'high'
     fastOcrCtx.fillStyle = '#ffffff'
     fastOcrCtx.fillRect(0, 0, fastOcrCanvas.width, fastOcrCanvas.height)
-    fastOcrCtx.drawImage(codeCropCanvas, 0, 0, fastOcrCanvas.width, 180)
-    fastOcrCtx.drawImage(preprocessedCode, 0, 180, fastOcrCanvas.width, 180)
-    fastOcrCtx.drawImage(nameCropCanvas, 0, 360, fastOcrCanvas.width, 400)
+    fastOcrCtx.drawImage(codeCropCanvas, 0, 0, fastOcrCanvas.width, 240)
+    fastOcrCtx.drawImage(preprocessedCode, 0, 240, fastOcrCanvas.width, 240)
+    fastOcrCtx.drawImage(nameCropCanvas, 0, 480, fastOcrCanvas.width, 520)
 
     const imageMatchCanvas = document.createElement('canvas')
-    imageMatchCanvas.width = 300
-    imageMatchCanvas.height = 420
+    imageMatchCanvas.width = 420
+    imageMatchCanvas.height = 588
     const imageMatchCtx = imageMatchCanvas.getContext('2d')
     if (imageMatchCtx) {
+      imageMatchCtx.imageSmoothingEnabled = true
+      imageMatchCtx.imageSmoothingQuality = 'high'
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, imageMatchCanvas.width, imageMatchCanvas.height)
     }
 
@@ -1305,44 +1437,7 @@ export default function ScanPage() {
     }
 
     try {
-      const constraintsList: MediaStreamConstraints[] = [
-        {
-          video: {
-            facingMode: { exact: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 60, min: 24 }
-          },
-          audio: false
-        },
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 60, min: 24 }
-          },
-          audio: false
-        },
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 45, min: 24 }
-          },
-          audio: false
-        },
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 960 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 }
-          },
-          audio: false
-        }
-      ]
+      const constraintsList = await getPreferredCameraConstraints()
 
       let stream: MediaStream | null = null
       for (const constraints of constraintsList) {
@@ -1358,6 +1453,7 @@ export default function ScanPage() {
         throw new Error('Camera unavailable')
       }
 
+      stream = await upgradeToPreferredCameraIfNeeded(stream)
       streamRef.current = stream
       await attachStream(stream)
       scanGenerationRef.current += 1
