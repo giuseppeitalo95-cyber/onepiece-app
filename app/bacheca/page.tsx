@@ -409,6 +409,11 @@ export default function BachecaPage() {
     router.push(profileId === userId ? '/profile' : `/friends?profile=${profileId}`)
   }
 
+  const contactPostOwner = (post: BoardPost) => {
+    if (!userId || post.user_id === userId) return
+    router.push(`/chat?user=${encodeURIComponent(post.user_id)}&post=${encodeURIComponent(post.id)}`)
+  }
+
   const formatPrice = (value?: number | null) =>
     value == null ? '---' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value)
 
@@ -673,6 +678,16 @@ export default function BachecaPage() {
                           </button>
                         )}
                         {post.message && <p className="mt-2 text-sm leading-6 text-slate-300">{post.message}</p>}
+                        {post.user_id !== userId ? (
+                          <button
+                            type="button"
+                            onClick={() => contactPostOwner(post)}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:bg-cyan-200 active:scale-[0.99] sm:w-auto"
+                          >
+                            <Send size={15} />
+                            Contatta
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </article>

@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Search, Send, ShieldCheck, UserPlus } from 'lucide-react'
+import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Send, ShieldCheck } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
-import { getPremiumTier, hasPremiumAccess, premiumClassName, premiumLabel, type PremiumProfile } from '@/lib/premium'
-import { ADMIN_ACCOUNT } from '@/lib/admin'
+import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 import { isProfileOnline } from '@/lib/onlineStatus'
 
 type ProfileItem = {
@@ -29,15 +28,20 @@ type ChatMessage = {
   created_at: string
 }
 
-type FriendRequest = {
-  requester_id: string
-  receiver_id: string
-  status: string
-}
-
 type ChatBlock = {
   blocker_id: string
   blocked_id: string
+}
+
+type BoardPostSummary = {
+  id: string
+  user_id: string
+  title: string
+  message: string | null
+  card_name: string | null
+  card_code: string | null
+  card_image_url: string | null
+  created_at: string
 }
 
 const cutoffIso = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
@@ -54,11 +58,11 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [userId, setUserId] = useState('')
   const [currentUsername, setCurrentUsername] = useState('Giocatore')
-  const [currentProfile, setCurrentProfile] = useState<PremiumProfile | null>(null)
   const [friends, setFriends] = useState<ProfileItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedFriendId, setSelectedFriendId] = useState('')
-  const [query, setQuery] = useState('')
+  const [activePostId, setActivePostId] = useState('')
+  const [activePost, setActivePost] = useState<BoardPostSummary | null>(null)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -74,35 +78,10 @@ export default function ChatPage() {
     return data?.publicUrl ?? ''
   }
 
-  const loadFriends = async (uid: string, ownProfile?: PremiumProfile | null) => {
-    const { data: requests } = await supabase
-      .from('friend_requests')
-      .select('requester_id, receiver_id, status')
-      .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
-      .eq('status', 'accepted')
+  const loadContacts = async (contactIds: string[]) => {
+    const uniqueIds = [...new Set(contactIds)].filter(Boolean)
 
-    const friendIds = ((requests || []) as FriendRequest[])
-      .map(request => request.requester_id === uid ? request.receiver_id : request.requester_id)
-      .filter(Boolean)
-
-    const canStartWithEveryone = hasPremiumAccess(ownProfile, { id: uid, email: ownProfile?.email })
-    const { data: premiumProfiles } = canStartWithEveryone
-      ? await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
-        .neq('id', uid)
-        .limit(120)
-      : await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
-        .neq('id', uid)
-        .or(`is_premium.eq.true,is_vip.eq.true,premium_until.gt.${new Date().toISOString()},id.eq.${ADMIN_ACCOUNT.id}`)
-        .limit(80)
-
-    const premiumIds = ((premiumProfiles || []) as ProfileItem[]).map(profile => profile.id)
-    const contactIds = [...new Set([...friendIds, ...premiumIds])].filter(Boolean)
-
-    if (contactIds.length === 0) {
+    if (uniqueIds.length === 0) {
       setFriends([])
       return []
     }
@@ -110,13 +89,13 @@ export default function ChatPage() {
     const { data: profileData, error } = await supabase
       .from('profiles')
         .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
-      .in('id', contactIds)
+      .in('id', uniqueIds)
 
     if (error) {
       const { data: fallback } = await supabase
         .from('profiles')
         .select('id, username, avatar_url')
-        .in('id', contactIds)
+        .in('id', uniqueIds)
 
       const fallbackFriends = ((fallback || []) as ProfileItem[]).map(profile => ({
         ...profile,
@@ -146,11 +125,13 @@ export default function ChatPage() {
     if (error) {
       setChatReady(false)
       setMessages([])
-      return
+      return []
     }
 
     setChatReady(true)
-    setMessages((data || []) as ChatMessage[])
+    const loadedMessages = (data || []) as ChatMessage[]
+    setMessages(loadedMessages)
+    return loadedMessages
   }
 
   const loadBlocks = async (uid: string) => {
@@ -168,6 +149,28 @@ export default function ChatPage() {
     setBlocksReady(true)
     setBlocks((data || []) as ChatBlock[])
     return (data || []) as ChatBlock[]
+  }
+
+  const loadPostSummary = async (postId: string) => {
+    if (!postId) {
+      setActivePost(null)
+      return null
+    }
+
+    const { data, error } = await supabase
+      .from('board_posts')
+      .select('id, user_id, title, message, card_name, card_code, card_image_url, created_at')
+      .eq('id', postId)
+      .maybeSingle()
+
+    if (error || !data) {
+      setActivePost(null)
+      return null
+    }
+
+    const post = data as BoardPostSummary
+    setActivePost(post)
+    return post
   }
 
   const markConversationRead = async (friendId: string, uid = userId) => {
@@ -201,24 +204,31 @@ export default function ChatPage() {
       setUserId(uid)
       const { data: ownProfile } = await supabase
         .from('profiles')
-        .select('id, username, is_premium, premium_until, is_vip')
+        .select('username')
         .eq('id', uid)
         .single()
-      const ownPremiumProfile = { ...(ownProfile || {}), email: session.user.email } as PremiumProfile
-      setCurrentProfile(ownPremiumProfile)
       setCurrentUsername(
         String(ownProfile?.username || session.user.email?.split('@')[0] || 'Giocatore').trim()
       )
       void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
-      const loadedFriends = await loadFriends(uid, ownPremiumProfile)
-      await loadBlocks(uid)
-      await loadMessages(uid)
+      const params = typeof window === 'undefined'
+        ? new URLSearchParams()
+        : new URLSearchParams(window.location.search)
+      const initialFriendId = params.get('user') || ''
+      const initialPostId = params.get('post') || ''
+      setActivePostId(initialPostId)
 
-      const initialFriendId = typeof window === 'undefined'
-        ? ''
-        : new URLSearchParams(window.location.search).get('user') || ''
-      const safeInitial = loadedFriends.some(friend => friend.id === initialFriendId)
+      await loadBlocks(uid)
+      const loadedMessages = await loadMessages(uid)
+      const contactIds = loadedMessages.map(message =>
+        message.sender_id === uid ? message.receiver_id : message.sender_id
+      )
+      if (initialFriendId) contactIds.push(initialFriendId)
+      const loadedContacts = await loadContacts(contactIds)
+      if (initialPostId) await loadPostSummary(initialPostId)
+
+      const safeInitial = loadedContacts.some(friend => friend.id === initialFriendId)
         ? initialFriendId
         : ''
       setSelectedFriendId(safeInitial)
@@ -233,12 +243,18 @@ export default function ChatPage() {
     if (!userId || !chatReady) return
 
     const timer = window.setInterval(() => {
-      void loadMessages(userId)
-      void loadFriends(userId, currentProfile)
+      void (async () => {
+        const loadedMessages = await loadMessages(userId)
+        const contactIds = loadedMessages.map(message =>
+          message.sender_id === userId ? message.receiver_id : message.sender_id
+        )
+        if (selectedFriendId) contactIds.push(selectedFriendId)
+        await loadContacts(contactIds)
+      })()
     }, 8000)
 
     return () => window.clearInterval(timer)
-  }, [userId, chatReady, currentProfile])
+  }, [userId, chatReady, selectedFriendId])
 
   useEffect(() => {
     if (selectedFriendId) void markConversationRead(selectedFriendId)
@@ -252,9 +268,6 @@ export default function ChatPage() {
   const selectedFriend = selectedFriendId ? friendMap.get(selectedFriendId) || null : null
   const blockedByMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === userId && block.blocked_id === selectedFriendId))
   const blockedMe = Boolean(selectedFriendId && blocks.some(block => block.blocker_id === selectedFriendId && block.blocked_id === userId))
-  const filteredFriends = friends.filter(friend =>
-    (friend.username || 'Giocatore').toLowerCase().includes(query.trim().toLowerCase())
-  )
 
   const conversations = useMemo(() => {
     return friends
@@ -301,18 +314,29 @@ export default function ChatPage() {
     setSending(true)
     setStatus('')
 
-    const { error } = await supabase
-      .from('chat_messages')
-      .insert({
-        sender_id: userId,
-        receiver_id: selectedFriendId,
-        body: cleanText.slice(0, 800)
-      })
+    if (!activePostId) {
+      setStatus('Per scrivere devi aprire la chat dal pulsante Contatta di un annuncio.')
+      setSending(false)
+      return
+    }
 
-    if (error) {
-      setStatus(error.code === '42P01'
-        ? 'La chat e pronta nel sito, ma devi prima eseguire chat.sql su Supabase.'
-        : 'Non sono riuscito a inviare il messaggio.')
+    const accessToken = await getFreshAccessToken()
+    const res = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: accessToken ? `Bearer ${accessToken}` : ''
+      },
+      body: JSON.stringify({
+        receiverId: selectedFriendId,
+        postId: activePostId,
+        body: cleanText
+      })
+    })
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok || !data?.ok) {
+      setStatus(data?.error || 'Non sono riuscito a inviare il messaggio.')
       setSending(false)
       return
     }
@@ -338,7 +362,7 @@ export default function ChatPage() {
           receiverId,
           title: `Nuovo messaggio da ${currentUsername}`,
           body,
-          url: `/chat?user=${userId}`
+          url: `/chat?user=${userId}${activePostId ? `&post=${activePostId}` : ''}`
         })
       })
       const data = await res.json().catch(() => null)
@@ -423,16 +447,6 @@ export default function ChatPage() {
             </div>
           ) : null}
 
-          <label className="relative mt-3 block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="Cerca nickname"
-              className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 py-3 pl-10 pr-3 text-sm text-white outline-none focus:border-cyan-300"
-            />
-          </label>
-
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {conversations.length > 0 ? (
               conversations.map(({ friend, last, unread }) => {
@@ -474,43 +488,9 @@ export default function ChatPage() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">
-                Nessuna chat aperta.
+                Nessuna chat aperta. Per iniziare, premi Contatta su un annuncio in bacheca.
               </div>
             )}
-          </div>
-
-          <div className="mt-4">
-            <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-              <UserPlus size={13} />
-              Nuova chat
-            </div>
-            <div className="max-h-[26dvh] space-y-2 overflow-y-auto pr-1 lg:max-h-52">
-              {loading ? (
-                <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Carico amici...</p>
-              ) : filteredFriends.length === 0 ? (
-                <p className="rounded-2xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-400">Nessun contatto trovato.</p>
-              ) : filteredFriends.map(friend => {
-                const tier = getPremiumTier(friend, { id: friend.id })
-                return (
-                  <button
-                    key={friend.id}
-                    onClick={() => setSelectedFriendId(friend.id)}
-                    className="flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/54 p-2 text-left transition hover:border-cyan-300/35"
-                  >
-                    <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-800 text-xs font-black text-cyan-100">
-                      {friend.avatar_url ? <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" /> : (friend.username || 'U').charAt(0).toUpperCase()}
-                    </div>
-                    <span className="min-w-0">
-                      <span className={`block truncate text-sm font-bold text-white ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</span>
-                      <span className={`mt-0.5 block text-[10px] font-bold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                        <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
-                        {isProfileOnline(friend) ? 'Ora online' : 'Offline'}
-                      </span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
           </div>
         </aside>
 
@@ -551,6 +531,11 @@ export default function ChatPage() {
                           </>
                         )}
                       </span>
+                      {activePost ? (
+                        <span className="mt-1 block max-w-[56vw] truncate rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-50 sm:max-w-[420px]">
+                          Annuncio: {activePost.card_name || activePost.title}{activePost.card_code ? ` - ${activePost.card_code}` : ''}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 </div>
@@ -570,6 +555,25 @@ export default function ChatPage() {
               </header>
 
               <div className="flex-1 space-y-2 overflow-y-auto p-3 sm:p-4">
+                {activePost ? (
+                  <div className="rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.08] p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/80">Annuncio collegato</p>
+                    <div className="mt-2 flex gap-3">
+                      {activePost.card_image_url ? (
+                        <img src={activePost.card_image_url} alt={activePost.card_name || activePost.title} className="h-16 w-11 shrink-0 rounded-xl object-cover" />
+                      ) : null}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-white">{activePost.card_name || activePost.title}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-400">{activePost.card_code || 'Annuncio'}</p>
+                        {activePost.message ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">{activePost.message}</p> : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedFriendId ? (
+                  <div className="rounded-3xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
+                    Per rispondere devi aprire la chat dal bottone Contatta dell'annuncio.
+                  </div>
+                ) : null}
                 {activeMessages.length === 0 ? (
                   <div className="grid min-h-[38dvh] place-items-center rounded-3xl border border-dashed border-slate-700 bg-slate-950/42 p-5 text-center">
                     <div>
@@ -600,6 +604,11 @@ export default function ChatPage() {
 
               <div className="border-t border-white/10 bg-slate-950/52 p-3">
                 {status ? <p className="mb-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{status}</p> : null}
+                {!activePostId ? (
+                  <p className="mb-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+                    Apri un annuncio dalla bacheca e premi Contatta per scrivere.
+                  </p>
+                ) : null}
                 {(blockedByMe || blockedMe) ? (
                   <p className="mb-2 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
                     {blockedByMe ? 'Hai bloccato questo utente.' : 'Non puoi scrivere in questa chat.'}
@@ -618,12 +627,12 @@ export default function ChatPage() {
                     rows={1}
                     maxLength={800}
                     placeholder="Scrivi un messaggio..."
-                    disabled={blockedByMe || blockedMe}
+                    disabled={!activePostId || blockedByMe || blockedMe}
                     className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
                   />
                   <button
                     onClick={sendMessage}
-                    disabled={sending || !text.trim() || blockedByMe || blockedMe}
+                    disabled={sending || !text.trim() || !activePostId || blockedByMe || blockedMe}
                     className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-cyan-300 text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Invia messaggio"
                   >

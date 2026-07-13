@@ -25,8 +25,8 @@ alter table public.chat_messages enable row level security;
 alter table public.chat_blocks enable row level security;
 
 drop policy if exists "Chat participants can view temporary messages" on public.chat_messages;
-drop policy if exists "Friends and premium can send temporary messages" on public.chat_messages;
 drop policy if exists "Friends can send temporary messages" on public.chat_messages;
+drop policy if exists "Friends and premium can send temporary messages" on public.chat_messages;
 drop policy if exists "Receivers can mark messages read" on public.chat_messages;
 drop policy if exists "Participants can delete expired messages" on public.chat_messages;
 drop policy if exists "Users can view own chat blocks" on public.chat_blocks;
@@ -40,53 +40,8 @@ using (
   and (sender_id = auth.uid() or receiver_id = auth.uid())
 );
 
-create policy "Friends and premium can send temporary messages"
-on public.chat_messages for insert
-with check (
-  sender_id = auth.uid()
-  and receiver_id <> auth.uid()
-  and not exists (
-    select 1
-    from public.chat_blocks cb
-    where (cb.blocker_id = chat_messages.receiver_id and cb.blocked_id = auth.uid())
-       or (cb.blocker_id = auth.uid() and cb.blocked_id = chat_messages.receiver_id)
-  )
-  and (
-    exists (
-      select 1
-      from public.friend_requests fr
-      where fr.status = 'accepted'
-        and (
-          (fr.requester_id = auth.uid() and fr.receiver_id = chat_messages.receiver_id)
-          or
-          (fr.receiver_id = auth.uid() and fr.requester_id = chat_messages.receiver_id)
-        )
-    )
-    or exists (
-      select 1
-      from public.profiles sender_profile
-      where sender_profile.id = auth.uid()
-        and (
-          sender_profile.id = 'fcade84e-6413-4009-91df-a8c839a170cc'
-          or sender_profile.is_vip is true
-          or sender_profile.is_premium is true
-          or (sender_profile.premium_until is not null and sender_profile.premium_until > now())
-        )
-    )
-    or exists (
-      select 1
-      from public.profiles receiver_profile
-      where receiver_profile.id = chat_messages.receiver_id
-        and (
-          receiver_profile.id = 'fcade84e-6413-4009-91df-a8c839a170cc'
-          or receiver_profile.is_vip is true
-          or receiver_profile.is_premium is true
-          or (receiver_profile.premium_until is not null and receiver_profile.premium_until > now())
-        )
-      )
-    )
-  )
-);
+-- Nessuna policy insert per gli utenti: i messaggi vengono inseriti solo da
+-- /api/chat/send dopo verifica dell'annuncio collegato.
 
 create policy "Receivers can mark messages read"
 on public.chat_messages for update
