@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -64,7 +64,6 @@ export default function ScanPage() {
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
   const [recognitionVariants, setRecognitionVariants] = useState<ScannedCard[]>([])
   const [recognitionVariantsLoading, setRecognitionVariantsLoading] = useState(false)
-  const [opencvReady, setOpencvReady] = useState(false)
   const [ocrReady] = useState(true)
   const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
   const [scanSessionActive, setScanSessionActive] = useState(false)
@@ -84,6 +83,10 @@ export default function ScanPage() {
   const showSummaryRef = useRef(false)
   const pendingRecognitionSignatureRef = useRef<number[] | null>(null)
   const lastConfirmedSignatureRef = useRef<number[] | null>(null)
+  const lastObservedSignatureRef = useRef<number[] | null>(null)
+  const stableFrameSinceRef = useRef(0)
+  const ocrMissStreakRef = useRef(0)
+  const candidateImageCacheRef = useRef(new Map<string, Promise<ImageData | null>>())
   const manualSearchRunRef = useRef(0)
 
   const scanCanvasSize = { width: 1440, height: 1920 }
@@ -120,38 +123,6 @@ export default function ScanPage() {
     }
 
     loadOcrStatus()
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const existingScript = document.getElementById('opencv-script') as HTMLScriptElement | null
-    if (existingScript) {
-      if ((window as Window & { cv?: { Mat?: unknown } }).cv?.Mat) {
-        setOpencvReady(true)
-      } else {
-        existingScript.addEventListener('load', () => setOpencvReady(true), { once: true })
-      }
-      return
-    }
-
-    const script = document.createElement('script')
-    script.id = 'opencv-script'
-    script.src = 'https://docs.opencv.org/4.x/opencv.js'
-    script.async = true
-    script.onload = () => {
-      const cv = (window as Window & { cv?: { onRuntimeInitialized?: () => void } }).cv
-      if (cv?.onRuntimeInitialized) {
-        cv.onRuntimeInitialized = () => setOpencvReady(true)
-      } else {
-        setOpencvReady(true)
-      }
-    }
-    document.body.appendChild(script)
-
-    return () => {
-      script.onload = null
-    }
   }, [])
 
   useEffect(() => {
@@ -207,7 +178,7 @@ export default function ScanPage() {
       if (!detectionInProgressRef.current && !pendingRecognition && Date.now() >= scanCooldownUntilRef.current) {
         void detectCardFromFrame()
       }
-    }, 260)
+    }, 120)
 
     return () => {
       if (detectionLoopRef.current) {
@@ -513,7 +484,7 @@ export default function ScanPage() {
     streamRef.current = stream
     await attachStream(stream)
     scanGenerationRef.current += 1
-    scanCooldownUntilRef.current = Date.now() + 850
+    scanCooldownUntilRef.current = Date.now() + 180
     scanSessionRef.current = true
     showSummaryRef.current = false
     setCameraActive(true)
@@ -524,6 +495,9 @@ export default function ScanPage() {
     setPendingRecognition(null)
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
+    lastObservedSignatureRef.current = null
+    stableFrameSinceRef.current = 0
+    ocrMissStreakRef.current = 0
     recognitionStreakRef.current = null
     window.setTimeout(() => void pulseCameraFocus(), 120)
   }
@@ -678,6 +652,43 @@ export default function ScanPage() {
     inventory_price: null,
   })
 
+  const referenceLookup = useMemo(() => {
+    const entries = referenceCards.map(card => {
+      const strongHaystack = [
+        card.name,
+        card.card_id,
+        card.rarity,
+        card.card_cost,
+        card.card_power,
+        card.set_name,
+        card.sub_types,
+        card.card_type,
+        card.card_color
+      ].filter(Boolean).join(' ')
+
+      return {
+        card,
+        nameText: normalizeText(card.name || ''),
+        compactName: compactText(card.name || ''),
+        idText: compactText(card.card_id || card.id || ''),
+        nameTokens: splitNameParts(card.name || ''),
+        cardTokenSet: new Set(meaningfulTokens(strongHaystack)),
+        effectTokenSet: new Set(meaningfulTokens(card.card_text || ''))
+      }
+    })
+    const byBaseCode = new Map<string, ReferenceCard[]>()
+
+    for (const entry of entries) {
+      const key = baseCardCode(entry.card.card_id || entry.card.id || '')
+      if (!key) continue
+      const cards = byBaseCode.get(key) || []
+      cards.push(entry.card)
+      byBaseCode.set(key, cards)
+    }
+
+    return { entries, byBaseCode }
+  }, [referenceCards])
+
   useEffect(() => {
     if (!pendingRecognition?.card_id) {
       setRecognitionVariants([])
@@ -731,63 +742,38 @@ export default function ScanPage() {
     const ocrTokens = meaningfulTokens(ocrText)
 
     if (cardCode) {
-      const exactMatches = referenceCards.filter(card => baseCardCode(card.card_id || card.id || '') === baseCardCode(cardCode))
+      const exactMatches = referenceLookup.byBaseCode.get(baseCardCode(cardCode)) || []
       if (exactMatches.length === 1) return toScannedCard(exactMatches[0])
 
       if (exactMatches.length > 1) {
         const compactOcr = compactText(ocrText)
-        const variantMatches = await Promise.all(
-          exactMatches.slice(0, 12).map(async card => {
+        const textRanked = exactMatches
+          .map((card, index) => {
             const id = compactText(card.card_id || card.id || '')
             const name = compactText(card.name || '')
-            const imageUrl = card.image_url || card.card_image
-            const imageDistance = imageUrl ? await compareImageToCandidate(cropCanvas, imageUrl) : 999
             const isVariant = /(_p\d+|parallel|alternate|alt|special|manga|treasure)/i.test(String(card.card_id || card.id || card.rarity || card.name || ''))
-            let score = Math.max(0, 150 - imageDistance)
+            let score = -index * 0.001
 
             if (id && compactOcr.includes(id)) score += 70
             if (name && compactOcr.includes(name)) score += 18
-            if (isVariant) score += 8
+            if (isVariant && /(parallel|alternate|alternative|alt art|special|manga|treasure)/i.test(ocrText)) score += 24
 
-            return { card, score, imageDistance, isVariant }
+            return { card, score }
           })
-        )
+          .sort((a, b) => b.score - a.score)
 
-        variantMatches.sort((a, b) => b.score - a.score)
-        const best = variantMatches[0]
-        const bestVariant = variantMatches.find(match => match.isVariant)
-
-        if (best && bestVariant && !best.isVariant && best.score - bestVariant.score <= 16 && bestVariant.imageDistance <= best.imageDistance + 8) {
-          return toScannedCard(bestVariant.card)
-        }
-
-        return toScannedCard(best.card)
+        // Il codice identifica subito la carta. La variante grafica viene affinata
+        // in parallelo dopo aver mostrato il risultato, senza bloccare lo scanner.
+        return toScannedCard(textRanked[0].card)
       }
     }
 
     if (ocrTokens.length < 1) return null
 
-    const scored = referenceCards
-      .map(card => {
-        const strongHaystack = [
-          card.name,
-          card.card_id,
-          card.rarity,
-          card.card_cost,
-          card.card_power,
-          card.set_name,
-          card.sub_types,
-          card.card_type,
-          card.card_color
-        ].filter(Boolean).join(' ')
-        const effectText = card.card_text || ''
-        const nameText = normalizeText(card.name || '')
-        const compactName = compactText(card.name || '')
-        const idText = compactText(card.card_id || card.id || '')
+    const scored = referenceLookup.entries
+      .map(entry => {
+        const { card, nameText, compactName, idText, nameTokens, cardTokenSet, effectTokenSet } = entry
         const compactOcr = compactText(ocrText)
-        const nameTokens = splitNameParts(card.name || '')
-        const cardTokens = meaningfulTokens(strongHaystack)
-        const effectTokens = meaningfulTokens(effectText)
 
         let score = 0
         let identityScore = 0
@@ -795,8 +781,6 @@ export default function ScanPage() {
         if (compactName && compactOcr.includes(compactName)) identityScore += 18
         if (nameText && normalizedOcr.includes(nameText)) identityScore += 12
 
-        const cardTokenSet = new Set(cardTokens)
-        const effectTokenSet = new Set(effectTokens)
         for (const token of ocrTokens) {
           if (cardTokenSet.has(token)) score += nameText.includes(token) ? 1 : 1.5
           else if (identityScore > 0 && effectTokenSet.has(token)) score += 0.25
@@ -874,7 +858,7 @@ export default function ScanPage() {
     target.putImageData(imageData, 0, 0)
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.92)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.8)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -943,7 +927,7 @@ export default function ScanPage() {
     return signatureDistance(capturedSignature, currentSignature) < threshold
   }
 
-  const runOcrOnCanvases = async (canvases: HTMLCanvasElement[]) => {
+  const runOcrOnCanvases = async (canvases: HTMLCanvasElement[], mode: 'fast' | 'accurate') => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch('/api/cards/ocr', {
@@ -952,7 +936,7 @@ export default function ScanPage() {
           'Content-Type': 'application/json',
           Authorization: session?.access_token ? `Bearer ${session.access_token}` : ''
         },
-        body: JSON.stringify({ images: canvases.map(canvasToImage) })
+        body: JSON.stringify({ images: canvases.map(canvasToImage), mode })
       })
       const data = await res.json()
 
@@ -1050,38 +1034,73 @@ export default function ScanPage() {
 
   const compareImageToCandidate = async (sourceCanvas: HTMLCanvasElement, candidateUrl: string) => {
     try {
-      const image = new Image()
-      image.src = `/api/cards/recognition-image?url=${encodeURIComponent(candidateUrl)}`
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error('load failed'))
-      })
+      const sampleWidth = 84
+      const sampleHeight = 118
+      const sourceSample = document.createElement('canvas')
+      sourceSample.width = sampleWidth
+      sourceSample.height = sampleHeight
+      const sourceCtx = sourceSample.getContext('2d')
+      if (!sourceCtx) return Number.POSITIVE_INFINITY
+      sourceCtx.drawImage(sourceCanvas, 0, 0, sampleWidth, sampleHeight)
+      const sourceData = sourceCtx.getImageData(0, 0, sampleWidth, sampleHeight)
 
-      const candidateCanvas = document.createElement('canvas')
-      candidateCanvas.width = sourceCanvas.width
-      candidateCanvas.height = sourceCanvas.height
-      const ctx = candidateCanvas.getContext('2d')
-      if (!ctx) return Number.POSITIVE_INFINITY
-      ctx.drawImage(image, 0, 0, candidateCanvas.width, candidateCanvas.height)
+      let candidatePromise = candidateImageCacheRef.current.get(candidateUrl)
+      if (!candidatePromise) {
+        candidatePromise = new Promise<ImageData | null>((resolve) => {
+          const image = new Image()
+          image.decoding = 'async'
+          image.onload = () => {
+            const candidateCanvas = document.createElement('canvas')
+            candidateCanvas.width = sampleWidth
+            candidateCanvas.height = sampleHeight
+            const ctx = candidateCanvas.getContext('2d')
+            if (!ctx) {
+              resolve(null)
+              return
+            }
+            ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight)
+            resolve(ctx.getImageData(0, 0, sampleWidth, sampleHeight))
+          }
+          image.onerror = () => resolve(null)
+          image.src = `/api/cards/recognition-image?url=${encodeURIComponent(candidateUrl)}`
+        })
+        candidateImageCacheRef.current.set(candidateUrl, candidatePromise)
+      }
 
-      const sourceData = sourceCanvas.getContext('2d')?.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height)
-      const candidateData = ctx.getImageData(0, 0, candidateCanvas.width, candidateCanvas.height)
+      const candidateData = await candidatePromise
       if (!sourceData || !candidateData) return Number.POSITIVE_INFINITY
 
+      const channelMeans = (data: Uint8ClampedArray) => {
+        const means = [0, 0, 0]
+        const pixels = data.length / 4
+        for (let i = 0; i < data.length; i += 4) {
+          means[0] += data[i]
+          means[1] += data[i + 1]
+          means[2] += data[i + 2]
+        }
+        return means.map(value => value / pixels)
+      }
+      const sourceMeans = channelMeans(sourceData.data)
+      const candidateMeans = channelMeans(candidateData.data)
+
       const regionDiff = (xRatio: number, yRatio: number, widthRatio: number, heightRatio: number) => {
-        const startX = Math.max(0, Math.floor(sourceCanvas.width * xRatio))
-        const startY = Math.max(0, Math.floor(sourceCanvas.height * yRatio))
-        const endX = Math.min(sourceCanvas.width, Math.floor(startX + sourceCanvas.width * widthRatio))
-        const endY = Math.min(sourceCanvas.height, Math.floor(startY + sourceCanvas.height * heightRatio))
+        const startX = Math.max(0, Math.floor(sampleWidth * xRatio))
+        const startY = Math.max(0, Math.floor(sampleHeight * yRatio))
+        const endX = Math.min(sampleWidth, Math.floor(startX + sampleWidth * widthRatio))
+        const endY = Math.min(sampleHeight, Math.floor(startY + sampleHeight * heightRatio))
         let diff = 0
         let count = 0
 
-        for (let y = startY; y < endY; y += 2) {
-          for (let x = startX; x < endX; x += 2) {
-            const i = (y * sourceCanvas.width + x) * 4
-            diff += Math.abs(sourceData.data[i] - candidateData.data[i])
-            diff += Math.abs(sourceData.data[i + 1] - candidateData.data[i + 1])
-            diff += Math.abs(sourceData.data[i + 2] - candidateData.data[i + 2])
+        for (let y = startY; y < endY; y += 1) {
+          for (let x = startX; x < endX; x += 1) {
+            const i = (y * sampleWidth + x) * 4
+            for (let channel = 0; channel < 3; channel += 1) {
+              const normalizedSource = sourceData.data[i + channel] - sourceMeans[channel]
+              const normalizedCandidate = candidateData.data[i + channel] - candidateMeans[channel]
+              const structureDiff = Math.abs(normalizedSource - normalizedCandidate)
+              const rawDiff = Math.abs(sourceData.data[i + channel] - candidateData.data[i + channel])
+              diff += structureDiff * 0.85 + rawDiff * 0.15
+            }
             count += 1
           }
         }
@@ -1193,10 +1212,12 @@ export default function ScanPage() {
 
     try {
       await saveCardToCollection(savedCard)
-      await refreshProgressAfterCollectionChange()
+      void refreshProgressAfterCollectionChange()
 
       setScannedCards(prev => [savedCard, ...prev])
       recognitionStreakRef.current = null
+      ocrMissStreakRef.current = 0
+      stableFrameSinceRef.current = 0
       lastConfirmedSignatureRef.current = pendingRecognitionSignatureRef.current
       pendingRecognitionSignatureRef.current = null
       setCarouselIndex(0)
@@ -1247,26 +1268,11 @@ export default function ScanPage() {
   const discardPendingRecognition = () => {
     pendingRecognitionSignatureRef.current = null
     recognitionStreakRef.current = null
-    scanCooldownUntilRef.current = Date.now() + 120
+    ocrMissStreakRef.current = 0
+    stableFrameSinceRef.current = 0
+    scanCooldownUntilRef.current = Date.now() + 80
     setPendingRecognition(null)
     setRecognitionMessage('Carta scartata. Tieni al centro la prossima carta.')
-  }
-
-  const estimateCardRect = (sourceRect: { x: number; y: number; width: number; height: number }, canvasWidth: number, canvasHeight: number) => {
-    const targetAspect = 0.72
-    const centerX = sourceRect.x + sourceRect.width / 2
-    const centerY = sourceRect.y + sourceRect.height / 2
-    const baseWidth = Math.max(sourceRect.width, 120)
-    const baseHeight = Math.max(sourceRect.height, 120)
-    const expandedWidth = Math.min(canvasWidth * 0.82, Math.max(baseWidth * 1.35, baseHeight * targetAspect * 1.15))
-    const expandedHeight = Math.min(canvasHeight * 0.9, Math.max(baseHeight * 1.3, expandedWidth / targetAspect))
-
-    return {
-      x: Math.max(0, Math.min(canvasWidth - expandedWidth, centerX - expandedWidth / 2)),
-      y: Math.max(0, Math.min(canvasHeight - expandedHeight, centerY - expandedHeight / 2)),
-      width: Math.max(80, Math.min(canvasWidth, expandedWidth)),
-      height: Math.max(80, Math.min(canvasHeight, expandedHeight))
-    }
   }
 
   const detectCardFromFrame = async () => {
@@ -1335,6 +1341,22 @@ export default function ScanPage() {
 
     setDetectedRect(rect)
     const frameSignature = frameSignatureFromCanvas(canvas, rect)
+    const now = Date.now()
+    const previousFrameSignature = lastObservedSignatureRef.current
+    lastObservedSignatureRef.current = frameSignature
+
+    if (!previousFrameSignature) {
+      stableFrameSinceRef.current = now - 100
+    } else if (signatureDistance(previousFrameSignature, frameSignature) > 11) {
+      stableFrameSinceRef.current = now
+      scanCooldownUntilRef.current = now + 35
+      setRecognitionMessage('Carta rilevata. Stabilizzo la messa a fuoco...')
+      return
+    } else if (now - stableFrameSinceRef.current < 70) {
+      scanCooldownUntilRef.current = now + 25
+      return
+    }
+
     if (lastConfirmedSignatureRef.current && signatureDistance(lastConfirmedSignatureRef.current, frameSignature) < 12) {
       setRecognitionMessage('Carta già aggiunta. Cambiala o muovila per continuare.')
       scanCooldownUntilRef.current = Date.now() + 45
@@ -1437,27 +1459,15 @@ export default function ScanPage() {
       imageMatchCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, imageMatchCanvas.width, imageMatchCanvas.height)
     }
 
-    const fullCardOcrCanvas = document.createElement('canvas')
-    fullCardOcrCanvas.width = 820
-    fullCardOcrCanvas.height = 1148
-    const fullCardOcrCtx = fullCardOcrCanvas.getContext('2d')
-    if (fullCardOcrCtx) {
-      fullCardOcrCtx.imageSmoothingEnabled = true
-      fullCardOcrCtx.imageSmoothingQuality = 'high'
-      fullCardOcrCtx.drawImage(canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, fullCardOcrCanvas.width, fullCardOcrCanvas.height)
-    }
-
-    const ocrText = await runOcrOnCanvases([
-      fastOcrCanvas,
-      fullCardOcrCanvas
-    ])
+    const ocrMode = ocrMissStreakRef.current > 0 ? 'accurate' : 'fast'
+    const ocrText = await runOcrOnCanvases([fastOcrCanvas], ocrMode)
     if (!isScanStillActive(generation)) return
     if (ocrText === null) {
       recognitionStreakRef.current = null
-      scanCooldownUntilRef.current = Date.now() + 500
+      scanCooldownUntilRef.current = Date.now() + 250
       return
     }
-    if (!isCapturedFrameStillLive(frameSignature)) {
+    if (!isCapturedFrameStillLive(frameSignature, 30)) {
       recognitionStreakRef.current = null
       scanCooldownUntilRef.current = Date.now() + 20
       setRecognitionMessage('Inquadratura cambiata. Leggo la carta attuale...')
@@ -1481,7 +1491,7 @@ export default function ScanPage() {
     if (!isScanStillActive(generation)) return
 
     const cardMatch = localMatch || serverMatch || searchMatch
-    if (!isCapturedFrameStillLive(frameSignature, 28)) {
+    if (!isCapturedFrameStillLive(frameSignature, 34)) {
       recognitionStreakRef.current = null
       scanCooldownUntilRef.current = Date.now() + 20
       setRecognitionMessage('Risultato vecchio scartato. Tieni ferma la carta attuale...')
@@ -1489,9 +1499,10 @@ export default function ScanPage() {
     }
 
     if (cardMatch) {
+      ocrMissStreakRef.current = 0
       if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
         setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Verifico un altro frame...`)
-        scanCooldownUntilRef.current = Date.now() + 90
+        scanCooldownUntilRef.current = Date.now() + 45
         return
       }
 
@@ -1499,8 +1510,11 @@ export default function ScanPage() {
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Aggiungila alla collezione o scartala.`)
       enrichPendingPriceInBackground(cardMatch, generation)
+      refineRecognitionVariant(allOcrText, imageMatchCanvas, generation, cardMatch)
     } else {
       recognitionStreakRef.current = null
+      ocrMissStreakRef.current += 1
+      scanCooldownUntilRef.current = Date.now() + Math.min(160, 45 + ocrMissStreakRef.current * 25)
       const previewText = allOcrText.replace(/\s+/g, ' ').trim().slice(0, 90)
       setRecognitionMessage(previewText ? `Testo letto ma nessun match: ${previewText}` : 'Google Vision non ha letto testo utile. Avvicina la carta e aumenta la luce.')
     }
@@ -1552,6 +1566,58 @@ export default function ScanPage() {
     }
   }
 
+  const refineRecognitionVariant = (
+    ocrText: string,
+    sourceCanvas: HTMLCanvasElement,
+    generation: number,
+    initialCard: ScannedCard
+  ) => {
+    const cardCode = extractCardCode(ocrText)
+    if (!cardCode) return
+
+    const variants = (referenceLookup.byBaseCode.get(baseCardCode(cardCode)) || [])
+      .filter(card => card.image_url || card.card_image)
+      .slice(0, 12)
+    if (variants.length < 2) return
+
+    const capturedCanvas = document.createElement('canvas')
+    capturedCanvas.width = sourceCanvas.width
+    capturedCanvas.height = sourceCanvas.height
+    capturedCanvas.getContext('2d')?.drawImage(sourceCanvas, 0, 0)
+
+    void Promise.all(variants.map(async card => ({
+      card,
+      distance: await compareImageToCandidate(capturedCanvas, card.image_url || card.card_image || '')
+    }))).then(async matches => {
+      if (!isScanStillActive(generation)) return
+      const ranked = matches
+        .filter(match => Number.isFinite(match.distance))
+        .sort((a, b) => a.distance - b.distance)
+      const best = ranked[0]
+      const second = ranked[1]
+
+      // Aggiorniamo automaticamente solo quando la foto distingue davvero la variante.
+      if (!best || best.distance > 105 || (second && second.distance - best.distance < 2.5)) return
+      if (best.card.card_id === initialCard.card_id) return
+
+      const refinedCard = {
+        ...toScannedCard(best.card),
+        id: initialCard.id
+      }
+      setPendingRecognition(current => {
+        if (!current || current.card_id !== initialCard.card_id) return current
+        return refinedCard
+      })
+
+      setRecognitionMessage(`Carta trovata: ${refinedCard.name}. Variante verificata.`)
+      const pricedCard = await enrichCardWithLivePrice(refinedCard)
+      if (!isScanStillActive(generation)) return
+      setPendingRecognition(current => (
+        current?.card_id === refinedCard.card_id ? { ...current, ...pricedCard, id: current.id } : current
+      ))
+    }).catch(() => undefined)
+  }
+
   const stopCamera = () => {
     scanGenerationRef.current += 1
     scanCooldownUntilRef.current = 0
@@ -1572,6 +1638,9 @@ export default function ScanPage() {
     setPendingRecognition(null)
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
+    lastObservedSignatureRef.current = null
+    stableFrameSinceRef.current = 0
+    ocrMissStreakRef.current = 0
     recognitionStreakRef.current = null
     setRecognitionMessage('Scansione fermata. Controlla il riepilogo.')
   }

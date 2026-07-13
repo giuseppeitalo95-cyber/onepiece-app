@@ -21,6 +21,7 @@ const getValidSupabaseUrl = () => {
 const supabaseUrl = getValidSupabaseUrl()
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const googleVisionApiKey = process.env.GOOGLE_VISION_API_KEY
+const scanAccessCache = new Map<string, { userId: string; tier: string; expiresAt: number }>()
 
 type ScanUsageResult = {
   allowed?: boolean
@@ -76,7 +77,7 @@ const uniqueLines = (value: string) => {
 const extractVisionText = (result: any) => {
   const ocrParts = [
     result?.fullTextAnnotation?.text,
-    ...(result?.textAnnotations || []).map((item: any) => item?.description),
+    result?.textAnnotations?.[0]?.description,
   ].filter(Boolean)
   const ocrText = uniqueLines(ocrParts.join('\n'))
   if (ocrText.trim()) return ocrText
@@ -155,6 +156,37 @@ async function reserveDailyUserScan(req: NextRequest) {
     }
   }
 
+  const cachedAccess = scanAccessCache.get(token)
+  if (cachedAccess && cachedAccess.expiresAt > Date.now()) {
+    if (cachedAccess.tier !== 'free') {
+      return {
+        allowed: true,
+        used: 0,
+        limit: Number.POSITIVE_INFINITY,
+        error: null
+      }
+    }
+
+    const { data, error } = await adminSupabase
+      .rpc('increment_user_daily_scan_usage', {
+        p_user_id: cachedAccess.userId,
+        p_day: currentDayKey(),
+        p_limit: FREE_DAILY_SCAN_LIMIT
+      })
+      .single()
+
+    if (!error) {
+      const usage = data as DailyScanUsageResult | null
+      return {
+        allowed: Boolean(usage?.allowed),
+        used: Number(usage?.used || 0),
+        limit: Number(usage?.daily_limit || FREE_DAILY_SCAN_LIMIT),
+        error: null
+      }
+    }
+    scanAccessCache.delete(token)
+  }
+
   const { data: { user }, error: userError } = await adminSupabase.auth.getUser(token)
   if (userError || !user) {
     return {
@@ -172,6 +204,17 @@ async function reserveDailyUserScan(req: NextRequest) {
     .maybeSingle()
 
   const tier = getPremiumTier(profile, user)
+  if (scanAccessCache.size > 500) {
+    const now = Date.now()
+    for (const [key, value] of scanAccessCache) {
+      if (value.expiresAt <= now) scanAccessCache.delete(key)
+    }
+  }
+  scanAccessCache.set(token, {
+    userId: user.id,
+    tier,
+    expiresAt: Date.now() + 60_000
+  })
   if (tier !== 'free') {
     return {
       allowed: true,
@@ -210,13 +253,14 @@ async function reserveDailyUserScan(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const ocrMode = body?.mode === 'accurate' ? 'accurate' : 'fast'
     const rawImages = Array.isArray(body?.images)
       ? body.images
       : [body?.image || body?.dataUrl || body?.base64Image]
 
     const images = rawImages
       .filter((image: unknown): image is string => typeof image === 'string' && image.length > 0)
-      .slice(0, 6)
+      .slice(0, 2)
 
     if (images.length === 0) {
       return Response.json({ text: '', error: 'Missing image' }, { status: 400 })
@@ -260,23 +304,15 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        requests: images.map((image: string, index: number) => ({
+        requests: images.map((image: string) => ({
             image: {
               content: imageToBase64(image)
             },
             features: [
               {
-                type: 'DOCUMENT_TEXT_DETECTION',
+                type: ocrMode === 'accurate' ? 'DOCUMENT_TEXT_DETECTION' : 'TEXT_DETECTION',
                 maxResults: 50
-              },
-              {
-                type: 'TEXT_DETECTION',
-                maxResults: 50
-              },
-              ...(index > 0 ? [{
-                type: 'WEB_DETECTION',
-                maxResults: 6
-              }] : [])
+              }
             ],
             imageContext: {
               languageHints: ['en']
