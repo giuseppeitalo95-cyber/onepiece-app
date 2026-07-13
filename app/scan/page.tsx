@@ -86,7 +86,7 @@ export default function ScanPage() {
   const lastConfirmedSignatureRef = useRef<number[] | null>(null)
   const manualSearchRunRef = useRef(0)
 
-  const scanCanvasSize = { width: 1120, height: 1493 }
+  const scanCanvasSize = { width: 1440, height: 1920 }
 
   useEffect(() => {
     const checkUser = async () => {
@@ -233,8 +233,6 @@ export default function ScanPage() {
 
       if (capabilities.focusMode?.includes('continuous')) {
         advanced.push({ focusMode: 'continuous' })
-      } else if (capabilities.focusMode?.includes('single-shot')) {
-        advanced.push({ focusMode: 'single-shot' })
       }
       if (capabilities.exposureMode?.includes('continuous')) {
         advanced.push({ exposureMode: 'continuous' })
@@ -242,11 +240,6 @@ export default function ScanPage() {
       if (capabilities.whiteBalanceMode?.includes('continuous')) {
         advanced.push({ whiteBalanceMode: 'continuous' })
       }
-      if (capabilities.zoom?.min != null && capabilities.zoom?.max != null) {
-        const zoom = Math.max(capabilities.zoom.min, Math.min(capabilities.zoom.max, 1.15))
-        advanced.push({ zoom })
-      }
-
       if (advanced.length > 0) {
         await track.applyConstraints({ advanced } as unknown as MediaTrackConstraints)
       }
@@ -268,12 +261,7 @@ export default function ScanPage() {
         focusMode?: string[]
       }
 
-      if (capabilities.focusMode?.includes('single-shot')) {
-        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] } as unknown as MediaTrackConstraints)
-        window.setTimeout(() => {
-          track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints).catch(() => undefined)
-        }, 450)
-      } else if (capabilities.focusMode?.includes('continuous')) {
+      if (capabilities.focusMode?.includes('continuous')) {
         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] } as unknown as MediaTrackConstraints)
       }
     } catch {
@@ -284,6 +272,7 @@ export default function ScanPage() {
   const attachStream = async (stream: MediaStream) => {
     if (!videoRef.current) return
 
+    stream = await applyMaxCameraResolution(stream)
     await optimizeCameraTrack(stream)
 
     videoRef.current.srcObject = stream
@@ -324,13 +313,39 @@ export default function ScanPage() {
   }
 
   const highQualityVideoConstraints = (extra: MediaTrackConstraints = {}): MediaTrackConstraints => ({
-    width: { ideal: 2560, min: 1280 },
-    height: { ideal: 1440, min: 720 },
+    width: { ideal: 3840, min: 1280 },
+    height: { ideal: 2160, min: 720 },
     frameRate: { ideal: 30, min: 24 },
-    aspectRatio: { ideal: 16 / 9 },
     resizeMode: 'none',
     ...extra
   } as MediaTrackConstraints)
+
+  const applyMaxCameraResolution = async (stream: MediaStream) => {
+    const [track] = stream.getVideoTracks()
+    if (!track?.getCapabilities || !track.applyConstraints) return stream
+
+    try {
+      const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+        width?: { max?: number }
+        height?: { max?: number }
+        frameRate?: { max?: number }
+      }
+      const maxWidth = capabilities.width?.max
+      const maxHeight = capabilities.height?.max
+
+      if (maxWidth && maxHeight) {
+        await track.applyConstraints({
+          width: { ideal: maxWidth },
+          height: { ideal: maxHeight },
+          frameRate: { ideal: Math.min(capabilities.frameRate?.max || 30, 30) }
+        } as MediaTrackConstraints)
+      }
+    } catch {
+      // Se il browser rifiuta la risoluzione massima, mantiene la migliore accettata.
+    }
+
+    return stream
+  }
 
   const cameraLabelScore = (labelValue: string) => {
     const label = labelValue.toLowerCase()
@@ -530,39 +545,6 @@ export default function ScanPage() {
     meaningfulTokens(value)
       .flatMap(token => token.split(/\d+/))
       .filter(token => token.length >= 3)
-
-  const hasExactCodeMatch = (ocrText: string, card: ScannedCard) => {
-    const cardCode = extractCardCode(ocrText)
-    return Boolean(cardCode && baseCardCode(cardCode) === baseCardCode(card.card_id || ''))
-  }
-
-  const hasStrongNameMatch = (ocrText: string, card: ScannedCard) => {
-    const name = normalizeText(card.name || '')
-    if (!name) return false
-
-    const normalizedOcr = normalizeText(ocrText)
-    if (name.length >= 5 && normalizedOcr.includes(name)) return true
-
-    const nameTokens = meaningfulTokens(card.name || '')
-    if (nameTokens.length < 2) return false
-
-    const ocrTokenSet = new Set(meaningfulTokens(ocrText))
-    return nameTokens.every(token => ocrTokenSet.has(token))
-  }
-
-  const shouldShowRecognizedCard = (card: ScannedCard, ocrText: string) => {
-    if (hasExactCodeMatch(ocrText, card) || hasStrongNameMatch(ocrText, card)) {
-      recognitionStreakRef.current = null
-      return true
-    }
-
-    const cardKey = compactText(card.card_id || card.name || '')
-    const previous = recognitionStreakRef.current
-    const nextCount = previous?.cardId === cardKey ? previous.count + 1 : 1
-    recognitionStreakRef.current = { cardId: cardKey, count: nextCount }
-
-    return nextCount >= 2
-  }
 
   const isScanStillActive = (generation: number) =>
     scanGenerationRef.current === generation && scanSessionRef.current && !showSummaryRef.current
@@ -1189,8 +1171,6 @@ export default function ScanPage() {
     const ctx = canvas.getContext('2d')
 
     if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return
-    void pulseCameraFocus()
-
     canvas.width = scanCanvasSize.width
     canvas.height = scanCanvasSize.height
     setVideoSize({ width: canvas.width, height: canvas.height })
@@ -1370,11 +1350,6 @@ export default function ScanPage() {
 
     const cardMatch = localMatch || serverMatch || searchMatch
     if (cardMatch) {
-      if (!shouldShowRecognizedCard(cardMatch, allOcrText)) {
-        setRecognitionMessage(`Possibile carta: ${cardMatch.name}. Tienila ferma per confermare.`)
-        return
-      }
-
       pendingRecognitionSignatureRef.current = frameSignature
       setPendingRecognition(cardMatch)
       setRecognitionMessage(`Carta trovata: ${cardMatch.name}. Aggiungila alla collezione o scartala.`)
