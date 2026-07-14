@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -7,7 +8,6 @@ import Image from 'next/image'
 import { ArrowLeft, Crown, LoaderCircle, RotateCcw, Sparkles } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import styles from './reward.module.css'
 
@@ -197,9 +197,11 @@ export default function DailyRewardPage() {
 
   return (
     <div className={styles.page}>
+      <link rel="preload" as="image" href="/rewards/opv-special-card.jpeg" fetchPriority="high" />
+      <link rel="preload" as="image" href="/rewards/opv-card-back.jpeg" fetchPriority="high" />
       <div className={styles.preloadAssets} aria-hidden="true">
         <Image src="/rewards/opv-card-back.jpeg" alt="" width={1054} height={1494} priority />
-        <Image src="/rewards/opv-special-card.jpeg" alt="" width={1055} height={1508} priority />
+        <Image src="/rewards/opv-special-card.jpeg" alt="" width={1055} height={1508} priority unoptimized quality={100} />
       </div>
       <Topbar />
       <Sidebar activePage="collezione" />
@@ -290,17 +292,20 @@ export default function DailyRewardPage() {
                               width={1055}
                               height={1508}
                               priority
-                              sizes="(max-width: 640px) 86vw, 520px"
+                              quality={100}
+                              unoptimized
+                              sizes="100vw"
                             />
                           ) : result?.card ? (
-                            <CardImage
+                            <img
                               src={result.card.imageUrl}
-                              cardId={result.card.cardId}
                               alt={result.card.name}
-                              className="h-full w-full"
-                              imgClassName="h-full w-full object-cover"
+                              className={styles.image}
+                              draggable={false}
                               loading="eager"
                               fetchPriority="high"
+                              decoding="sync"
+                              referrerPolicy="no-referrer"
                             />
                           ) : null}
                         </span>
