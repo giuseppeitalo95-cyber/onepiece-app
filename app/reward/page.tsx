@@ -39,7 +39,7 @@ const confettiColors = ['#fde047', '#f59e0b', '#67e8f9', '#fb7185', '#ffffff']
 const delay = (milliseconds: number) => new Promise(resolve => window.setTimeout(resolve, milliseconds))
 const preloadImage = (source: string) => new Promise<void>(resolve => {
   const image = new window.Image()
-  const timeout = window.setTimeout(resolve, 900)
+  const timeout = window.setTimeout(resolve, 2600)
   image.onload = () => {
     window.clearTimeout(timeout)
     resolve()
@@ -101,6 +101,7 @@ export default function DailyRewardPage() {
     setSelectedIndex(index)
     setPhase('locking')
     setMessage('La rotta è stata scelta...')
+    const specialPreload = preloadImage('/rewards/opv-special-card.jpeg')
 
     const currentFounderAttempt = founderAttemptRef.current
     founderAttemptRef.current += 1
@@ -125,10 +126,13 @@ export default function DailyRewardPage() {
                 imageUrl: 'https://en.onepiece-cardgame.com/images/cardlist/card/OP16-056.png'
               }
         }
-        await preloadImage(previewResult.card.imageUrl)
+        await Promise.all([
+          preloadImage(previewResult.card.imageUrl),
+          previewWon ? specialPreload : Promise.resolve()
+        ])
         setResult(previewResult)
         setMessage(previewWon ? 'Il tesoro ha scelto te.' : 'Questa volta il tesoro era altrove.')
-        await delay(80)
+        await delay(previewWon ? 220 : 80)
         setPhase('revealed')
         return
       }
@@ -152,10 +156,15 @@ export default function DailyRewardPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data?.error || 'Reward non disponibile')
 
-      if (data?.card?.imageUrl) await preloadImage(data.card.imageUrl)
+      if (data?.card?.imageUrl) {
+        await Promise.all([
+          preloadImage(data.card.imageUrl),
+          data.won ? specialPreload : Promise.resolve()
+        ])
+      }
       setResult(data)
       setMessage(data.won ? 'Il tesoro ha scelto te.' : 'Questa volta il tesoro era altrove.')
-      await delay(80)
+      await delay(data.won ? 220 : 80)
       setPhase('revealed')
     } catch (error) {
       setSelectedIndex(null)
@@ -188,6 +197,10 @@ export default function DailyRewardPage() {
 
   return (
     <div className={styles.page}>
+      <div className={styles.preloadAssets} aria-hidden="true">
+        <Image src="/rewards/opv-card-back.jpeg" alt="" width={1054} height={1494} priority />
+        <Image src="/rewards/opv-special-card.jpeg" alt="" width={1055} height={1508} priority />
+      </div>
       <Topbar />
       <Sidebar activePage="collezione" />
       {confetti}
@@ -250,7 +263,7 @@ export default function DailyRewardPage() {
                       disabled={phase !== 'idle'}
                       onClick={() => chooseCard(index)}
                       aria-label={`Scegli la carta ${index + 1}`}
-                      className={`${styles.cardButton} ${selected ? styles.selected : ''} ${dismissed ? styles.dismissed : ''}`}
+                      className={`${styles.cardButton} ${selected ? styles.selected : ''} ${dismissed ? styles.dismissed : ''} ${selected && result?.won ? styles.winnerSelected : ''}`}
                       style={cardStyle}
                     >
                       {selected && phase !== 'idle' && <span className={styles.chosenHalo} />}

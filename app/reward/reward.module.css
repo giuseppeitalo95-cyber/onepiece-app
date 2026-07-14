@@ -23,6 +23,20 @@
   text-align: center;
 }
 
+.preloadAssets {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0.001;
+  pointer-events: none;
+}
+
+.preloadAssets img {
+  width: 1px;
+  height: 1px;
+}
+
 .page:has(.front.win)::after {
   content: '';
   position: fixed;
@@ -105,6 +119,18 @@
   animation: none;
   transform: translateY(-10px) scale(1.09);
   filter: drop-shadow(0 20px 26px rgba(0, 0, 0, 0.4));
+}
+
+.cardButton.selected.winnerSelected {
+  position: fixed;
+  top: 43%;
+  left: 50%;
+  z-index: 75;
+  width: min(43dvh, 72vw, 360px);
+  transform: translate(-50%, -50%) scale(1);
+  filter:
+    drop-shadow(0 0 36px rgba(255, 255, 255, 0.72))
+    drop-shadow(0 0 72px rgba(250, 204, 21, 0.58));
 }
 
 .cardButton.dismissed {
