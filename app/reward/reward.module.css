@@ -126,7 +126,7 @@
   top: 43%;
   left: 50%;
   z-index: 75;
-  width: min(43dvh, 72vw, 360px);
+  width: min(13dvh, 28vw, 128px);
   transform: translate(-50%, -50%) scale(1);
   filter:
     drop-shadow(0 0 36px rgba(255, 255, 255, 0.72))
@@ -308,6 +308,10 @@
 
   .grid {
     width: min(100%, 650px, 52dvh);
+  }
+
+  .cardButton.selected.winnerSelected {
+    width: min(18dvh, 22vw, 168px);
   }
 
   @keyframes winnerReveal {
