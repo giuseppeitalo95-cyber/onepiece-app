@@ -100,6 +100,12 @@ const extractVisionText = (result: any) => {
   return uniqueLines(webParts.join('\n'))
 }
 
+const extractVisionWebText = (result: any) => uniqueLines([
+  ...(result?.webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
+  ...(result?.webDetection?.webEntities || []).map((item: any) => item?.description),
+  ...(result?.webDetection?.pagesWithMatchingImages || []).map((item: any) => item?.pageTitle),
+].filter(Boolean).join('\n'))
+
 async function reserveMonthlyScan() {
   if (!adminSupabase) {
     return {
@@ -315,7 +321,11 @@ async function checkDailyUserScan(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const ocrMode = body?.mode === 'accurate' ? 'accurate' : 'fast'
+    const ocrMode = body?.mode === 'photo'
+      ? 'photo'
+      : body?.mode === 'accurate'
+        ? 'accurate'
+        : 'fast'
 
     if (!googleVisionApiKey) {
       return Response.json({ text: '', error: 'Missing GOOGLE_VISION_API_KEY' }, { status: 503 })
@@ -395,9 +405,12 @@ export async function POST(req: NextRequest) {
             },
             features: [
               {
-                type: ocrMode === 'accurate' ? 'DOCUMENT_TEXT_DETECTION' : 'TEXT_DETECTION',
+                type: ocrMode === 'fast' ? 'TEXT_DETECTION' : 'DOCUMENT_TEXT_DETECTION',
                 maxResults: 50
-              }
+              },
+              ...(ocrMode === 'photo'
+                ? [{ type: 'WEB_DETECTION', maxResults: 12 }]
+                : [])
             ],
             imageContext: {
               languageHints: ['en']
@@ -440,9 +453,13 @@ export async function POST(req: NextRequest) {
     }
 
     const text = uniqueLines(responses.map(extractVisionText).filter(Boolean).join('\n'))
+    const webText = ocrMode === 'photo'
+      ? uniqueLines(responses.map(extractVisionWebText).filter(Boolean).join('\n'))
+      : ''
 
     return Response.json({
       text,
+      webText,
       scansUsed: usage.used,
       scansLimit: usage.limit
     })

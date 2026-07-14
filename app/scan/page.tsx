@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { ChangeEvent, CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
@@ -48,6 +48,8 @@ export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const capturedPhotoUrlRef = useRef<string | null>(null)
 
   const [userId, setUserId] = useState<string | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
@@ -71,6 +73,8 @@ export default function ScanPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null)
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null)
+  const [photoProcessing, setPhotoProcessing] = useState(false)
   const [summaryDrag, setSummaryDrag] = useState({ active: false, startX: 0, offset: 0 })
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
@@ -171,6 +175,10 @@ export default function ScanPage() {
       if (summarySwipeTimerRef.current) {
         window.clearTimeout(summarySwipeTimerRef.current)
         summarySwipeTimerRef.current = null
+      }
+      if (capturedPhotoUrlRef.current) {
+        URL.revokeObjectURL(capturedPhotoUrlRef.current)
+        capturedPhotoUrlRef.current = null
       }
     }
   }, [])
@@ -894,7 +902,7 @@ export default function ScanPage() {
     return canvas
   }
 
-  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.76)
+  const canvasToImage = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/jpeg', 0.9)
 
   const frameSignatureFromCanvas = (canvas: HTMLCanvasElement, rect?: { x: number; y: number; width: number; height: number }) => {
     const ctx = canvas.getContext('2d')
@@ -979,7 +987,7 @@ export default function ScanPage() {
     return signatureDistance(capturedSignature, currentSignature) < threshold
   }
 
-  const runOcrOnCanvases = async (canvases: HTMLCanvasElement[], mode: 'fast' | 'accurate') => {
+  const runOcrOnCanvases = async (canvases: HTMLCanvasElement[], mode: 'fast' | 'accurate' | 'photo') => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch('/api/cards/ocr', {
@@ -1003,7 +1011,9 @@ export default function ScanPage() {
         return null
       }
 
-      return typeof data?.text === 'string' ? data.text : null
+      return [data?.text, data?.webText]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .join('\n')
     } catch {
       if (scanSessionRef.current && !showSummaryRef.current) {
         setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
@@ -1088,13 +1098,46 @@ export default function ScanPage() {
     try {
       const sampleWidth = 84
       const sampleHeight = 118
-      const sourceSample = document.createElement('canvas')
-      sourceSample.width = sampleWidth
-      sourceSample.height = sampleHeight
-      const sourceCtx = sourceSample.getContext('2d')
-      if (!sourceCtx) return Number.POSITIVE_INFINITY
-      sourceCtx.drawImage(sourceCanvas, 0, 0, sampleWidth, sampleHeight)
-      const sourceData = sourceCtx.getImageData(0, 0, sampleWidth, sampleHeight)
+      const targetAspect = sampleWidth / sampleHeight
+      const sourceAspect = sourceCanvas.width / sourceCanvas.height
+      const baseWidth = sourceAspect > targetAspect
+        ? sourceCanvas.height * targetAspect
+        : sourceCanvas.width
+      const baseHeight = sourceAspect > targetAspect
+        ? sourceCanvas.height
+        : sourceCanvas.width / targetAspect
+      const sourceSamples: ImageData[] = []
+
+      for (const scale of [1, 0.86, 0.72, 0.58]) {
+        const cropWidth = baseWidth * scale
+        const cropHeight = baseHeight * scale
+        for (const offsetX of [-0.06, 0, 0.06]) {
+          for (const offsetY of [-0.05, 0, 0.05]) {
+            const sourceSample = document.createElement('canvas')
+            sourceSample.width = sampleWidth
+            sourceSample.height = sampleHeight
+            const sourceCtx = sourceSample.getContext('2d')
+            if (!sourceCtx) continue
+
+            const centerX = sourceCanvas.width / 2 + sourceCanvas.width * offsetX
+            const centerY = sourceCanvas.height / 2 + sourceCanvas.height * offsetY
+            const sourceX = Math.max(0, Math.min(sourceCanvas.width - cropWidth, centerX - cropWidth / 2))
+            const sourceY = Math.max(0, Math.min(sourceCanvas.height - cropHeight, centerY - cropHeight / 2))
+            sourceCtx.drawImage(
+              sourceCanvas,
+              sourceX,
+              sourceY,
+              cropWidth,
+              cropHeight,
+              0,
+              0,
+              sampleWidth,
+              sampleHeight
+            )
+            sourceSamples.push(sourceCtx.getImageData(0, 0, sampleWidth, sampleHeight))
+          }
+        }
+      }
 
       let candidatePromise = candidateImageCacheRef.current.get(candidateUrl)
       if (!candidatePromise) {
@@ -1120,7 +1163,7 @@ export default function ScanPage() {
       }
 
       const candidateData = await candidatePromise
-      if (!sourceData || !candidateData) return Number.POSITIVE_INFINITY
+      if (!candidateData || sourceSamples.length === 0) return Number.POSITIVE_INFINITY
 
       const channelMeans = (data: Uint8ClampedArray) => {
         const means = [0, 0, 0]
@@ -1132,39 +1175,41 @@ export default function ScanPage() {
         }
         return means.map(value => value / pixels)
       }
-      const sourceMeans = channelMeans(sourceData.data)
       const candidateMeans = channelMeans(candidateData.data)
 
-      const regionDiff = (xRatio: number, yRatio: number, widthRatio: number, heightRatio: number) => {
-        const startX = Math.max(0, Math.floor(sampleWidth * xRatio))
-        const startY = Math.max(0, Math.floor(sampleHeight * yRatio))
-        const endX = Math.min(sampleWidth, Math.floor(startX + sampleWidth * widthRatio))
-        const endY = Math.min(sampleHeight, Math.floor(startY + sampleHeight * heightRatio))
-        let diff = 0
-        let count = 0
+      return sourceSamples.reduce((bestScore, sourceData) => {
+        const sourceMeans = channelMeans(sourceData.data)
+        const regionDiff = (xRatio: number, yRatio: number, widthRatio: number, heightRatio: number) => {
+          const startX = Math.max(0, Math.floor(sampleWidth * xRatio))
+          const startY = Math.max(0, Math.floor(sampleHeight * yRatio))
+          const endX = Math.min(sampleWidth, Math.floor(startX + sampleWidth * widthRatio))
+          const endY = Math.min(sampleHeight, Math.floor(startY + sampleHeight * heightRatio))
+          let diff = 0
+          let count = 0
 
-        for (let y = startY; y < endY; y += 1) {
-          for (let x = startX; x < endX; x += 1) {
-            const i = (y * sampleWidth + x) * 4
-            for (let channel = 0; channel < 3; channel += 1) {
-              const normalizedSource = sourceData.data[i + channel] - sourceMeans[channel]
-              const normalizedCandidate = candidateData.data[i + channel] - candidateMeans[channel]
-              const structureDiff = Math.abs(normalizedSource - normalizedCandidate)
-              const rawDiff = Math.abs(sourceData.data[i + channel] - candidateData.data[i + channel])
-              diff += structureDiff * 0.85 + rawDiff * 0.15
+          for (let y = startY; y < endY; y += 1) {
+            for (let x = startX; x < endX; x += 1) {
+              const i = (y * sampleWidth + x) * 4
+              for (let channel = 0; channel < 3; channel += 1) {
+                const normalizedSource = sourceData.data[i + channel] - sourceMeans[channel]
+                const normalizedCandidate = candidateData.data[i + channel] - candidateMeans[channel]
+                const structureDiff = Math.abs(normalizedSource - normalizedCandidate)
+                const rawDiff = Math.abs(sourceData.data[i + channel] - candidateData.data[i + channel])
+                diff += structureDiff * 0.88 + rawDiff * 0.12
+              }
+              count += 1
             }
-            count += 1
           }
+
+          return count > 0 ? diff / (count * 3) : Number.POSITIVE_INFINITY
         }
 
-        return count > 0 ? diff / (count * 3) : Number.POSITIVE_INFINITY
-      }
-
-      const fullCard = regionDiff(0, 0, 1, 1)
-      const artBox = regionDiff(0.08, 0.11, 0.84, 0.5)
-      const lowerBox = regionDiff(0.08, 0.58, 0.84, 0.25)
-
-      return fullCard * 0.25 + artBox * 0.55 + lowerBox * 0.2
+        const fullCard = regionDiff(0, 0, 1, 1)
+        const artBox = regionDiff(0.07, 0.08, 0.86, 0.54)
+        const lowerBox = regionDiff(0.07, 0.58, 0.86, 0.3)
+        const score = fullCard * 0.2 + artBox * 0.62 + lowerBox * 0.18
+        return Math.min(bestScore, score)
+      }, Number.POSITIVE_INFINITY)
     } catch {
       return Number.POSITIVE_INFINITY
     }
@@ -1252,6 +1297,168 @@ export default function ScanPage() {
     }
   }
 
+  const clearCapturedPhoto = () => {
+    if (capturedPhotoUrlRef.current) {
+      URL.revokeObjectURL(capturedPhotoUrlRef.current)
+      capturedPhotoUrlRef.current = null
+    }
+    setCapturedPhotoUrl(null)
+    if (photoInputRef.current) photoInputRef.current.value = ''
+  }
+
+  const loadPhotoCanvas = async (file: File) => {
+    let source: CanvasImageSource
+    let sourceWidth = 0
+    let sourceHeight = 0
+    let cleanup: () => void = () => undefined
+
+    if ('createImageBitmap' in window) {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+      source = bitmap
+      sourceWidth = bitmap.width
+      sourceHeight = bitmap.height
+      cleanup = () => bitmap.close()
+    } else {
+      const objectUrl = URL.createObjectURL(file)
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image()
+        element.onload = () => resolve(element)
+        element.onerror = () => reject(new Error('Immagine non leggibile'))
+        element.src = objectUrl
+      })
+      source = image
+      sourceWidth = image.naturalWidth
+      sourceHeight = image.naturalHeight
+      cleanup = () => URL.revokeObjectURL(objectUrl)
+    }
+
+    const maxDimension = 2200
+    const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+    const context = canvas.getContext('2d')
+    if (!context) {
+      cleanup()
+      throw new Error('Canvas non disponibile')
+    }
+
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+    cleanup()
+    return canvas
+  }
+
+  const refinePhotoVariant = async (initialCard: ScannedCard, sourceCanvas: HTMLCanvasElement) => {
+    const variants = (referenceLookup.byBaseCode.get(baseCardCode(initialCard.card_id)) || [])
+      .filter(card => card.image_url || card.card_image)
+      .slice(0, 12)
+    if (variants.length < 2) return initialCard
+
+    const ranked = (await Promise.all(variants.map(async card => ({
+      card,
+      distance: await compareImageToCandidate(sourceCanvas, card.image_url || card.card_image || '')
+    }))))
+      .filter(item => Number.isFinite(item.distance))
+      .sort((a, b) => a.distance - b.distance)
+
+    const best = ranked[0]
+    const second = ranked[1]
+    if (!best || best.distance > 92) return initialCard
+    if (second && second.distance - best.distance < 2.2) return initialCard
+    return toScannedCard(best.card)
+  }
+
+  const processCapturedPhoto = async (file: File) => {
+    scanGenerationRef.current += 1
+    const generation = scanGenerationRef.current
+    scanSessionRef.current = true
+    showSummaryRef.current = false
+    setScanSessionActive(true)
+    setShowSummary(false)
+    setPendingRecognition(null)
+    setCameraError(null)
+    setPhotoProcessing(true)
+    setRecognitionMessage('Analisi accurata della foto...')
+
+    try {
+      const photoCanvas = await loadPhotoCanvas(file)
+      if (!isScanStillActive(generation)) return
+
+      const ocrText = await runOcrOnCanvases([photoCanvas], 'photo')
+      if (!isScanStillActive(generation) || ocrText === null) return
+
+      const cardCode = extractCardCode(ocrText)
+      const cardQuery = cardCode || extractCardQuery(ocrText) || ocrText
+      setRecognitionMessage(cardCode
+        ? `Codice ${cardCode} letto. Verifico la variante dalla foto...`
+        : 'Confronto nome, testo e immagine con il catalogo...')
+
+      const localMatch = referenceCards.length > 0
+        ? await findBestReferenceMatch(ocrText, photoCanvas)
+        : null
+      if (!isScanStillActive(generation)) return
+
+      const serverMatch = localMatch || await recognizeCardByText(ocrText)
+      if (!isScanStillActive(generation)) return
+
+      const searchMatch = localMatch || serverMatch
+        ? null
+        : await searchCardByText(cardQuery, photoCanvas)
+      if (!isScanStillActive(generation)) return
+
+      const cardMatch = localMatch || serverMatch || searchMatch
+      if (!cardMatch || (!hasExactCodeMatch(ocrText, cardMatch) && !hasStrongNameMatch(ocrText, cardMatch))) {
+        setRecognitionMessage('Non ho identificato la carta con abbastanza sicurezza. Rifai la foto includendo tutta la carta, senza riflessi.')
+        return
+      }
+
+      const refinedCard = await refinePhotoVariant(cardMatch, photoCanvas)
+      if (!isScanStillActive(generation)) return
+
+      setPendingRecognition(refinedCard)
+      setRecognitionMessage(refinedCard.card_id === cardMatch.card_id
+        ? `Carta trovata: ${refinedCard.name}. Controlla e conferma.`
+        : `Carta trovata: ${refinedCard.name}. Variante verificata dalla foto.`)
+      enrichPendingPriceInBackground(refinedCard, generation)
+    } catch (error) {
+      console.error('Native photo scan error:', error)
+      setCameraError('Non sono riuscito a leggere questa foto. Riprova con la carta intera e ben illuminata.')
+      setRecognitionMessage('Foto non elaborata.')
+    } finally {
+      if (scanGenerationRef.current === generation) setPhotoProcessing(false)
+    }
+  }
+
+  const handleCapturedPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    clearCapturedPhoto()
+    const previewUrl = URL.createObjectURL(file)
+    capturedPhotoUrlRef.current = previewUrl
+    setCapturedPhotoUrl(previewUrl)
+    void processCapturedPhoto(file)
+  }
+
+  const openNativeCamera = () => {
+    if (photoProcessing) return
+    if (ocrStatus && !ocrStatus.googleVisionConfigured) {
+      setCameraError('Google Vision non e configurato. Devi aggiungere GOOGLE_VISION_API_KEY su Vercel.')
+      return
+    }
+    if (ocrStatus && !ocrStatus.serviceRoleConfigured) {
+      setCameraError('Il blocco delle 1000 scansioni non e configurato. Devi aggiungere SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+      return
+    }
+    if (ocrStatus?.error) {
+      setCameraError(`Il blocco delle 1000 scansioni non e pronto: ${ocrStatus.error}`)
+      return
+    }
+    photoInputRef.current?.click()
+  }
+
   const addRecognizedCardToCollection = async (card: ScannedCard) => {
     if (!userId || adding) return
 
@@ -1274,6 +1481,7 @@ export default function ScanPage() {
       pendingRecognitionSignatureRef.current = null
       setCarouselIndex(0)
       setPendingRecognition(null)
+      clearCapturedPhoto()
       scanCooldownUntilRef.current = Date.now() + 150
       setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Cambia carta e continuo.`)
 
@@ -1318,6 +1526,7 @@ export default function ScanPage() {
   }
 
   const discardPendingRecognition = () => {
+    clearCapturedPhoto()
     pendingRecognitionSignatureRef.current = null
     recognitionStreakRef.current = null
     ocrMissStreakRef.current = 0
@@ -1935,72 +2144,57 @@ export default function ScanPage() {
         <div className="flex-1 overflow-hidden flex flex-col pb-20">
           <div className="flex-1 flex items-center justify-center px-3 py-4 sm:px-6">
             <div className="w-full max-w-[480px]">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleCapturedPhoto}
+              />
               <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
                 <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className={`h-full w-full object-cover ${cameraActive && cameraReady ? 'opacity-100' : 'opacity-0'}`}
-                    style={{
-                      transform: `scale(${cameraDisplayZoom})`,
-                      transformOrigin: 'center',
-                      willChange: 'transform'
-                    }}
-                  />
                   <canvas ref={processingCanvasRef} className="hidden" />
-
-                  {detectedRect && cameraActive && cameraReady && (
-                    <div className="pointer-events-none absolute inset-0">
-                      <div
-                        className="absolute rounded-xl border-2 border-emerald-400/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
-                        style={{
-                          left: `${(detectedRect.x / videoSize.width) * 100}%`,
-                          top: `${(detectedRect.y / videoSize.height) * 100}%`,
-                          width: `${(detectedRect.width / videoSize.width) * 100}%`,
-                          height: `${(detectedRect.height / videoSize.height) * 100}%`
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {!cameraActive && !cameraReady && (
+                  {capturedPhotoUrl ? (
+                    <img
+                      src={capturedPhotoUrl}
+                      alt="Foto della carta"
+                      className="h-full w-full bg-slate-950 object-contain"
+                    />
+                  ) : (
                     <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
-                      <div className="rounded-full border border-amber-400/25 bg-amber-400/10 p-5">
-                        <Camera className="text-amber-400" size={58} />
+                      <div className="rounded-full border border-cyan-300/30 bg-cyan-300/10 p-5 shadow-[0_0_28px_rgba(103,232,249,0.12)]">
+                        <Camera className="text-cyan-200" size={54} />
                       </div>
                       <div>
-                        <p className="text-xl font-semibold text-amber-300">Preview camera</p>
-                        <p className="mt-2 text-sm text-slate-400">Premi avvia scan per iniziare a tracciare i tuoi pacchetti con la camera.</p>
+                        <p className="text-xl font-bold text-white">Scanner foto</p>
+                        <p className="mt-2 text-sm text-slate-400">Carta intera, luce uniforme, niente riflessi.</p>
                       </div>
                     </div>
                   )}
 
-                  {cameraActive && cameraReady && (
-                    <>
-                      <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-amber-400/50" />
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-400/5 via-transparent to-amber-400/10" />
-                    </>
+                  {photoProcessing && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/72 text-cyan-100 backdrop-blur-sm">
+                      <LoaderCircle className="animate-spin" size={36} />
+                      <p className="text-sm font-black uppercase tracking-[0.18em]">Analisi foto</p>
+                    </div>
                   )}
+                  <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-white/10" />
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
-                {!cameraActive && (
-                  <div className="flex flex-col items-center gap-2">
-                    <button
-                      onClick={startCamera}
-                      className="op-solid-action flex h-16 w-16 items-center justify-center rounded-full border border-cyan-300/50 bg-gradient-to-br from-cyan-300 to-rose-300 text-slate-950 shadow-lg transition hover:shadow-cyan-300/30"
-                    >
-                      <Camera size={24} />
-                    </button>
-                    <p className="text-sm font-semibold text-slate-300">Avvia scan</p>
-                  </div>
-                )}
+                <button
+                  onClick={openNativeCamera}
+                  disabled={photoProcessing}
+                  className="op-solid-action flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/45 bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {photoProcessing ? <LoaderCircle className="animate-spin" size={19} /> : <Camera size={19} />}
+                  {capturedPhotoUrl ? 'Scatta di nuovo' : 'Scatta foto'}
+                </button>
 
-                {cameraActive && (
+                {scannedCards.length > 0 && (
                   <button
                     onClick={stopCamera}
                     className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"

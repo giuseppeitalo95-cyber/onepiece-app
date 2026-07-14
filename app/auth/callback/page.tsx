@@ -49,6 +49,16 @@ export default function Callback() {
           .eq('id', user.id)
       }
 
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        await fetch('/api/auth/registration', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        }).catch(() => undefined)
+      }
+
       const firstAccess = !(profileData?.username || metadataUsername)
       router.replace(firstAccess ? '/complete-profile' : '/bacheca')
     }
