@@ -10,6 +10,7 @@ import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import { isAdminAccount } from '@/lib/admin'
 import { emptyProgressSummary, evaluateProgressSynced, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
+import { validateUserText } from '@/lib/textModeration'
 
 export default function Profile() {
   const router = useRouter()
@@ -163,6 +164,12 @@ export default function Profile() {
 
     if (!username.trim()) {
       alert('Inserisci un username')
+      return
+    }
+
+    const moderation = validateUserText(username)
+    if (!moderation.ok) {
+      alert(moderation.message)
       return
     }
 

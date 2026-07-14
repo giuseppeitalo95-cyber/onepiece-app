@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import webPush from 'web-push'
+import { validateUserText } from '@/lib/textModeration'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -79,6 +80,10 @@ export async function POST(request: Request) {
   }
   if (!message) {
     return Response.json({ ok: false, error: 'Messaggio vuoto.' }, { status: 400 })
+  }
+  const moderation = validateUserText(message)
+  if (!moderation.ok) {
+    return Response.json({ ok: false, error: moderation.message }, { status: 400 })
   }
 
   const { data: post, error: postError } = await client

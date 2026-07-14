@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { isAdminAccount } from '@/lib/admin'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
+import { validateUserText } from '@/lib/textModeration'
 import {
   FREE_BOARD_DAILY_POST_LIMIT,
   FREE_BOARD_POST_DAYS,
@@ -309,6 +310,12 @@ export default function BachecaPage() {
 
     if (cleanMessage.length < 6) {
       setStatus('Scrivi una descrizione, tipo cosa cerchi o cosa offri.')
+      return
+    }
+
+    const moderation = validateUserText(cleanMessage)
+    if (!moderation.ok) {
+      setStatus(moderation.message)
       return
     }
 

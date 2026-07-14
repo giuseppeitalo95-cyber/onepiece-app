@@ -9,6 +9,7 @@ import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 import { isProfileOnline } from '@/lib/onlineStatus'
+import { validateUserText } from '@/lib/textModeration'
 
 type ProfileItem = {
   id: string
@@ -353,6 +354,11 @@ export default function ChatPage() {
   const sendMessage = async () => {
     const cleanText = text.trim()
     if (!userId || !selectedFriendId || !cleanText || sending) return
+    const moderation = validateUserText(cleanText)
+    if (!moderation.ok) {
+      setStatus(moderation.message)
+      return
+    }
     if (blockedByMe || blockedMe) {
       setStatus(blockedByMe
         ? 'Hai bloccato questo utente. Sbloccalo per scrivere.'

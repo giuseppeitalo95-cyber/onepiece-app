@@ -89,22 +89,8 @@ const extractVisionText = (result: any) => {
     result?.fullTextAnnotation?.text,
     result?.textAnnotations?.[0]?.description,
   ].filter(Boolean)
-  const ocrText = uniqueLines(ocrParts.join('\n'))
-  if (ocrText.trim()) return ocrText
-
-  const webParts = [
-    ...(result?.webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
-    ...(result?.webDetection?.webEntities || []).map((item: any) => item?.description),
-  ].filter(Boolean)
-
-  return uniqueLines(webParts.join('\n'))
+  return uniqueLines(ocrParts.join('\n'))
 }
-
-const extractVisionWebText = (result: any) => uniqueLines([
-  ...(result?.webDetection?.bestGuessLabels || []).map((item: any) => item?.label),
-  ...(result?.webDetection?.webEntities || []).map((item: any) => item?.description),
-  ...(result?.webDetection?.pagesWithMatchingImages || []).map((item: any) => item?.pageTitle),
-].filter(Boolean).join('\n'))
 
 async function reserveMonthlyScan() {
   if (!adminSupabase) {
@@ -407,10 +393,7 @@ export async function POST(req: NextRequest) {
               {
                 type: ocrMode === 'fast' ? 'TEXT_DETECTION' : 'DOCUMENT_TEXT_DETECTION',
                 maxResults: 50
-              },
-              ...(ocrMode === 'photo'
-                ? [{ type: 'WEB_DETECTION', maxResults: 12 }]
-                : [])
+              }
             ],
             imageContext: {
               languageHints: ['en']
@@ -453,13 +436,8 @@ export async function POST(req: NextRequest) {
     }
 
     const text = uniqueLines(responses.map(extractVisionText).filter(Boolean).join('\n'))
-    const webText = ocrMode === 'photo'
-      ? uniqueLines(responses.map(extractVisionWebText).filter(Boolean).join('\n'))
-      : ''
-
     return Response.json({
       text,
-      webText,
       scansUsed: usage.used,
       scansLimit: usage.limit
     })

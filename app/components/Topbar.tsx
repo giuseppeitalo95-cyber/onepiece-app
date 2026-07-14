@@ -13,6 +13,7 @@ import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
+import { validateUserText } from '@/lib/textModeration'
 
 export default function Topbar() {
   const router = useRouter()
@@ -247,6 +248,12 @@ export default function Topbar() {
 
     if (bugMessage.trim().length < 5) {
       setBugStatus('Scrivi almeno una breve descrizione.')
+      return
+    }
+
+    const moderation = validateUserText(`${bugTitle} ${bugMessage}`)
+    if (!moderation.ok) {
+      setBugStatus(moderation.message)
       return
     }
 

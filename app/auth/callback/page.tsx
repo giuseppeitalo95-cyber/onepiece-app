@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { validateUserText } from '@/lib/textModeration'
 
 export default function Callback() {
   const router = useRouter()
@@ -20,6 +21,7 @@ export default function Callback() {
       const metadataUsername = typeof user.user_metadata?.username === 'string'
         ? user.user_metadata.username.trim()
         : ''
+      const safeMetadataUsername = validateUserText(metadataUsername).ok ? metadataUsername : ''
 
       const { data: profileData } = await supabase
         .from('profiles')
@@ -32,18 +34,18 @@ export default function Callback() {
           .from('profiles')
           .insert({
             id: user.id,
-            username: metadataUsername || null,
-            username_locked: Boolean(metadataUsername)
+            username: safeMetadataUsername || null,
+            username_locked: Boolean(safeMetadataUsername)
           })
 
         if (insertError) {
           console.log('PROFILE ERROR:', insertError.message)
         }
-      } else if (!profileData.username && metadataUsername) {
+      } else if (!profileData.username && safeMetadataUsername) {
         await supabase
           .from('profiles')
           .update({
-            username: metadataUsername,
+            username: safeMetadataUsername,
             username_locked: true
           })
           .eq('id', user.id)

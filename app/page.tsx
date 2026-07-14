@@ -1,11 +1,13 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
+import { Download, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
+import { validateUserText } from '@/lib/textModeration'
 
 type AuthMode = 'login' | 'register'
 
@@ -99,6 +101,14 @@ export default function Home() {
       return
     }
 
+    if (mode === 'register') {
+      const moderation = validateUserText(cleanUsername)
+      if (!moderation.ok) {
+        setAuthError(moderation.message)
+        return
+      }
+    }
+
     setAuthBusy(true)
 
     if (mode === 'register') {
@@ -176,7 +186,7 @@ export default function Home() {
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                ['Scan', 'Camera live'],
+                ['Scan', 'Foto nativa'],
                 ['Valore', 'Prezzo Medio'],
                 ['Vault', 'Collezione'],
               ].map(([label, value]) => (
@@ -316,6 +326,14 @@ export default function Home() {
               {authBusy ? 'Attendi...' : mode === 'register' ? 'Crea account' : 'Accedi'}
             </button>
           </form>
+
+          <Link
+            href="/install"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/25 bg-cyan-200/[0.07] px-4 py-3 text-sm font-black text-cyan-50 transition hover:border-cyan-200/45 hover:bg-cyan-200/[0.12] active:scale-[0.98]"
+          >
+            <Download size={17} />
+            Installa App
+          </Link>
         </main>
       </div>
     </div>

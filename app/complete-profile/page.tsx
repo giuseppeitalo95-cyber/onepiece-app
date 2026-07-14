@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ShieldCheck, Sparkles, UserRound } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
+import { validateUserText } from '@/lib/textModeration'
 
 export default function CompleteProfilePage() {
   const router = useRouter()
@@ -51,6 +52,12 @@ export default function CompleteProfilePage() {
 
     if (cleanNickname.length < 3) {
       setError('Scegli un nickname di almeno 3 caratteri.')
+      return
+    }
+
+    const moderation = validateUserText(cleanNickname)
+    if (!moderation.ok) {
+      setError(moderation.message)
       return
     }
 

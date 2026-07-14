@@ -10,6 +10,7 @@ import { Camera, ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
+import { parseCardCodeFromText } from '@/lib/cardRecognition'
 
 type ScannedCard = {
   id: string
@@ -66,6 +67,7 @@ export default function ScanPage() {
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
   const [recognitionVariants, setRecognitionVariants] = useState<ScannedCard[]>([])
   const [recognitionVariantsLoading, setRecognitionVariantsLoading] = useState(false)
+  const [variantChoiceRequired, setVariantChoiceRequired] = useState(false)
   const [ocrReady] = useState(true)
   const [videoSize, setVideoSize] = useState({ width: 1, height: 1 })
   const [cameraDisplayZoom, setCameraDisplayZoom] = useState(1.1)
@@ -538,27 +540,7 @@ export default function ScanPage() {
 
   const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ')
 
-  const normalizeOcrNumber = (value: string) =>
-    value
-      .toUpperCase()
-      .replace(/O/g, '0')
-      .replace(/[IL]/g, '1')
-      .replace(/S/g, '5')
-      .replace(/B/g, '8')
-      .replace(/[^0-9]/g, '')
-
-  const extractCardCode = (text: string) => {
-    const compact = text.toUpperCase().replace(/[^A-Z0-9]/g, '')
-    const codeMatch = compact.match(/(OP|0P|ST|EB|PRB|SP|DON|D0N|EX|CP|P)([A-Z0-9]{1,2})([A-Z0-9]{3})/)
-    if (!codeMatch) return null
-
-    const prefix = codeMatch[1].replace('0P', 'OP').replace('D0N', 'DON')
-    const setNumber = normalizeOcrNumber(codeMatch[2]).padStart(2, '0')
-    const cardNumber = normalizeOcrNumber(codeMatch[3]).padStart(3, '0')
-
-    if (!setNumber || !cardNumber) return null
-    return `${prefix}${setNumber}-${cardNumber}`
-  }
+  const extractCardCode = parseCardCodeFromText
 
   const extractCardQuery = (text: string) => {
     const cleaned = text.replace(/\s+/g, ' ').trim()
@@ -1011,9 +993,7 @@ export default function ScanPage() {
         return null
       }
 
-      return [data?.text, data?.webText]
-        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        .join('\n')
+      return typeof data?.text === 'string' ? data.text : ''
     } catch {
       if (scanSessionRef.current && !showSummaryRef.current) {
         setRecognitionMessage('OCR non raggiungibile. Controlla la connessione o la configurazione Google Vision.')
@@ -1083,8 +1063,13 @@ export default function ScanPage() {
   }
 
   const selectRecognitionVariant = async (variant: ScannedCard) => {
-    if (pendingRecognition?.card_id === variant.card_id) return
+    if (pendingRecognition?.card_id === variant.card_id) {
+      setVariantChoiceRequired(false)
+      setRecognitionMessage(`Variante confermata: ${variantLabel(variant)}.`)
+      return
+    }
 
+    setVariantChoiceRequired(false)
     setRecognitionMessage(`Variante selezionata: ${variantLabel(variant)}. Recupero prezzo medio...`)
     const pricedVariant = await enrichCardWithLivePrice({
       ...variant,
@@ -1350,13 +1335,109 @@ export default function ScanPage() {
     return canvas
   }
 
-  const refinePhotoVariant = async (initialCard: ScannedCard, sourceCanvas: HTMLCanvasElement) => {
-    const variants = (referenceLookup.byBaseCode.get(baseCardCode(initialCard.card_id)) || [])
-      .filter(card => card.image_url || card.card_image)
-      .slice(0, 12)
-    if (variants.length < 2) return initialCard
+  const buildPhotoOcrCanvas = (sourceCanvas: HTMLCanvasElement) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1600
+    canvas.height = 2800
+    const context = canvas.getContext('2d')
+    if (!context) return sourceCanvas
 
-    const ranked = (await Promise.all(variants.map(async card => ({
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+
+    const fullScale = Math.min(1500 / sourceCanvas.width, 900 / sourceCanvas.height)
+    const fullWidth = sourceCanvas.width * fullScale
+    const fullHeight = sourceCanvas.height * fullScale
+    context.drawImage(sourceCanvas, (canvas.width - fullWidth) / 2, (900 - fullHeight) / 2, fullWidth, fullHeight)
+
+    const cardAspect = 5 / 7
+    const sourceAspect = sourceCanvas.width / sourceCanvas.height
+    const cropWidth = sourceAspect > cardAspect ? sourceCanvas.height * cardAspect : sourceCanvas.width
+    const cropHeight = sourceAspect > cardAspect ? sourceCanvas.height : sourceCanvas.width / cardAspect
+    const cropX = (sourceCanvas.width - cropWidth) / 2
+    const cropY = (sourceCanvas.height - cropHeight) / 2
+
+    context.drawImage(sourceCanvas, cropX, cropY, cropWidth, cropHeight, 300, 930, 1000, 1400)
+
+    context.filter = 'contrast(1.18) saturate(0.82)'
+    context.drawImage(
+      sourceCanvas,
+      cropX,
+      cropY + cropHeight * 0.62,
+      cropWidth,
+      cropHeight * 0.38,
+      40,
+      2370,
+      1520,
+      400
+    )
+    context.filter = 'none'
+    return canvas
+  }
+
+  const uniqueCards = (cards: ReferenceCard[]) => {
+    const seen = new Set<string>()
+    return cards.filter(card => {
+      const key = String(card.card_id || card.id || '')
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
+  const loadExactCodeCandidates = async (cardCode: string) => {
+    const codeKey = baseCardCode(cardCode)
+    const local = uniqueCards(referenceLookup.byBaseCode.get(codeKey) || [])
+    if (local.length > 0) return local
+
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(cardCode)}`)
+      const data = await res.json()
+      return uniqueCards((Array.isArray(data) ? data : [])
+        .filter((card: ReferenceCard) => baseCardCode(card.card_id || card.id || '') === codeKey))
+    } catch {
+      return []
+    }
+  }
+
+  const findExactNameGroups = (ocrText: string, cards: ReferenceCard[]) => {
+    const compactOcr = compactText(ocrText)
+    const groups = new Map<string, ReferenceCard[]>()
+
+    for (const card of cards) {
+      const compactName = compactText(card.name || '')
+      if (compactName.length < 5 || !compactOcr.includes(compactName)) continue
+      const key = baseCardCode(card.card_id || card.id || '')
+      if (!key) continue
+      const group = groups.get(key) || []
+      group.push(card)
+      groups.set(key, group)
+    }
+
+    return groups
+  }
+
+  const loadStrictNameGroups = async (ocrText: string) => {
+    if (referenceCards.length > 0) return findExactNameGroups(ocrText, referenceCards)
+
+    try {
+      const res = await fetch('/api/cards/recognition-candidates')
+      const data = await res.json()
+      const cards = Array.isArray(data) ? data as ReferenceCard[] : []
+      if (cards.length > 0) setReferenceCards(cards)
+      return findExactNameGroups(ocrText, cards)
+    } catch {
+      return new Map<string, ReferenceCard[]>()
+    }
+  }
+
+  const verifyPhotoCandidates = async (candidates: ReferenceCard[], sourceCanvas: HTMLCanvasElement) => {
+    const ranked = (await Promise.all(uniqueCards(candidates)
+      .filter(card => card.image_url || card.card_image)
+      .slice(0, 24)
+      .map(async card => ({
       card,
       distance: await compareImageToCandidate(sourceCanvas, card.image_url || card.card_image || '')
     }))))
@@ -1365,9 +1446,13 @@ export default function ScanPage() {
 
     const best = ranked[0]
     const second = ranked[1]
-    if (!best || best.distance > 92) return initialCard
-    if (second && second.distance - best.distance < 2.2) return initialCard
-    return toScannedCard(best.card)
+    if (!best || best.distance > 54) return null
+
+    return {
+      card: toScannedCard(best.card),
+      ambiguousVariant: Boolean(second && second.distance - best.distance < 3),
+      distance: best.distance
+    }
   }
 
   const processCapturedPhoto = async (file: File) => {
@@ -1378,6 +1463,7 @@ export default function ScanPage() {
     setScanSessionActive(true)
     setShowSummary(false)
     setPendingRecognition(null)
+    setVariantChoiceRequired(false)
     setCameraError(null)
     setPhotoProcessing(true)
     setRecognitionMessage('Analisi accurata della foto...')
@@ -1386,42 +1472,60 @@ export default function ScanPage() {
       const photoCanvas = await loadPhotoCanvas(file)
       if (!isScanStillActive(generation)) return
 
-      const ocrText = await runOcrOnCanvases([photoCanvas], 'photo')
+      const ocrCanvas = buildPhotoOcrCanvas(photoCanvas)
+      const ocrText = await runOcrOnCanvases([ocrCanvas], 'photo')
       if (!isScanStillActive(generation) || ocrText === null) return
 
-      const cardCode = extractCardCode(ocrText)
-      const cardQuery = cardCode || extractCardQuery(ocrText) || ocrText
-      setRecognitionMessage(cardCode
-        ? `Codice ${cardCode} letto. Verifico la variante dalla foto...`
-        : 'Confronto nome, testo e immagine con il catalogo...')
-
-      const localMatch = referenceCards.length > 0
-        ? await findBestReferenceMatch(ocrText, photoCanvas)
-        : null
-      if (!isScanStillActive(generation)) return
-
-      const serverMatch = localMatch || await recognizeCardByText(ocrText)
-      if (!isScanStillActive(generation)) return
-
-      const searchMatch = localMatch || serverMatch
-        ? null
-        : await searchCardByText(cardQuery, photoCanvas)
-      if (!isScanStillActive(generation)) return
-
-      const cardMatch = localMatch || serverMatch || searchMatch
-      if (!cardMatch || (!hasExactCodeMatch(ocrText, cardMatch) && !hasStrongNameMatch(ocrText, cardMatch))) {
-        setRecognitionMessage('Non ho identificato la carta con abbastanza sicurezza. Rifai la foto includendo tutta la carta, senza riflessi.')
+      if (!ocrText.trim()) {
+        setRecognitionMessage('Google Vision non ha letto nome o codice. Rifai la foto con tutta la carta nitida e senza riflessi.')
         return
       }
 
-      const refinedCard = await refinePhotoVariant(cardMatch, photoCanvas)
+      const cardCode = extractCardCode(ocrText)
+      const exactNameGroups = await loadStrictNameGroups(ocrText)
       if (!isScanStillActive(generation)) return
 
-      setPendingRecognition(refinedCard)
-      setRecognitionMessage(refinedCard.card_id === cardMatch.card_id
-        ? `Carta trovata: ${refinedCard.name}. Controlla e conferma.`
-        : `Carta trovata: ${refinedCard.name}. Variante verificata dalla foto.`)
-      enrichPendingPriceInBackground(refinedCard, generation)
+      let candidates: ReferenceCard[] = []
+      setRecognitionMessage(cardCode
+        ? `Codice ${cardCode} letto. Controllo che foto, nome e variante coincidano...`
+        : 'Nome letto. Controllo che la foto coincida con una sola carta...')
+
+      if (cardCode) {
+        candidates = await loadExactCodeCandidates(cardCode)
+        const codeKey = baseCardCode(cardCode)
+        const conflictingName = [...exactNameGroups.keys()].some(key => key !== codeKey)
+        if (conflictingName) {
+          setRecognitionMessage('Codice e nome letti non coincidono. Per evitare una carta sbagliata, rifai la foto più dritta e senza riflessi.')
+          return
+        }
+      } else if (exactNameGroups.size === 1) {
+        candidates = uniqueCards([...exactNameGroups.values()][0])
+      } else {
+        setRecognitionMessage(exactNameGroups.size > 1
+          ? 'Il nome appartiene a più carte. Includi bene il codice nella prossima foto.'
+          : 'Non ho letto un codice o un nome completo. Rifai la foto includendo tutta la carta.')
+        return
+      }
+
+      if (candidates.length === 0) {
+        setRecognitionMessage('Il codice letto non esiste nel catalogo. Rifai la foto mettendo a fuoco la parte bassa della carta.')
+        return
+      }
+
+      const verified = await verifyPhotoCandidates(candidates, photoCanvas)
+      if (!isScanStillActive(generation)) return
+
+      if (!verified) {
+        setRecognitionMessage('Testo e immagine non coincidono abbastanza. Non propongo una carta sbagliata: rifai la foto più dritta e senza riflessi.')
+        return
+      }
+
+      setPendingRecognition(verified.card)
+      setVariantChoiceRequired(verified.ambiguousVariant)
+      setRecognitionMessage(verified.ambiguousVariant
+        ? `Carta trovata: ${verified.card.name}. Il codice è corretto; scegli la variante prima di confermare.`
+        : `Carta verificata: ${verified.card.name}. Controlla e conferma.`)
+      enrichPendingPriceInBackground(verified.card, generation)
     } catch (error) {
       console.error('Native photo scan error:', error)
       setCameraError('Non sono riuscito a leggere questa foto. Riprova con la carta intera e ben illuminata.')
@@ -1461,6 +1565,10 @@ export default function ScanPage() {
 
   const addRecognizedCardToCollection = async (card: ScannedCard) => {
     if (!userId || adding) return
+    if (variantChoiceRequired) {
+      setRecognitionMessage('Seleziona la variante corretta prima di aggiungere la carta.')
+      return
+    }
 
     setAdding('pending')
 
@@ -1481,9 +1589,10 @@ export default function ScanPage() {
       pendingRecognitionSignatureRef.current = null
       setCarouselIndex(0)
       setPendingRecognition(null)
+      setVariantChoiceRequired(false)
       clearCapturedPhoto()
       scanCooldownUntilRef.current = Date.now() + 150
-      setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Cambia carta e continuo.`)
+      setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Scatta la foto della prossima carta.`)
 
       if (savedCard.market_price == null && savedCard.inventory_price == null) {
         void enrichCardWithLivePrice(savedCard).then(async pricedCard => {
@@ -1532,7 +1641,8 @@ export default function ScanPage() {
     ocrMissStreakRef.current = 0
     scanCooldownUntilRef.current = Date.now() + 80
     setPendingRecognition(null)
-    setRecognitionMessage('Carta scartata. Tieni al centro la prossima carta.')
+    setVariantChoiceRequired(false)
+    setRecognitionMessage('Carta scartata. Scatta la foto della prossima carta.')
   }
 
   const detectCardFromFrame = async () => {
@@ -1891,6 +2001,7 @@ export default function ScanPage() {
     setScanSessionActive(false)
     setShowSummary(true)
     setPendingRecognition(null)
+    setVariantChoiceRequired(false)
     pendingRecognitionSignatureRef.current = null
     lastConfirmedSignatureRef.current = null
     ocrMissStreakRef.current = 0
@@ -2390,6 +2501,12 @@ export default function ScanPage() {
                     </div>
                   )}
 
+                  {variantChoiceRequired && (
+                    <p className="mt-2 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-center text-xs font-bold text-amber-100">
+                      Tocca la variante corretta per poter confermare.
+                    </p>
+                  )}
+
                   <div className="mt-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center">
                     <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Prezzo Medio</p>
                     <p className="mt-1 text-2xl font-black text-cyan-200">
@@ -2413,10 +2530,14 @@ export default function ScanPage() {
 
                     <button
                       onClick={() => addRecognizedCardToCollection(pendingRecognition)}
-                      disabled={adding === 'pending'}
+                      disabled={adding === 'pending' || variantChoiceRequired}
                       className="flex-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {adding === 'pending' ? 'Aggiungo...' : 'Aggiungi alla collezione'}
+                      {adding === 'pending'
+                        ? 'Aggiungo...'
+                        : variantChoiceRequired
+                          ? 'Scegli variante'
+                          : 'Aggiungi alla collezione'}
                     </button>
                   </div>
                 </div>

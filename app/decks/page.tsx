@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { FREE_DECK_LIMIT, getPremiumTier, type PremiumProfile } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
+import { validateUserText } from '@/lib/textModeration'
 
 type DeckCard = {
   card_id: string
@@ -597,8 +598,14 @@ export default function DeckBuilderPage() {
 
   const saveCurrentDeck = async () => {
     if (!userId) return
+    const cleanDeckName = deckName.trim() || 'Deck senza nome'
+    const moderation = validateUserText(cleanDeckName)
+    if (!moderation.ok) {
+      alert(moderation.message)
+      return
+    }
     const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
-    const isNewDeck = !editingDeckId && !savedDecks.some(deck => deck.name === deckName.trim())
+    const isNewDeck = !editingDeckId && !savedDecks.some(deck => deck.name === cleanDeckName)
     if (!deckPremiumAccess && isNewDeck && savedDecks.length >= FREE_DECK_LIMIT) {
       alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
       router.push('/premium')
@@ -607,7 +614,7 @@ export default function DeckBuilderPage() {
 
     const deck: SavedDeck = {
       id: editingDeckId || `${Date.now()}`,
-      name: deckName.trim() || 'Deck senza nome',
+      name: cleanDeckName,
       leader,
       cards: deckCards,
       updatedAt: new Date().toISOString()
