@@ -205,7 +205,7 @@ export default function DeckBuilderPage() {
       setUserId(session.user.id)
       let { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('id, username, is_premium, premium_until, is_vip')
+        .select('id, username, is_premium, premium_until, is_vip, vip_note')
         .eq('id', session.user.id)
         .maybeSingle()
       let safeProfileData = profileData as any

@@ -62,7 +62,7 @@ export default function Callback() {
       }
 
       const firstAccess = !(profileData?.username || metadataUsername)
-      router.replace(firstAccess ? '/complete-profile' : '/bacheca')
+      router.replace(firstAccess ? '/complete-profile' : '/dashboard')
     }
 
     handle()

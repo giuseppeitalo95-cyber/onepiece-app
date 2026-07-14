@@ -51,7 +51,7 @@ export default function Home() {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        router.replace('/bacheca')
+        router.replace('/dashboard')
         return
       }
       setCheckingSession(false)

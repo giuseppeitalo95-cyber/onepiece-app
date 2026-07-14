@@ -19,6 +19,7 @@ type ProfileItem = {
   is_premium?: boolean | null
   premium_until?: string | null
   is_vip?: boolean | null
+  vip_note?: string | null
   last_seen_at?: string | null
 }
 
@@ -110,7 +111,7 @@ export default function FriendsPage() {
           .single(),
         supabase
           .from('profiles')
-          .select('id, username, avatar_url, is_premium, premium_until, is_vip, last_seen_at')
+          .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note, last_seen_at')
           .neq('id', user.id),
         supabase
           .from('friend_requests')

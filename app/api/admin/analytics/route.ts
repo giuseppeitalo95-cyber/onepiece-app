@@ -11,6 +11,7 @@ type ProfileRow = {
   is_premium?: boolean | null
   premium_until?: string | null
   is_vip?: boolean | null
+  vip_note?: string | null
   last_seen_at?: string | null
 }
 
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
 
   const { data: profilesData, error: profilesError } = await client
     .from('profiles')
-    .select('id, username, is_premium, premium_until, is_vip, last_seen_at')
+    .select('id, username, is_premium, premium_until, is_vip, vip_note, last_seen_at')
 
   if (profilesError) return Response.json({ ok: false, error: profilesError.message }, { status: 500 })
 
@@ -94,7 +95,8 @@ export async function GET(request: Request) {
     .select('user_id, day, scan_count')
     .gte('day', dayKey(since))
 
-  const scans = (scanData || []) as ScanRow[]
+  const scans = ((scanData || []) as ScanRow[])
+    .filter(scan => /^\d{4}-\d{2}-\d{2}$/.test(scan.day))
 
   const analyticsResult = await client
     .from('analytics_events')

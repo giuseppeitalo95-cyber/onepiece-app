@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
+import { getDailyRewardVipUntil } from '@/lib/premium'
 
 type ProfileItem = {
   id: string
@@ -13,6 +14,7 @@ type ProfileItem = {
   is_blocked?: boolean
   is_premium?: boolean
   is_vip?: boolean
+  vip_note?: string | null
   vip_since?: string | null
 }
 
@@ -354,7 +356,7 @@ export default function AdminPage() {
   const fetchProfiles = async () => {
     console.log('🔍 [ADMIN] Fetching profiles...')
     // Prima prova con tutte le colonne, se fallisce usa solo le colonne base
-    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked, is_premium, is_vip, vip_since')
+    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked, is_premium, is_vip, vip_note, vip_since')
 
     const { data, error } = await query
 
@@ -1163,7 +1165,7 @@ export default function AdminPage() {
                       <span className="text-slate-400">{profile.username_locked ? 'Nickname bloccato' : 'Nickname modificabile'}</span>
                       {profile.id === ADMIN_ACCOUNT.id ? (
                         <span className="rounded-full bg-rose-300/15 px-2 py-0.5 font-black text-rose-100">Admin</span>
-                      ) : profile.is_vip ? (
+                      ) : profile.is_vip || getDailyRewardVipUntil(profile.vip_note) ? (
                         <span className="rounded-full bg-amber-300/15 px-2 py-0.5 font-black text-amber-100">VIP</span>
                       ) : profile.is_premium ? (
                         <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 font-black text-cyan-100">Premium</span>

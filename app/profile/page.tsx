@@ -46,7 +46,7 @@ export default function Profile() {
 
       let { data, error } = await supabase
         .from('profiles')
-        .select('username, username_locked, avatar_url, is_premium, premium_until, is_vip')
+        .select('username, username_locked, avatar_url, is_premium, premium_until, is_vip, vip_note')
         .eq('id', user.id)
         .single()
       let profileData = data as any
@@ -195,7 +195,7 @@ export default function Profile() {
     setFirstAccess(false)
     setSavingUsername(false)
     if (shouldOpenScanner) {
-      router.replace('/bacheca')
+      router.replace('/dashboard')
     }
   }
 

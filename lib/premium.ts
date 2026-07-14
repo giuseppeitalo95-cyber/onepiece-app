@@ -33,12 +33,20 @@ export const hasActivePremiumDate = (premiumUntil?: string | null) => {
   return Number.isFinite(time) && time > nowMs()
 }
 
+export const DAILY_REWARD_VIP_NOTE_PREFIX = 'daily_reward_vip_until:'
+
+export const getDailyRewardVipUntil = (note?: string | null) => {
+  if (!note?.startsWith(DAILY_REWARD_VIP_NOTE_PREFIX)) return null
+  const value = note.slice(DAILY_REWARD_VIP_NOTE_PREFIX.length)
+  return hasActivePremiumDate(value) ? value : null
+}
+
 export const getPremiumTier = (
   profile?: PremiumProfile | null,
   user?: { id?: string | null; email?: string | null } | null
 ): PremiumTier => {
   if (isAdminAccount(user, profile)) return 'admin'
-  if (profile?.is_vip) return 'vip'
+  if (profile?.is_vip || getDailyRewardVipUntil(profile?.vip_note)) return 'vip'
   if (profile?.is_premium || hasActivePremiumDate(profile?.premium_until)) return 'premium'
   return 'free'
 }

@@ -28,6 +28,7 @@ type ProfileItem = {
   is_premium?: boolean | null
   premium_until?: string | null
   is_vip?: boolean | null
+  vip_note?: string | null
 }
 
 type BoardPost = {
@@ -126,7 +127,7 @@ export default function BachecaPage() {
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('id, username, avatar_url, is_premium, premium_until, is_vip')
+      .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note')
       .in('id', uniqueIds)
 
     let safeProfileData: ProfileItem[] = (profileData || []) as ProfileItem[]

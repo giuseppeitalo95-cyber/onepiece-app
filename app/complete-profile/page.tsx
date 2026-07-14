@@ -32,7 +32,7 @@ export default function CompleteProfilePage() {
         .maybeSingle()
 
       if (profile?.username) {
-        router.replace('/bacheca')
+        router.replace('/dashboard')
         return
       }
 
@@ -92,7 +92,7 @@ export default function CompleteProfilePage() {
       return
     }
 
-    router.replace('/bacheca')
+    router.replace('/dashboard')
   }
 
   if (loading) {

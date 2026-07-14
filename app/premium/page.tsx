@@ -55,7 +55,7 @@ export default function PremiumPage() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, is_premium, premium_until, premium_since, premium_source, stripe_customer_id, stripe_subscription_id, is_vip, vip_since')
+        .select('id, username, is_premium, premium_until, premium_since, premium_source, stripe_customer_id, stripe_subscription_id, is_vip, vip_note, vip_since')
         .eq('id', session.user.id)
         .maybeSingle()
 

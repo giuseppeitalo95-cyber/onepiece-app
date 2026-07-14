@@ -7,6 +7,7 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
+import DailyRewardBanner from '@/app/components/DailyRewardBanner'
 import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
@@ -1033,6 +1034,7 @@ export default function Dashboard() {
         <div className="h-[calc(100dvh-56px)] overflow-y-auto px-3 pb-36 pt-20 sm:px-6">
 
           <div className="relative space-y-3">
+            <DailyRewardBanner />
             <div className="rounded-[1.75rem] border border-slate-700 bg-slate-900/82 p-3 shadow-lg shadow-black/20 sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>

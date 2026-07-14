@@ -15,15 +15,16 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
-  { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
   { label: 'Collezione', href: '/dashboard', key: 'collezione', Icon: Layers3 },
+  { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
+  { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
   { label: 'Deck', href: '/decks', key: 'decks', Icon: LibraryBig },
   { label: 'Amici', href: '/friends', key: 'amici', Icon: Users },
   { label: 'Profilo', href: '/profile', key: 'profilo', Icon: User },
 ]
 
 const getPageKey = (pathname: string) => {
+  if (pathname.startsWith('/reward')) return 'collezione'
   if (pathname.startsWith('/bacheca')) return 'bacheca'
   if (pathname.startsWith('/scan')) return 'scan'
   if (pathname.startsWith('/dashboard')) return 'collezione'
@@ -38,7 +39,7 @@ const badgeLabel = (value: number) => value > 9 ? '9+' : String(value)
 
 export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
-  const currentPage = getPageKey(pathname || '/bacheca') || activePage || 'bacheca'
+  const currentPage = getPageKey(pathname || '/dashboard') || activePage || 'collezione'
   const [badges, setBadges] = useState<Record<string, number>>({})
 
   useEffect(() => {

@@ -89,7 +89,7 @@ export default function Topbar() {
 
       let { data, error } = await supabase
         .from('profiles')
-        .select('username, avatar_url, is_premium, premium_until, is_vip')
+        .select('username, avatar_url, is_premium, premium_until, is_vip, vip_note')
         .eq('id', session.user.id)
         .maybeSingle()
       let profileData = data as any
@@ -201,7 +201,7 @@ export default function Topbar() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('username, is_premium, premium_until, is_vip')
+        .select('username, is_premium, premium_until, is_vip, vip_note')
         .eq('id', session.user.id)
         .maybeSingle()
 

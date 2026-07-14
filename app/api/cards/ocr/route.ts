@@ -171,7 +171,7 @@ async function resolveScanAccess(req: NextRequest): Promise<ScanAccessResult> {
 
   const { data: profile } = await adminSupabase
     .from('profiles')
-    .select('username, is_premium, premium_until, is_vip')
+    .select('username, is_premium, premium_until, is_vip, vip_note')
     .eq('id', user.id)
     .maybeSingle()
 
