@@ -1,5 +1,5 @@
 import { getAllCards } from '@/lib/cardData'
-import { selectCardsByVisibleText } from '@/lib/cardTextRecognition'
+import { rankCardsByVisibleText, selectCardsByVisibleText } from '@/lib/cardTextRecognition'
 
 const normalize = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -82,10 +82,60 @@ export async function POST(req: Request) {
 
     const cards = await getAllCards()
     if (body?.mode === 'photo') {
+      const ranked = rankCardsByVisibleText(text, cards)
       const visibleTextCandidates = selectCardsByVisibleText(text, cards)
+      const rankedFamilies = ranked.reduce<typeof ranked>((families, match) => {
+        if (!match.confident) return families
+
+        const family = baseCode(String(match.card.card_id || match.card.id || ''))
+        const alreadyIncluded = families.some(item =>
+          baseCode(String(item.card.card_id || item.card.id || '')) === family
+        )
+        if (family && !alreadyIncluded) families.push(match)
+        return families
+      }, [])
+      const bestTextMatch = rankedFamilies[0]
+      const secondTextMatch = rankedFamilies[1]
+      const scoreGap = bestTextMatch
+        ? bestTextMatch.score - (secondTextMatch?.score || 0)
+        : 0
+      const strongIdentity = Boolean(bestTextMatch && (
+        bestTextMatch.exactName ||
+        (bestTextMatch.nameCoverage >= 0.72 && bestTextMatch.nameMatches > 0)
+      ))
+      const strongEffect = Boolean(bestTextMatch && (
+        bestTextMatch.effectMatches >= 4 ||
+        (bestTextMatch.effectMatches >= 3 && bestTextMatch.effectBigrams >= 1)
+      ))
+      const allPrintedValuesMatch = Boolean(bestTextMatch && (
+        bestTextMatch.costMatch && bestTextMatch.powerMatch
+      ))
+      const decisiveTextMatch = Boolean(
+        bestTextMatch?.confident &&
+        strongIdentity &&
+        scoreGap >= 8 &&
+        (strongEffect || allPrintedValuesMatch)
+      )
+
       return Response.json({
         card: visibleTextCandidates[0] ? toResponseCard(visibleTextCandidates[0]) : null,
-        candidates: visibleTextCandidates.slice(0, 64).map(toResponseCard)
+        candidates: visibleTextCandidates.slice(0, 64).map(toResponseCard),
+        textMatch: bestTextMatch
+          ? {
+              cardId: String(bestTextMatch.card.card_id || bestTextMatch.card.id || ''),
+              family: baseCode(String(bestTextMatch.card.card_id || bestTextMatch.card.id || '')),
+              decisive: decisiveTextMatch,
+              exactName: bestTextMatch.exactName,
+              nameCoverage: bestTextMatch.nameCoverage,
+              effectMatches: bestTextMatch.effectMatches,
+              effectBigrams: bestTextMatch.effectBigrams,
+              metadataMatches: bestTextMatch.metadataMatches,
+              costMatch: bestTextMatch.costMatch,
+              powerMatch: bestTextMatch.powerMatch,
+              counterMatch: bestTextMatch.counterMatch,
+              scoreGap
+            }
+          : null
       })
     }
 

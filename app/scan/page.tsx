@@ -45,6 +45,21 @@ type OcrStatus = {
   error?: string | null
 }
 
+type VisibleTextDecision = {
+  cardId: string
+  family: string
+  decisive: boolean
+  exactName: boolean
+  nameCoverage: number
+  effectMatches: number
+  effectBigrams: number
+  metadataMatches: number
+  costMatch: boolean
+  powerMatch: boolean
+  counterMatch: boolean
+  scoreGap: number
+}
+
 export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -726,7 +741,10 @@ export default function ScanPage() {
             return aVariant - bVariant || a.card_id.localeCompare(b.card_id)
           })
 
-        if (!cancelled) setRecognitionVariants(unique)
+        if (!cancelled) {
+          setRecognitionVariants(unique)
+          if (unique.length <= 1) setVariantChoiceRequired(false)
+        }
       } catch {
         if (!cancelled) setRecognitionVariants([pendingRecognition])
       } finally {
@@ -1558,9 +1576,14 @@ export default function ScanPage() {
         body: JSON.stringify({ text: ocrText, mode: 'photo' })
       })
       const data = await res.json()
-      return uniqueCards(Array.isArray(data?.candidates) ? data.candidates : [])
+      return {
+        candidates: uniqueCards(Array.isArray(data?.candidates) ? data.candidates : []),
+        textMatch: data?.textMatch && typeof data.textMatch === 'object'
+          ? data.textMatch as VisibleTextDecision
+          : null
+      }
     } catch {
-      return []
+      return { candidates: [], textMatch: null }
     }
   }
 
@@ -1626,8 +1649,8 @@ export default function ScanPage() {
         return
       }
 
-      setRecognitionMessage('Confronto nome, effetto, costo, forza e immagine...')
-      const candidates = await findVisibleTextCandidates(ocrText)
+      setRecognitionMessage('Confronto nome, effetto, costo, forza, counter e tipo...')
+      const { candidates, textMatch } = await findVisibleTextCandidates(ocrText)
       if (!isScanStillActive(generation)) return
 
       if (candidates.length === 0) {
@@ -1635,20 +1658,39 @@ export default function ScanPage() {
         return
       }
 
+      if (textMatch?.decisive) {
+        const familyCandidates = candidates.filter(card =>
+          baseCardCode(card.card_id || card.id || '') === textMatch.family
+        )
+        const textCard = familyCandidates.find(card => card.card_id === textMatch.cardId) || familyCandidates[0]
+
+        if (textCard) {
+          const recognizedCard = toScannedCard(textCard)
+          setPendingRecognition(recognizedCard)
+          setVariantChoiceRequired(true)
+          setRecognitionMessage(`Carta trovata: ${recognizedCard.name}. Controlla la variante e conferma.`)
+          enrichPendingPriceInBackground(recognizedCard, generation)
+          return
+        }
+      }
+
       const verified = await verifyPhotoCandidates(candidates, comparisonCanvas, Boolean(detectedRect))
       if (!isScanStillActive(generation)) return
 
       if (!verified) {
-        setRecognitionMessage('Ho letto alcune informazioni, ma non abbastanza per una conferma sicura. Prova una nuova foto più dritta e nitida.')
+        setRecognitionMessage('Non riesco a distinguere con certezza questa carta. Prova un nuovo scatto mostrando la carta intera.')
         return
       }
 
-      setPendingRecognition(verified.card)
-      setVariantChoiceRequired(verified.ambiguousVariant)
-      setRecognitionMessage(verified.ambiguousVariant
-        ? `Carta trovata: ${verified.card.name}. Scegli la variante prima di confermare.`
-        : `Carta verificata: ${verified.card.name}. Controlla e conferma.`)
-      enrichPendingPriceInBackground(verified.card, generation)
+      const verifiedFamily = baseCardCode(verified.card.card_id)
+      const familyCard = candidates.find(card =>
+        baseCardCode(card.card_id || card.id || '') === verifiedFamily && !/_p\d+$/i.test(card.card_id)
+      )
+      const recognizedCard = familyCard ? toScannedCard(familyCard) : verified.card
+      setPendingRecognition(recognizedCard)
+      setVariantChoiceRequired(true)
+      setRecognitionMessage(`Carta trovata: ${recognizedCard.name}. Controlla la variante e conferma.`)
+      enrichPendingPriceInBackground(recognizedCard, generation)
     } catch (error) {
       console.error('Native photo scan error:', error)
       setCameraError('Questa foto non è stata letta bene. Prova con la carta intera e ben illuminata.')

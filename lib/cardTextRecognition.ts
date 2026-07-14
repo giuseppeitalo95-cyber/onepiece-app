@@ -5,6 +5,12 @@ export type VisibleTextCard = {
   card_text?: string | null
   card_cost?: number | string | null
   card_power?: number | string | null
+  card_counter?: number | string | null
+  counter_amount?: number | string | null
+  card_color?: string | null
+  card_type?: string | null
+  sub_types?: string | null
+  attribute?: string | null
 }
 
 export type VisibleTextMatch<T extends VisibleTextCard> = {
@@ -17,8 +23,10 @@ export type VisibleTextMatch<T extends VisibleTextCard> = {
   effectMatches: number
   effectCoverage: number
   effectBigrams: number
+  metadataMatches: number
   costMatch: boolean
   powerMatch: boolean
+  counterMatch: boolean
 }
 
 const stopWords = new Set([
@@ -142,10 +150,21 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         : 0
       const effectBigrams = [...bigramSet(effectTokens)].filter(value => ocrBigrams.has(value)).length
 
+      const metadataTokens = [...new Set(significantWords([
+        card.card_color,
+        card.card_type,
+        card.sub_types,
+        card.attribute
+      ].filter(Boolean).join(' ')))]
+      const metadataMatches = metadataTokens.filter(token => ocrSignificantSet.has(token)).length
+
       const cost = card.card_cost == null ? '' : String(Number(card.card_cost))
       const power = card.card_power == null ? '' : String(Number(card.card_power))
+      const rawCounter = card.card_counter ?? card.counter_amount
+      const counter = rawCounter == null ? '' : String(Number(rawCounter))
       const costMatch = Boolean(cost && cost !== 'NaN' && ocrNumbers.has(cost))
       const powerMatch = Boolean(power && power !== 'NaN' && ocrNumbers.has(power))
+      const counterMatch = Boolean(counter && counter !== 'NaN' && ocrNumbers.has(counter))
 
       const score =
         (exactName ? 120 : nameCoverage * 78) +
@@ -153,8 +172,10 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         effectMatches * 3.5 +
         effectCoverage * 42 +
         Math.min(effectBigrams, 8) * 3 +
+        Math.min(metadataMatches, 6) * 2.5 +
         (costMatch ? 5 : 0) +
-        (powerMatch ? 13 : 0)
+        (powerMatch ? 13 : 0) +
+        (counterMatch ? 6 : 0)
 
       const strongName = exactName || (nameCoverage >= 0.72 && nameMatches > 0)
       const strongEffect = effectMatches >= 6 && effectCoverage >= 0.24
@@ -163,7 +184,7 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         strongName ||
         veryStrongEffect ||
         (nameCoverage >= 0.45 && effectMatches >= 3) ||
-        (strongEffect && (costMatch || powerMatch))
+        (strongEffect && (costMatch || powerMatch || counterMatch))
 
       return {
         card,
@@ -175,8 +196,10 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         effectMatches,
         effectCoverage,
         effectBigrams,
+        metadataMatches,
         costMatch,
         powerMatch,
+        counterMatch,
         index
       }
     })
