@@ -61,7 +61,7 @@ export default function ScanPage() {
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   const [carouselIndex, setCarouselIndex] = useState(0)
-  const [referenceCards, setReferenceCards] = useState<ReferenceCard[]>([])
+  const [referenceCards] = useState<ReferenceCard[]>([])
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
@@ -92,6 +92,7 @@ export default function ScanPage() {
   const lastConfirmedSignatureRef = useRef<number[] | null>(null)
   const ocrMissStreakRef = useRef(0)
   const candidateImageCacheRef = useRef(new Map<string, Promise<ImageData | null>>())
+  const sourceImageSamplesCacheRef = useRef(new WeakMap<HTMLCanvasElement, ImageData[]>())
   const workCanvasesRef = useRef<Record<string, HTMLCanvasElement>>({})
   const manualSearchRunRef = useRef(0)
 
@@ -153,18 +154,6 @@ export default function ScanPage() {
   }, [])
 
   useEffect(() => {
-    const loadReferenceCards = async () => {
-      try {
-        const res = await fetch('/api/cards/recognition-candidates')
-        const data = await res.json()
-        setReferenceCards(Array.isArray(data) ? data : [])
-      } catch (err) {
-        console.error('Reference cards error:', err)
-      }
-    }
-
-    loadReferenceCards()
-
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
@@ -676,6 +665,7 @@ export default function ScanPage() {
         card.rarity,
         card.card_cost,
         card.card_power,
+        card.card_text,
         card.set_name,
         card.sub_types,
         card.card_type,
@@ -1079,7 +1069,11 @@ export default function ScanPage() {
     setRecognitionMessage(`Carta trovata: ${pricedVariant.name}. Conferma o scarta.`)
   }
 
-  const compareImageToCandidate = async (sourceCanvas: HTMLCanvasElement, candidateUrl: string) => {
+  const compareImageToCandidate = async (
+    sourceCanvas: HTMLCanvasElement,
+    candidateUrl: string,
+    contourDetected = false
+  ) => {
     try {
       const sampleWidth = 84
       const sampleHeight = 118
@@ -1091,37 +1085,50 @@ export default function ScanPage() {
       const baseHeight = sourceAspect > targetAspect
         ? sourceCanvas.height
         : sourceCanvas.width / targetAspect
-      const sourceSamples: ImageData[] = []
+      let sourceSamples = sourceImageSamplesCacheRef.current.get(sourceCanvas)
+      if (!sourceSamples) {
+        sourceSamples = []
 
-      for (const scale of [1, 0.86, 0.72, 0.58]) {
-        const cropWidth = baseWidth * scale
-        const cropHeight = baseHeight * scale
-        for (const offsetX of [-0.06, 0, 0.06]) {
-          for (const offsetY of [-0.05, 0, 0.05]) {
-            const sourceSample = document.createElement('canvas')
-            sourceSample.width = sampleWidth
-            sourceSample.height = sampleHeight
-            const sourceCtx = sourceSample.getContext('2d')
-            if (!sourceCtx) continue
+        const scales = contourDetected
+          ? [1, 0.94, 0.88]
+          : [1, 0.86, 0.72, 0.58, 0.46, 0.36, 0.28]
+        for (const scale of scales) {
+          const cropWidth = baseWidth * scale
+          const cropHeight = baseHeight * scale
+          const offsets = contourDetected
+            ? [-0.03, 0, 0.03]
+            : scale >= 0.58
+              ? [-0.06, 0, 0.06]
+              : [-0.14, -0.07, 0, 0.07, 0.14]
+          for (const offsetX of offsets) {
+            for (const offsetY of offsets) {
+              const sourceSample = document.createElement('canvas')
+              sourceSample.width = sampleWidth
+              sourceSample.height = sampleHeight
+              const sourceCtx = sourceSample.getContext('2d')
+              if (!sourceCtx) continue
 
-            const centerX = sourceCanvas.width / 2 + sourceCanvas.width * offsetX
-            const centerY = sourceCanvas.height / 2 + sourceCanvas.height * offsetY
-            const sourceX = Math.max(0, Math.min(sourceCanvas.width - cropWidth, centerX - cropWidth / 2))
-            const sourceY = Math.max(0, Math.min(sourceCanvas.height - cropHeight, centerY - cropHeight / 2))
-            sourceCtx.drawImage(
-              sourceCanvas,
-              sourceX,
-              sourceY,
-              cropWidth,
-              cropHeight,
-              0,
-              0,
-              sampleWidth,
-              sampleHeight
-            )
-            sourceSamples.push(sourceCtx.getImageData(0, 0, sampleWidth, sampleHeight))
+              const centerX = sourceCanvas.width / 2 + sourceCanvas.width * offsetX
+              const centerY = sourceCanvas.height / 2 + sourceCanvas.height * offsetY
+              const sourceX = Math.max(0, Math.min(sourceCanvas.width - cropWidth, centerX - cropWidth / 2))
+              const sourceY = Math.max(0, Math.min(sourceCanvas.height - cropHeight, centerY - cropHeight / 2))
+              sourceCtx.drawImage(
+                sourceCanvas,
+                sourceX,
+                sourceY,
+                cropWidth,
+                cropHeight,
+                0,
+                0,
+                sampleWidth,
+                sampleHeight
+              )
+              sourceSamples.push(sourceCtx.getImageData(0, 0, sampleWidth, sampleHeight))
+            }
           }
         }
+
+        sourceImageSamplesCacheRef.current.set(sourceCanvas, sourceSamples)
       }
 
       let candidatePromise = candidateImageCacheRef.current.get(candidateUrl)
@@ -1335,10 +1342,114 @@ export default function ScanPage() {
     return canvas
   }
 
-  const buildPhotoOcrCanvas = (sourceCanvas: HTMLCanvasElement) => {
+  const detectPhotoCardRect = (sourceCanvas: HTMLCanvasElement) => {
+    const maximumDimension = 360
+    const scale = Math.min(1, maximumDimension / Math.max(sourceCanvas.width, sourceCanvas.height))
+    const workCanvas = document.createElement('canvas')
+    workCanvas.width = Math.max(1, Math.round(sourceCanvas.width * scale))
+    workCanvas.height = Math.max(1, Math.round(sourceCanvas.height * scale))
+    const context = workCanvas.getContext('2d')
+    if (!context) return null
+
+    context.drawImage(sourceCanvas, 0, 0, workCanvas.width, workCanvas.height)
+    const pixels = context.getImageData(0, 0, workCanvas.width, workCanvas.height).data
+    const luminance = new Float32Array(workCanvas.width * workCanvas.height)
+    for (let index = 0; index < luminance.length; index += 1) {
+      const pixel = index * 4
+      luminance[index] = pixels[pixel] * 0.299 + pixels[pixel + 1] * 0.587 + pixels[pixel + 2] * 0.114
+    }
+
+    const valueAt = (x: number, y: number) =>
+      luminance[Math.max(0, Math.min(workCanvas.height - 1, y)) * workCanvas.width + Math.max(0, Math.min(workCanvas.width - 1, x))]
+    const contrast = (first: number, second: number) => Math.abs(first - second)
+    const heightRatios = [0.24, 0.28, 0.32, 0.36, 0.4, 0.46, 0.52, 0.6, 0.68, 0.78, 0.9]
+    const centerRatios = [0.32, 0.38, 0.44, 0.5, 0.56, 0.62, 0.68]
+    let best: { score: number; x: number; y: number; width: number; height: number } | null = null
+
+    for (const heightRatio of heightRatios) {
+      const height = workCanvas.height * heightRatio
+      for (const aspect of [0.66, 0.714, 0.77]) {
+        const width = height * aspect
+        if (width > workCanvas.width * 0.96) continue
+
+        for (const centerXRatio of centerRatios) {
+          for (const centerYRatio of centerRatios) {
+            const x = Math.round(workCanvas.width * centerXRatio - width / 2)
+            const y = Math.round(workCanvas.height * centerYRatio - height / 2)
+            const right = Math.round(x + width)
+            const bottom = Math.round(y + height)
+            const gap = 3
+            if (x < gap || y < gap || right >= workCanvas.width - gap || bottom >= workCanvas.height - gap) continue
+
+            let top = 0
+            let lower = 0
+            let left = 0
+            let rightSide = 0
+            const horizontalSamples = 36
+            const verticalSamples = 48
+
+            for (let sample = 0; sample < horizontalSamples; sample += 1) {
+              const sampleX = Math.round(x + gap + ((sample + 0.5) / horizontalSamples) * Math.max(1, width - gap * 2))
+              top += contrast(valueAt(sampleX, y - gap), valueAt(sampleX, y + gap))
+              lower += contrast(valueAt(sampleX, bottom - gap), valueAt(sampleX, bottom + gap))
+            }
+            for (let sample = 0; sample < verticalSamples; sample += 1) {
+              const sampleY = Math.round(y + gap + ((sample + 0.5) / verticalSamples) * Math.max(1, height - gap * 2))
+              left += contrast(valueAt(x - gap, sampleY), valueAt(x + gap, sampleY))
+              rightSide += contrast(valueAt(right - gap, sampleY), valueAt(right + gap, sampleY))
+            }
+
+            const sides = [
+              top / horizontalSamples,
+              lower / horizontalSamples,
+              left / verticalSamples,
+              rightSide / verticalSamples
+            ]
+            const sideAverage = sides.reduce((sum, value) => sum + value, 0) / sides.length
+            const score = Math.min(...sides) * 0.55 + sideAverage * 0.45
+            if (!best || score > best.score) best = { score, x, y, width, height }
+          }
+        }
+      }
+    }
+
+    if (!best || best.score < 12) return null
+    const expansion = 0.06
+    const expandedWidth = best.width * (1 + expansion * 2)
+    const expandedHeight = best.height * (1 + expansion * 2)
+    const x = Math.max(0, best.x - best.width * expansion)
+    const y = Math.max(0, best.y - best.height * expansion)
+
+    return {
+      x: x / scale,
+      y: y / scale,
+      width: Math.min(workCanvas.width - x, expandedWidth) / scale,
+      height: Math.min(workCanvas.height - y, expandedHeight) / scale
+    }
+  }
+
+  const cropPhotoCard = (
+    sourceCanvas: HTMLCanvasElement,
+    rect: { x: number; y: number; width: number; height: number }
+  ) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1000
+    canvas.height = 1400
+    const context = canvas.getContext('2d')
+    if (!context) return sourceCanvas
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(sourceCanvas, rect.x, rect.y, rect.width, rect.height, 0, 0, canvas.width, canvas.height)
+    return canvas
+  }
+
+  const buildPhotoOcrCanvas = (
+    sourceCanvas: HTMLCanvasElement,
+    detectedRect: { x: number; y: number; width: number; height: number } | null
+  ) => {
     const canvas = document.createElement('canvas')
     canvas.width = 1600
-    canvas.height = 2800
+    canvas.height = 3600
     const context = canvas.getContext('2d')
     if (!context) return sourceCanvas
 
@@ -1347,32 +1458,84 @@ export default function ScanPage() {
     context.imageSmoothingEnabled = true
     context.imageSmoothingQuality = 'high'
 
-    const fullScale = Math.min(1500 / sourceCanvas.width, 900 / sourceCanvas.height)
+    const fullScale = Math.min(1500 / sourceCanvas.width, 680 / sourceCanvas.height)
     const fullWidth = sourceCanvas.width * fullScale
     const fullHeight = sourceCanvas.height * fullScale
-    context.drawImage(sourceCanvas, (canvas.width - fullWidth) / 2, (900 - fullHeight) / 2, fullWidth, fullHeight)
+    context.drawImage(sourceCanvas, (canvas.width - fullWidth) / 2, (700 - fullHeight) / 2, fullWidth, fullHeight)
 
     const cardAspect = 5 / 7
     const sourceAspect = sourceCanvas.width / sourceCanvas.height
-    const cropWidth = sourceAspect > cardAspect ? sourceCanvas.height * cardAspect : sourceCanvas.width
-    const cropHeight = sourceAspect > cardAspect ? sourceCanvas.height : sourceCanvas.width / cardAspect
-    const cropX = (sourceCanvas.width - cropWidth) / 2
-    const cropY = (sourceCanvas.height - cropHeight) / 2
+    const baseWidth = sourceAspect > cardAspect ? sourceCanvas.height * cardAspect : sourceCanvas.width
+    const baseHeight = sourceAspect > cardAspect ? sourceCanvas.height : sourceCanvas.width / cardAspect
+    const cropForScale = (scale: number) => {
+      const width = baseWidth * scale
+      const height = baseHeight * scale
+      return {
+        x: (sourceCanvas.width - width) / 2,
+        y: (sourceCanvas.height - height) / 2,
+        width,
+        height
+      }
+    }
+    const drawCardCrop = (scale: number, x: number, y: number, width: number, height: number) => {
+      const crop = cropForScale(scale)
+      context.drawImage(sourceCanvas, crop.x, crop.y, crop.width, crop.height, x, y, width, height)
+    }
 
-    context.drawImage(sourceCanvas, cropX, cropY, cropWidth, cropHeight, 300, 930, 1000, 1400)
+    if (detectedRect) {
+      context.drawImage(
+        sourceCanvas,
+        detectedRect.x,
+        detectedRect.y,
+        detectedRect.width,
+        detectedRect.height,
+        300,
+        740,
+        1000,
+        1400
+      )
+      context.filter = 'contrast(1.18) saturate(0.82)'
+      context.drawImage(
+        sourceCanvas,
+        detectedRect.x,
+        detectedRect.y + detectedRect.height * 0.38,
+        detectedRect.width,
+        detectedRect.height * 0.62,
+        40,
+        2190,
+        1520,
+        800
+      )
+      context.drawImage(
+        sourceCanvas,
+        detectedRect.x,
+        detectedRect.y,
+        detectedRect.width,
+        detectedRect.height * 0.36,
+        40,
+        3040,
+        1520,
+        500
+      )
+    } else {
+      drawCardCrop(0.92, 40, 740, 720, 1008)
+      drawCardCrop(0.4, 840, 740, 720, 1008)
+      drawCardCrop(0.66, 440, 1790, 720, 1008)
 
-    context.filter = 'contrast(1.18) saturate(0.82)'
-    context.drawImage(
-      sourceCanvas,
-      cropX,
-      cropY + cropHeight * 0.62,
-      cropWidth,
-      cropHeight * 0.38,
-      40,
-      2370,
-      1520,
-      400
-    )
+      context.filter = 'contrast(1.18) saturate(0.82)'
+      const closeCrop = cropForScale(0.4)
+      context.drawImage(
+        sourceCanvas,
+        closeCrop.x,
+        closeCrop.y + closeCrop.height * 0.43,
+        closeCrop.width,
+        closeCrop.height * 0.57,
+        40,
+        2840,
+        1520,
+        700
+      )
+    }
     context.filter = 'none'
     return canvas
   }
@@ -1387,70 +1550,50 @@ export default function ScanPage() {
     })
   }
 
-  const loadExactCodeCandidates = async (cardCode: string) => {
-    const codeKey = baseCardCode(cardCode)
-    const local = uniqueCards(referenceLookup.byBaseCode.get(codeKey) || [])
-    if (local.length > 0) return local
-
+  const findVisibleTextCandidates = async (ocrText: string) => {
     try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(cardCode)}`)
+      const res = await fetch('/api/cards/recognize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: ocrText, mode: 'photo' })
+      })
       const data = await res.json()
-      return uniqueCards((Array.isArray(data) ? data : [])
-        .filter((card: ReferenceCard) => baseCardCode(card.card_id || card.id || '') === codeKey))
+      return uniqueCards(Array.isArray(data?.candidates) ? data.candidates : [])
     } catch {
       return []
     }
   }
 
-  const findExactNameGroups = (ocrText: string, cards: ReferenceCard[]) => {
-    const compactOcr = compactText(ocrText)
-    const groups = new Map<string, ReferenceCard[]>()
-
-    for (const card of cards) {
-      const compactName = compactText(card.name || '')
-      if (compactName.length < 5 || !compactOcr.includes(compactName)) continue
-      const key = baseCardCode(card.card_id || card.id || '')
-      if (!key) continue
-      const group = groups.get(key) || []
-      group.push(card)
-      groups.set(key, group)
-    }
-
-    return groups
-  }
-
-  const loadStrictNameGroups = async (ocrText: string) => {
-    if (referenceCards.length > 0) return findExactNameGroups(ocrText, referenceCards)
-
-    try {
-      const res = await fetch('/api/cards/recognition-candidates')
-      const data = await res.json()
-      const cards = Array.isArray(data) ? data as ReferenceCard[] : []
-      if (cards.length > 0) setReferenceCards(cards)
-      return findExactNameGroups(ocrText, cards)
-    } catch {
-      return new Map<string, ReferenceCard[]>()
-    }
-  }
-
-  const verifyPhotoCandidates = async (candidates: ReferenceCard[], sourceCanvas: HTMLCanvasElement) => {
+  const verifyPhotoCandidates = async (
+    candidates: ReferenceCard[],
+    sourceCanvas: HTMLCanvasElement,
+    contourDetected: boolean
+  ) => {
     const ranked = (await Promise.all(uniqueCards(candidates)
       .filter(card => card.image_url || card.card_image)
-      .slice(0, 24)
+      .slice(0, 64)
       .map(async card => ({
       card,
-      distance: await compareImageToCandidate(sourceCanvas, card.image_url || card.card_image || '')
+      distance: await compareImageToCandidate(
+        sourceCanvas,
+        card.image_url || card.card_image || '',
+        contourDetected
+      )
     }))))
       .filter(item => Number.isFinite(item.distance))
       .sort((a, b) => a.distance - b.distance)
 
     const best = ranked[0]
     const second = ranked[1]
-    if (!best || best.distance > 54) return null
+    if (!best || best.distance > (contourDetected ? 57 : 54)) return null
+
+    const bestFamily = baseCardCode(best.card.card_id || best.card.id || '')
+    const secondFamily = second ? baseCardCode(second.card.card_id || second.card.id || '') : ''
+    if (second && secondFamily !== bestFamily && second.distance - best.distance < 2.5) return null
 
     return {
       card: toScannedCard(best.card),
-      ambiguousVariant: Boolean(second && second.distance - best.distance < 3),
+      ambiguousVariant: Boolean(second && secondFamily === bestFamily && second.distance - best.distance < 3),
       distance: best.distance
     }
   }
@@ -1466,70 +1609,50 @@ export default function ScanPage() {
     setVariantChoiceRequired(false)
     setCameraError(null)
     setPhotoProcessing(true)
-    setRecognitionMessage('Analisi accurata della foto...')
+    setRecognitionMessage('Leggo nome, effetto e valori della carta...')
 
     try {
       const photoCanvas = await loadPhotoCanvas(file)
       if (!isScanStillActive(generation)) return
 
-      const ocrCanvas = buildPhotoOcrCanvas(photoCanvas)
+      const detectedRect = detectPhotoCardRect(photoCanvas)
+      const comparisonCanvas = detectedRect ? cropPhotoCard(photoCanvas, detectedRect) : photoCanvas
+      const ocrCanvas = buildPhotoOcrCanvas(photoCanvas, detectedRect)
       const ocrText = await runOcrOnCanvases([ocrCanvas], 'photo')
       if (!isScanStillActive(generation) || ocrText === null) return
 
       if (!ocrText.trim()) {
-        setRecognitionMessage('Google Vision non ha letto nome o codice. Rifai la foto con tutta la carta nitida e senza riflessi.')
+        setRecognitionMessage('Non riesco ancora a leggere abbastanza testo. Prova una foto più dritta, nitida e senza riflessi.')
         return
       }
 
-      const cardCode = extractCardCode(ocrText)
-      const exactNameGroups = await loadStrictNameGroups(ocrText)
+      setRecognitionMessage('Confronto nome, effetto, costo, forza e immagine...')
+      const candidates = await findVisibleTextCandidates(ocrText)
       if (!isScanStillActive(generation)) return
 
-      let candidates: ReferenceCard[] = []
-      setRecognitionMessage(cardCode
-        ? `Codice ${cardCode} letto. Controllo che foto, nome e variante coincidano...`
-        : 'Nome letto. Controllo che la foto coincida con una sola carta...')
-
-      if (cardCode) {
-        candidates = await loadExactCodeCandidates(cardCode)
-        const codeKey = baseCardCode(cardCode)
-        const conflictingName = [...exactNameGroups.keys()].some(key => key !== codeKey)
-        if (conflictingName) {
-          setRecognitionMessage('Codice e nome letti non coincidono. Per evitare una carta sbagliata, rifai la foto più dritta e senza riflessi.')
-          return
-        }
-      } else if (exactNameGroups.size === 1) {
-        candidates = uniqueCards([...exactNameGroups.values()][0])
-      } else {
-        setRecognitionMessage(exactNameGroups.size > 1
-          ? 'Il nome appartiene a più carte. Includi bene il codice nella prossima foto.'
-          : 'Non ho letto un codice o un nome completo. Rifai la foto includendo tutta la carta.')
-        return
-      }
-
       if (candidates.length === 0) {
-        setRecognitionMessage('Il codice letto non esiste nel catalogo. Rifai la foto mettendo a fuoco la parte bassa della carta.')
+        setRecognitionMessage('Questa foto non mi dà ancora abbastanza elementi. Prova a tenere visibili nome, effetto e valori della carta.')
         return
       }
 
-      const verified = await verifyPhotoCandidates(candidates, photoCanvas)
+      const verified = await verifyPhotoCandidates(candidates, comparisonCanvas, Boolean(detectedRect))
       if (!isScanStillActive(generation)) return
 
       if (!verified) {
-        setRecognitionMessage('Testo e immagine non coincidono abbastanza. Non propongo una carta sbagliata: rifai la foto più dritta e senza riflessi.')
+        setRecognitionMessage('Ho letto alcune informazioni, ma non abbastanza per una conferma sicura. Prova una nuova foto più dritta e nitida.')
         return
       }
 
       setPendingRecognition(verified.card)
       setVariantChoiceRequired(verified.ambiguousVariant)
       setRecognitionMessage(verified.ambiguousVariant
-        ? `Carta trovata: ${verified.card.name}. Il codice è corretto; scegli la variante prima di confermare.`
+        ? `Carta trovata: ${verified.card.name}. Scegli la variante prima di confermare.`
         : `Carta verificata: ${verified.card.name}. Controlla e conferma.`)
       enrichPendingPriceInBackground(verified.card, generation)
     } catch (error) {
       console.error('Native photo scan error:', error)
-      setCameraError('Non sono riuscito a leggere questa foto. Riprova con la carta intera e ben illuminata.')
-      setRecognitionMessage('Foto non elaborata.')
+      setCameraError('Questa foto non è stata letta bene. Prova con la carta intera e ben illuminata.')
+      setRecognitionMessage('Pronto per una nuova foto.')
     } finally {
       if (scanGenerationRef.current === generation) setPhotoProcessing(false)
     }

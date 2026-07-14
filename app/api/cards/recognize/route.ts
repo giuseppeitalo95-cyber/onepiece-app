@@ -1,4 +1,5 @@
 import { getAllCards } from '@/lib/cardData'
+import { selectCardsByVisibleText } from '@/lib/cardTextRecognition'
 
 const normalize = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -80,6 +81,14 @@ export async function POST(req: Request) {
     if (!text.trim()) return Response.json({ card: null, candidates: [] })
 
     const cards = await getAllCards()
+    if (body?.mode === 'photo') {
+      const visibleTextCandidates = selectCardsByVisibleText(text, cards)
+      return Response.json({
+        card: visibleTextCandidates[0] ? toResponseCard(visibleTextCandidates[0]) : null,
+        candidates: visibleTextCandidates.slice(0, 64).map(toResponseCard)
+      })
+    }
+
     const code = extractCardCode(text)
 
     if (code) {
