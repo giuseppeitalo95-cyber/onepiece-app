@@ -34,7 +34,7 @@ type RewardResult = {
 
 type Phase = 'idle' | 'locking' | 'revealed'
 
-const CARD_COUNT = 6
+const CARD_COUNT = 9
 const confettiColors = ['#fde047', '#f59e0b', '#67e8f9', '#fb7185', '#ffffff']
 const delay = (milliseconds: number) => new Promise(resolve => window.setTimeout(resolve, milliseconds))
 const preloadImage = (source: string) => new Promise<void>(resolve => {
@@ -89,6 +89,11 @@ export default function DailyRewardPage() {
     const timer = window.setTimeout(() => { void loadStatus() }, 0)
     return () => window.clearTimeout(timer)
   }, [loadStatus])
+
+  useEffect(() => {
+    void preloadImage('/rewards/opv-card-back.jpeg')
+    void preloadImage('/rewards/opv-special-card.jpeg')
+  }, [])
 
   const chooseCard = async (index: number) => {
     if (!status?.available || phase !== 'idle') return
@@ -187,15 +192,15 @@ export default function DailyRewardPage() {
       <Sidebar activePage="collezione" />
       {confetti}
 
-      <main className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col px-3 pb-32 pt-20 sm:px-6 sm:pt-24">
-        <header className="mx-auto mb-5 max-w-xl text-center sm:mb-7">
+      <main className={styles.shell}>
+        <header className={styles.header}>
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-amber-200 shadow-[0_0_22px_rgba(251,191,36,0.12)]">
             <Crown size={14} />
             Reward giornaliero
           </div>
-          <h1 className="mt-3 text-2xl font-black text-white sm:text-4xl">Scegli una carta</h1>
-          <p className="mt-2 text-sm text-slate-300 sm:text-base">
-            Una scelta. Un possibile tesoro. In palio ci sono 7 giorni VIP.
+          <h1 className="mt-2 text-xl font-black text-white sm:mt-3 sm:text-4xl">Scegli una carta tra queste</h1>
+          <p className="mt-1 text-xs text-slate-300 sm:mt-2 sm:text-base">
+            Se trovi la carta speciale vinci 7 giorni di VIP gratis.
           </p>
           {status?.founder && (
             <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
@@ -205,11 +210,11 @@ export default function DailyRewardPage() {
         </header>
 
         {!status ? (
-          <div className="flex flex-1 items-center justify-center py-20 text-cyan-100">
+          <div className="flex flex-1 items-center justify-center text-cyan-100">
             <LoaderCircle className="animate-spin" size={28} />
           </div>
         ) : !status.available ? (
-          <section className="mx-auto mt-8 w-full max-w-md rounded-3xl border border-white/12 bg-slate-950/55 p-6 text-center shadow-2xl backdrop-blur-xl">
+          <section className="mx-auto w-full max-w-md rounded-3xl border border-white/12 bg-slate-950/55 p-6 text-center shadow-2xl backdrop-blur-xl">
             <Sparkles className="mx-auto text-amber-300" size={34} />
             <h2 className="mt-4 text-xl font-black text-white">
               {status.setupRequired ? 'Reward in configurazione' : 'Hai già giocato oggi'}
@@ -230,7 +235,7 @@ export default function DailyRewardPage() {
           </section>
         ) : (
           <>
-            <section className={`${styles.stage} flex-1 pt-4 sm:pt-5`}>
+            <section className={styles.stage}>
               <div className={styles.grid}>
                 {Array.from({ length: CARD_COUNT }, (_, index) => {
                   const selected = selectedIndex === index
@@ -258,7 +263,8 @@ export default function DailyRewardPage() {
                             draggable={false}
                             width={1054}
                             height={1494}
-                            sizes="(max-width: 640px) 30vw, 190px"
+                            priority
+                            sizes="(max-width: 640px) 29vw, 180px"
                           />
                         </span>
                         <span className={`${styles.face} ${styles.front} ${result?.won ? styles.win : ''}`}>
@@ -270,7 +276,8 @@ export default function DailyRewardPage() {
                               draggable={false}
                               width={1055}
                               height={1508}
-                              sizes="(max-width: 640px) 34vw, 210px"
+                              priority
+                              sizes="(max-width: 640px) 86vw, 520px"
                             />
                           ) : result?.card ? (
                             <CardImage
@@ -291,7 +298,7 @@ export default function DailyRewardPage() {
               </div>
             </section>
 
-            <div className="mx-auto mt-6 min-h-[118px] w-full max-w-xl text-center sm:mt-8">
+            <div className={styles.resultDock}>
               {phase === 'locking' && (
                 <div className="flex items-center justify-center gap-2 text-sm font-bold text-amber-100">
                   <LoaderCircle className="animate-spin" size={18} />
@@ -306,9 +313,7 @@ export default function DailyRewardPage() {
                   </h2>
                   <p className="mt-1 text-sm text-slate-300">
                     {result.won
-                      ? result.founder
-                        ? 'Animazione premio completata in modalità founder.'
-                        : 'Hai vinto 7 giorni VIP. Il premio è già attivo sul tuo account.'
+                      ? 'Hai vinto 7 giorni VIP. Il premio è già attivo sul tuo account.'
                       : 'Nessun premio questa volta. Torna domani per una nuova scelta.'}
                   </p>
 

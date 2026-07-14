@@ -44,12 +44,11 @@ export default function DailyRewardBanner() {
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-amber-200/40 bg-amber-300/15 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.2)]">
           <Sparkles size={16} />
         </span>
-        <span className="truncate text-xs font-black uppercase tracking-[0.08em] text-amber-100 sm:text-sm">
-          Reward giornaliero disponibile, gioca ora
+        <span className="text-[11px] font-black uppercase leading-tight tracking-[0.04em] text-amber-100 sm:text-sm sm:tracking-[0.08em]">
+          Reward disponibile: gioca ora
         </span>
       </span>
       <ChevronRight className="relative shrink-0 text-amber-200 transition-transform group-hover:translate-x-1" size={18} />
     </button>
   )
 }
-

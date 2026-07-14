@@ -9,7 +9,7 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-const WIN_CHANCE_PER_THOUSAND = 30
+const WIN_CHANCE_PER_THOUSAND = 50
 const REWARD_DAYS = 7
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 
@@ -66,7 +66,19 @@ const randomCatalogCard = async () => {
     const pool = cards.filter(card => {
       const id = String(card.card_id || card.id || '')
       const image = card.card_image || card.image_url
-      return id && image && !/_p\d+$/i.test(id)
+      const rarity = String(card.rarity || '').trim().toLowerCase()
+      const nameSet = `${card.card_name || card.name || ''} ${card.set_name || ''}`.toLowerCase()
+      const cardType = String(card.card_type || '').toLowerCase()
+      const isCommon = rarity === 'c' || rarity === 'common'
+      const isSpecialPrint = /manga|alternative|alternate|parallel|special|winner|judge|treasure|secret|promo|super pre-release|\bp-\d/i.test(nameSet)
+      return Boolean(
+        id &&
+        image &&
+        isCommon &&
+        cardType !== 'don!!' &&
+        !/_p\d+$/i.test(id) &&
+        !isSpecialPrint
+      )
     })
     const card = pool.length > 0 ? pool[randomInt(pool.length)] : null
 
@@ -168,7 +180,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const selectedIndex = Number(body?.selectedIndex)
-    if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 5) {
+    if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 8) {
       return Response.json({ error: 'Scelta non valida' }, { status: 400 })
     }
 
