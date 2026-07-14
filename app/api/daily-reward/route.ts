@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import { getAllCards } from '@/lib/cardData'
 import { isAdminAccount } from '@/lib/admin'
+import { DAILY_REWARD_COMMONS } from '@/lib/dailyRewardCards'
 import {
   DAILY_REWARD_VIP_NOTE_PREFIX,
   getDailyRewardVipUntil
@@ -60,45 +60,8 @@ const loadProfile = async (userId: string) => {
 const tableMissing = (message?: string | null) =>
   Boolean(message && /user_scan_usage_daily|schema cache|does not exist|could not find/i.test(message))
 
-const randomCatalogCard = async () => {
-  try {
-    const cards = await getAllCards()
-    const pool = cards.filter(card => {
-      const id = String(card.card_id || card.id || '')
-      const image = card.card_image || card.image_url
-      const rarity = String(card.rarity || '').trim().toLowerCase()
-      const nameSet = `${card.card_name || card.name || ''} ${card.set_name || ''}`.toLowerCase()
-      const cardType = String(card.card_type || '').toLowerCase()
-      const isCommon = rarity === 'c' || rarity === 'common'
-      const isSpecialPrint = /manga|alternative|alternate|parallel|special|winner|judge|treasure|secret|promo|super pre-release|\bp-\d/i.test(nameSet)
-      return Boolean(
-        id &&
-        image &&
-        isCommon &&
-        cardType !== 'don!!' &&
-        !/_p\d+$/i.test(id) &&
-        !isSpecialPrint
-      )
-    })
-    const card = pool.length > 0 ? pool[randomInt(pool.length)] : null
-
-    if (card) {
-      return {
-        cardId: String(card.card_id || card.id || ''),
-        name: String(card.card_name || card.name || 'Carta misteriosa'),
-        imageUrl: String(card.card_image || card.image_url || '')
-      }
-    }
-  } catch (error) {
-    console.error('Daily reward catalog fallback:', error)
-  }
-
-  return {
-    cardId: 'OPV-LOSE',
-    name: 'Carta misteriosa',
-    imageUrl: '/rewards/opv-card-back.jpeg'
-  }
-}
+const randomCatalogCard = () =>
+  DAILY_REWARD_COMMONS[randomInt(DAILY_REWARD_COMMONS.length)]
 
 const rewardUsageKey = (date = new Date()) => `${romeDateKey(date)}:reward`
 
@@ -215,7 +178,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const revealedCard = won ? null : await randomCatalogCard()
+    const revealedCard = won ? null : randomCatalogCard()
 
     let vipUntil = getDailyRewardVipUntil(profile?.vip_note)
     if (won && !founder) {

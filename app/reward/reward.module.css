@@ -126,7 +126,7 @@
   top: 43%;
   left: 50%;
   z-index: 75;
-  width: min(13dvh, 28vw, 128px);
+  width: min(20dvh, 46vw, 180px);
   transform: translate(-50%, -50%) scale(1);
   filter:
     drop-shadow(0 0 36px rgba(255, 255, 255, 0.72))
@@ -195,6 +195,11 @@
   animation:
     winnerReveal 2200ms cubic-bezier(.16,.82,.18,1) 120ms both,
     winnerPulse 1.45s ease-in-out 2300ms infinite;
+}
+
+.winnerSelected .image {
+  image-rendering: auto;
+  transform: translateZ(0);
 }
 
 .image {
@@ -270,11 +275,11 @@
     filter: brightness(1) saturate(1);
   }
   58% {
-    transform: rotateY(180deg) scale(2.55);
+    transform: rotateY(180deg) scale(1.96);
     filter: brightness(1.68) saturate(1.35);
   }
   100% {
-    transform: rotateY(180deg) scale(2.22);
+    transform: rotateY(180deg) scale(1.78);
     filter: brightness(1.18) saturate(1.18);
   }
 }
@@ -311,7 +316,7 @@
   }
 
   .cardButton.selected.winnerSelected {
-    width: min(18dvh, 22vw, 168px);
+    width: min(24dvh, 28vw, 220px);
   }
 
   @keyframes winnerReveal {
@@ -320,11 +325,11 @@
       filter: brightness(1) saturate(1);
     }
     58% {
-      transform: rotateY(180deg) scale(3.05);
+      transform: rotateY(180deg) scale(2.25);
       filter: brightness(1.7) saturate(1.35);
     }
     100% {
-      transform: rotateY(180deg) scale(2.62);
+      transform: rotateY(180deg) scale(2.02);
       filter: brightness(1.18) saturate(1.18);
     }
   }

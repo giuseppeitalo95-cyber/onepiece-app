@@ -9,6 +9,7 @@ import { ArrowLeft, Crown, LoaderCircle, RotateCcw, Sparkles } from 'lucide-reac
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
+import { DAILY_REWARD_COMMONS } from '@/lib/dailyRewardCards'
 import styles from './reward.module.css'
 
 type RewardStatus = {
@@ -37,18 +38,29 @@ type Phase = 'idle' | 'locking' | 'revealed'
 const CARD_COUNT = 9
 const confettiColors = ['#fde047', '#f59e0b', '#67e8f9', '#fb7185', '#ffffff']
 const delay = (milliseconds: number) => new Promise(resolve => window.setTimeout(resolve, milliseconds))
-const preloadImage = (source: string) => new Promise<void>(resolve => {
+const preloadImage = (source: string) => new Promise<boolean>(resolve => {
   const image = new window.Image()
-  const timeout = window.setTimeout(resolve, 2600)
+  let settled = false
+  const finish = (loaded: boolean) => {
+    if (settled) return
+    settled = true
+    window.clearTimeout(timeout)
+    resolve(loaded)
+  }
+
+  const timeout = window.setTimeout(() => finish(false), 8000)
   image.onload = () => {
-    window.clearTimeout(timeout)
-    resolve()
+    if (typeof image.decode === 'function') {
+      void image.decode().catch(() => undefined).finally(() => finish(true))
+      return
+    }
+    finish(true)
   }
-  image.onerror = () => {
-    window.clearTimeout(timeout)
-    resolve()
-  }
+  image.onerror = () => finish(false)
   image.src = source
+})
+const waitForPaint = () => new Promise<void>(resolve => {
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))
 })
 
 export default function DailyRewardPage() {
@@ -93,6 +105,7 @@ export default function DailyRewardPage() {
   useEffect(() => {
     void preloadImage('/rewards/opv-card-back.jpeg')
     void preloadImage('/rewards/opv-special-card.jpeg')
+    for (const card of DAILY_REWARD_COMMONS) void preloadImage(card.imageUrl)
   }, [])
 
   const chooseCard = async (index: number) => {
@@ -121,9 +134,9 @@ export default function DailyRewardPage() {
                 imageUrl: '/rewards/opv-special-card.jpeg'
               }
             : {
-                cardId: 'OP16-056',
-                name: 'Mr.3(Galdino)',
-                imageUrl: 'https://en.onepiece-cardgame.com/images/cardlist/card/OP16-056.png'
+                cardId: DAILY_REWARD_COMMONS[0].cardId,
+                name: DAILY_REWARD_COMMONS[0].name,
+                imageUrl: DAILY_REWARD_COMMONS[0].imageUrl
               }
         }
         await Promise.all([
@@ -132,6 +145,7 @@ export default function DailyRewardPage() {
         ])
         setResult(previewResult)
         setMessage(previewWon ? 'Il tesoro ha scelto te.' : 'Questa volta il tesoro era altrove.')
+        await waitForPaint()
         await delay(previewWon ? 220 : 80)
         setPhase('revealed')
         return
@@ -164,6 +178,7 @@ export default function DailyRewardPage() {
       }
       setResult(data)
       setMessage(data.won ? 'Il tesoro ha scelto te.' : 'Questa volta il tesoro era altrove.')
+      await waitForPaint()
       await delay(data.won ? 220 : 80)
       setPhase('revealed')
     } catch (error) {
@@ -201,7 +216,10 @@ export default function DailyRewardPage() {
       <link rel="preload" as="image" href="/rewards/opv-card-back.jpeg" fetchPriority="high" />
       <div className={styles.preloadAssets} aria-hidden="true">
         <Image src="/rewards/opv-card-back.jpeg" alt="" width={1054} height={1494} priority />
-        <Image src="/rewards/opv-special-card.jpeg" alt="" width={1055} height={1508} priority unoptimized quality={100} />
+        <Image src="/rewards/opv-special-card.jpeg" alt="" width={2094} height={3004} priority unoptimized quality={100} />
+        {DAILY_REWARD_COMMONS.map(card => (
+          <img key={card.cardId} src={card.imageUrl} alt="" />
+        ))}
       </div>
       <Topbar />
       <Sidebar activePage="collezione" />
@@ -289,8 +307,8 @@ export default function DailyRewardPage() {
                               alt="Pirate King's Ticket"
                               className={styles.image}
                               draggable={false}
-                              width={1055}
-                              height={1508}
+                              width={2094}
+                              height={3004}
                               priority
                               quality={100}
                               unoptimized
