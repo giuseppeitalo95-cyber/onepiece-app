@@ -68,13 +68,14 @@ export default function Profile() {
       const rawAvatarUrl = profileData?.avatar_url ?? ''
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
       const isFirstAccess = !profileData?.username
+      const nicknameCanBeChanged = isFirstAccess || profileData?.username_locked === false
 
       const isAdminUser = isAdminAccount(user, profileData)
       const tier = getPremiumTier(profileData as PremiumProfile, user)
 
       setUsername(profileData?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)
-      setCanEdit(isFirstAccess)
+      setCanEdit(nicknameCanBeChanged)
       setFirstAccess(isFirstAccess)
       setIsAdmin(isAdminUser)
       setPremiumTier(tier)
@@ -186,7 +187,7 @@ export default function Profile() {
 
     if (error) {
       console.error(error)
-      alert('Errore salvataggio')
+      alert(error.code === '23505' ? 'Questo nickname è già utilizzato.' : 'Errore salvataggio')
       setSavingUsername(false)
       return
     }
@@ -368,7 +369,9 @@ export default function Profile() {
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
               {firstAccess
                 ? 'Scegli il nickname: lo userai nel profilo e nella pagina amici. Dopo il salvataggio resta bloccato.'
-                : 'Gestisci identita, foto profilo e accesso.'}
+                : canEdit
+                  ? 'Puoi modificare il nickname ancora una volta. Dopo il salvataggio verrà bloccato.'
+                  : 'Gestisci identita, foto profilo e accesso.'}
             </p>
           </div>
 
@@ -468,7 +471,7 @@ export default function Profile() {
                         className="inline-flex items-center gap-2 rounded-2xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
                         disabled={savingUsername}
                       >
-                        {savingUsername ? 'Salvataggio...' : 'Blocca nome'}
+                        {savingUsername ? 'Salvataggio...' : 'Conferma nickname'}
                       </button>
                     ) : (
                       <span className="rounded-full bg-emerald-500/15 px-3 py-2 text-xs uppercase tracking-[0.2em] text-emerald-200">

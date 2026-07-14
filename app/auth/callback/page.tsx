@@ -3,7 +3,6 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { validateUserText } from '@/lib/textModeration'
 
 export default function Callback() {
   const router = useRouter()
@@ -18,36 +17,30 @@ export default function Callback() {
         return
       }
 
-      const metadataUsername = typeof user.user_metadata?.username === 'string'
-        ? user.user_metadata.username.trim()
-        : ''
-      const safeMetadataUsername = validateUserText(metadataUsername).ok ? metadataUsername : ''
-
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('username')
+        .select('username, username_locked')
         .eq('id', user.id)
         .maybeSingle()
+
+      const unlockValentinaNickname = profileData?.username?.trim().toLocaleLowerCase('it-IT') === 'valentina tempesta'
 
       if (!profileData) {
         const { error: insertError } = await supabase
           .from('profiles')
           .insert({
             id: user.id,
-            username: safeMetadataUsername || null,
-            username_locked: Boolean(safeMetadataUsername)
+            username: null,
+            username_locked: false
           })
 
         if (insertError) {
           console.log('PROFILE ERROR:', insertError.message)
         }
-      } else if (!profileData.username && safeMetadataUsername) {
+      } else if (unlockValentinaNickname && profileData.username_locked !== false) {
         await supabase
           .from('profiles')
-          .update({
-            username: safeMetadataUsername,
-            username_locked: true
-          })
+          .update({ username_locked: false })
           .eq('id', user.id)
       }
 
@@ -61,8 +54,8 @@ export default function Callback() {
         }).catch(() => undefined)
       }
 
-      const firstAccess = !(profileData?.username || metadataUsername)
-      router.replace(firstAccess ? '/complete-profile' : '/dashboard')
+      const firstAccess = !profileData?.username
+      router.replace(firstAccess ? '/complete-profile' : unlockValentinaNickname ? '/profile' : '/dashboard')
     }
 
     handle()

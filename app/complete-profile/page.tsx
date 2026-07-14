@@ -27,7 +27,7 @@ export default function CompleteProfilePage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username')
+        .select('username, username_locked')
         .eq('id', session.user.id)
         .maybeSingle()
 
@@ -37,6 +37,10 @@ export default function CompleteProfilePage() {
       }
 
       setUserId(session.user.id)
+      const suggestedNickname = typeof session.user.user_metadata?.username === 'string'
+        ? session.user.user_metadata.username.trim()
+        : ''
+      setNickname(suggestedNickname)
       setLoading(false)
     }
 
@@ -74,7 +78,7 @@ export default function CompleteProfilePage() {
           .from('profiles')
           .update({
             username: cleanNickname,
-            username_locked: true
+            username_locked: false
           })
           .eq('id', userId)
       : await supabase
@@ -82,13 +86,15 @@ export default function CompleteProfilePage() {
           .insert({
             id: userId,
             username: cleanNickname,
-            username_locked: true
+            username_locked: false
           })
 
     setSaving(false)
 
     if (saveError) {
-      setError('Non sono riuscito a salvare il nickname. Riprova.')
+      setError(saveError.code === '23505'
+        ? 'Questo nickname è già utilizzato. Scegline un altro.'
+        : 'Non sono riuscito a salvare il nickname. Riprova.')
       return
     }
 
@@ -119,7 +125,7 @@ export default function CompleteProfilePage() {
           </div>
           <h1 className="mt-4 text-3xl font-black text-white">Scegli il nickname</h1>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-300">
-            Lo userai nel profilo e nella pagina amici. Puoi modificarlo una sola volta: dopo il salvataggio resta bloccato.
+            Lo userai in tutta l&apos;app. Dopo la conferma potrai modificarlo una sola volta dal profilo.
           </p>
         </div>
 
@@ -151,7 +157,7 @@ export default function CompleteProfilePage() {
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition disabled:opacity-60"
           >
             <ShieldCheck size={17} />
-            {saving ? 'Salvataggio...' : 'Entra nello scanner'}
+            {saving ? 'Salvataggio...' : 'Conferma nickname'}
           </button>
         </form>
       </main>
