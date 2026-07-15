@@ -705,7 +705,7 @@ export default function Dashboard() {
 
     if (insertError) {
       setSoldReady(false)
-      setSaleMessage('Storico vendute non configurato: esegui sold_cards.sql su Supabase.')
+      setSaleMessage('Non riesco a salvare la vendita in questo momento.')
       setSellingBusy(false)
       return
     }
@@ -1150,55 +1150,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div className="hidden">
-              <div>
-                <p className="text-sm font-semibold text-white">Cerca nella collezione</p>
-                <p className="text-xs text-gray-400">Usa testo, colore, rarità o costo per trovare le carte che possiedi.</p>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-4 min-w-0">
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Cerca nome o codice"
-                  className="min-w-0 w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                />
-
-                <select
-                  value={filterColor}
-                  onChange={(e) => setFilterColor(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                >
-                  <option value="all">Tutti i colori</option>
-                  {availableColors.map((color) => (
-                    <option key={color} value={color.toLowerCase()}>{color}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterRarity}
-                  onChange={(e) => setFilterRarity(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                >
-                  <option value="all">Tutte le rarità</option>
-                  {availableRarities.map((rarity) => (
-                    <option key={rarity} value={rarityFilterValue(rarity)}>{rarity}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterCost}
-                  onChange={(e) => setFilterCost(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                >
-                  <option value="all">Tutti i costi</option>
-                  <option value="0-2">Costo 0–2</option>
-                  <option value="3-5">Costo 3–5</option>
-                  <option value="6+">Costo 6+</option>
-                </select>
-              </div>
-            </div>
-
             {!loadingCards && filteredCards.length === 0 && (
               <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-gray-300">
                 Nessuna carta trovata con i filtri selezionati.
@@ -1464,10 +1415,7 @@ export default function Dashboard() {
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 p-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Analytics</p>
-          <h3 className="text-lg font-black text-white">Collezione</h3>
-        </div>
+        <h3 className="text-lg font-black text-white">Statistiche collezione</h3>
         <button
           onClick={() => setAnalyticsOpen(false)}
           className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200"
@@ -1627,7 +1575,7 @@ export default function Dashboard() {
       <div className="min-h-0 overflow-y-auto p-3">
         {!soldReady ? (
           <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
-            Storico vendute non configurato. Esegui `sold_cards.sql` su Supabase.
+            Carte vendute temporaneamente non disponibili.
           </div>
         ) : soldLoading ? (
           <p className="rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Carico vendute...</p>
@@ -1898,22 +1846,6 @@ export default function Dashboard() {
                   {selectedPriceDelta == null ? '-' : formatDelta(selectedPriceDelta)}
                 </p>
               </div>
-            </div>
-          </div>
-
-          <div className="hidden">
-            <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Generale</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Rarità:</span> {getRarityLabel(selectedCard) || '—'}</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Colore:</span> {selectedCard.card_color || '—'}</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Tipo:</span> {selectedCard.card_type || '—'}</p>
-            </div>
-
-            <div className="rounded-2xl bg-slate-900/90 border border-slate-700 p-3">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-gray-500 mb-2">Statistiche</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Costo:</span> {selectedCard.card_cost ?? '—'}</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Power:</span> {selectedCard.card_power ?? '—'}</p>
-              <p className="text-sm text-gray-200"><span className="text-amber-300">Quantità:</span> {selectedCard.quantity}</p>
             </div>
           </div>
 

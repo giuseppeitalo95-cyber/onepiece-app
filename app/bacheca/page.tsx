@@ -506,24 +506,12 @@ export default function BachecaPage() {
       <Topbar />
 
       <main className="mx-auto max-w-7xl px-3 pb-32 pt-4 sm:px-6 lg:px-8">
-        <section className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
-          <div className="flex flex-col gap-4">
-            <div>
-              <h1 className="text-3xl font-black text-white sm:text-4xl">Bacheca</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                Qui troverai tutte le richieste carte dei tuoi amici.
-              </p>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
-                Free: {FREE_BOARD_DAILY_POST_LIMIT} annuncio al giorno, {FREE_BOARD_WEEKLY_POST_LIMIT} a settimana, visibile agli amici per {FREE_BOARD_POST_DAYS} giorni. Premium/VIP/Admin: annunci globali per {PREMIUM_BOARD_POST_DAYS} giorni.
-              </p>
-            </div>
-          </div>
-        </section>
+        <h1 className="px-1 text-2xl font-black text-white sm:text-3xl">Bacheca</h1>
 
-        <section className="mt-4 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+        <section className="mt-3 rounded-[1.6rem] border border-white/10 bg-slate-900/75 p-3 backdrop-blur-xl sm:p-4">
+          <div className="flex items-center gap-2 text-sm font-black text-white">
             <Megaphone size={15} />
-            Nuovo annuncio
+            Pubblica annuncio
           </div>
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-1.5">
@@ -640,7 +628,7 @@ export default function BachecaPage() {
 
           {!boardReady && (
             <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
-              Gli annunci sono pronti nel sito, ma manca la tabella Supabase. Esegui `board_posts.sql` per attivarli.
+              Bacheca temporaneamente non disponibile.
             </div>
           )}
 
@@ -763,10 +751,7 @@ export default function BachecaPage() {
         >
           <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta annuncio</p>
-                <h3 className="truncate text-lg font-black text-white">{selectedBoardCard.name}</h3>
-              </div>
+              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedBoardCard.name}</h3>
               <button
                 onClick={() => {
                   setSelectedBoardCard(null)

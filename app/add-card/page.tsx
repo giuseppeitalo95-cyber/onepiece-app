@@ -237,8 +237,8 @@ useEffect(() => {
       <div className="w-full max-w-[420px] mt-4 rounded-[1.75rem] border border-amber-400/20 bg-amber-400/5 p-5 text-slate-200 shadow-inner shadow-black/20">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-white">Carta assente?</p>
-            <p className="text-sm text-slate-300">Cercala sia per nome carta che per OP-Numero, stiamo risolvendo i problemi di ricerca. In caso non ci fosse propio aiutaci ad ampliare il nostro database: segnalala e la aggiungeremo.</p>
+            <p className="text-sm font-semibold text-white">Non trovi la carta?</p>
+            <p className="text-sm text-slate-300">Segnalala e la aggiungeremo al catalogo.</p>
           </div>
           <button
             onClick={() => setShowReportForm((prev) => !prev)}
@@ -331,10 +331,7 @@ useEffect(() => {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedCard(null)}>
           <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
-                <h3 className="truncate text-lg font-black text-white">{selectedCard.name}</h3>
-              </div>
+              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedCard.name}</h3>
               <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
                 X
               </button>

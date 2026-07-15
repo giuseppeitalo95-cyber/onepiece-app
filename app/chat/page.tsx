@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Ban, Clock3, Inbox, MessageCircle, Send, ShieldCheck, X } from 'lucide-react'
+import { ArrowLeft, Ban, Inbox, MessageCircle, Send, ShieldCheck, X } from 'lucide-react'
 import CardImage from '@/app/components/CardImage'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
@@ -430,9 +430,7 @@ export default function ChatPage() {
       .insert({ blocker_id: userId, blocked_id: selectedFriendId })
 
     if (error) {
-      setStatus(error.code === '42P01'
-        ? 'Per usare il blocco devi rieseguire chat.sql su Supabase.'
-        : 'Non sono riuscito a bloccare questo utente.')
+      setStatus('Non sono riuscito a bloccare questo utente.')
       return
     }
 
@@ -449,30 +447,21 @@ export default function ChatPage() {
         <aside className={`${selectedFriendId ? 'hidden lg:flex' : 'flex'} min-h-0 flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-slate-900/76 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-4`}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Scambi</p>
-              <h1 className="mt-1 text-2xl font-black text-white">Chat</h1>
+              <h1 className="text-2xl font-black text-white">Chat</h1>
             </div>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-cyan-300/12 text-cyan-100">
               <MessageCircle size={21} />
             </div>
           </div>
 
-          <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.08] p-3 text-sm leading-6 text-cyan-50">
-            <div className="flex items-center gap-2 font-black">
-              <Clock3 size={16} />
-              Messaggi temporanei
-            </div>
-            <p className="mt-1 text-xs text-cyan-50/78">I messaggi restano solo 24H, pensati per accordarsi sugli scambi senza riempire il database.</p>
-          </div>
-
           {!chatReady ? (
             <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
-              Chat pronta nel codice. Esegui `chat.sql` su Supabase per attivare la tabella.
+              Chat temporaneamente non disponibile.
             </div>
           ) : null}
           {!blocksReady ? (
             <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
-              Il blocco utenti richiede l'ultima versione di `chat.sql` su Supabase.
+              Blocco utenti temporaneamente non disponibile.
             </div>
           ) : null}
 

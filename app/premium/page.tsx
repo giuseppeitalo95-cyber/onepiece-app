@@ -148,10 +148,7 @@ export default function PremiumPage() {
           <div className="bg-gradient-to-br from-cyan-300/18 via-white/[0.04] to-rose-300/14 p-5 sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/30 bg-cyan-300/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">
-                  <Crown size={14} /> Premium
-                </div>
-                <h1 className="mt-4 text-3xl font-black text-white sm:text-5xl">Supporta OPV</h1>
+                <h1 className="text-3xl font-black text-white sm:text-5xl">Supporta OPV</h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
                   Premium serve a sostenere il sito, mantenere scanner, database, prezzi e nuove funzioni senza riempire l'app di pubblicita.
                 </p>
@@ -173,8 +170,7 @@ export default function PremiumPage() {
             <article className="flex flex-col rounded-[1.5rem] border border-slate-700 bg-slate-900/72 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Piano</p>
-                  <h2 className="mt-1 text-2xl font-black text-white">Free</h2>
+                  <h2 className="text-2xl font-black text-white">Free</h2>
                 </div>
                 <div className="rounded-2xl border border-slate-700 bg-slate-950/75 px-3 py-2 text-sm font-black text-slate-300">
                   0 euro
@@ -193,8 +189,7 @@ export default function PremiumPage() {
             <article className="relative flex flex-col overflow-hidden rounded-[1.5rem] border border-cyan-200/35 bg-cyan-300/12 p-4 shadow-xl shadow-cyan-950/20">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Piano</p>
-                  <h2 className="mt-1 text-2xl font-black text-white">Premium</h2>
+                  <h2 className="text-2xl font-black text-white">Premium</h2>
                 </div>
                 <div className="rounded-2xl border border-cyan-100/35 bg-cyan-100/18 px-3 py-2 text-sm font-black text-cyan-50">
                   1 euro/mese

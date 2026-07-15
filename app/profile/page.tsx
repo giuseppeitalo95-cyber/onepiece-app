@@ -309,19 +309,11 @@ export default function Profile() {
     <div className={`min-h-screen pb-32 text-white onepiece-wave-bg onepiece-clouds sm:pb-36 ${firstAccess ? 'pt-4' : 'pt-14'}`}>
       {!firstAccess && <Sidebar activePage="profilo" />}
       {!firstAccess && <Topbar />}
-      <div className={`mx-3 flex items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-4 backdrop-blur-xl ${firstAccess ? 'mt-0' : 'mt-3'}`}>
-        <div className="flex items-center gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">
-              {firstAccess ? 'Configura il profilo' : 'Area personale'}
-            </p>
-            <h1 className="text-2xl font-extrabold text-white">
-              {firstAccess ? 'Benvenuto nel tuo One Piece Vault' : 'Profilo'}
-            </h1>
-          </div>
+      {firstAccess ? (
+        <div className="mx-3 mt-0 rounded-[1.5rem] border border-white/10 bg-slate-900/72 p-4 backdrop-blur-xl">
+          <h1 className="text-2xl font-extrabold text-white">Configura il profilo</h1>
         </div>
-
-      </div>
+      ) : null}
 
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-7 lg:px-8">
         <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/74 px-4 pb-5 pt-28 shadow-2xl shadow-slate-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:px-7 sm:pb-7 sm:pt-32">
@@ -357,8 +349,7 @@ export default function Profile() {
           </div>
 
           <div className="mt-10 text-center sm:mt-12">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200">Profilo vault</p>
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-2">
               <h2 className={`text-3xl font-black text-white sm:text-4xl ${premiumClassName(premiumTier)}`}>{username || 'Utente'}</h2>
               {premiumTier !== 'free' ? (
                 <span className="rounded-full border border-white/15 bg-white/[0.08] px-3 py-1 text-[10px] font-black uppercase text-cyan-100">
@@ -366,13 +357,13 @@ export default function Profile() {
                 </span>
               ) : null}
             </div>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              {firstAccess
-                ? 'Scegli il nickname: lo userai nel profilo e nella pagina amici. Dopo il salvataggio resta bloccato.'
-                : canEdit
-                  ? 'Puoi modificare il nickname ancora una volta. Dopo il salvataggio verrà bloccato.'
-                  : 'Gestisci identita, foto profilo e accesso.'}
-            </p>
+            {firstAccess || canEdit ? (
+              <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                {firstAccess
+                  ? 'Scegli il nickname che userai nell’app.'
+                  : 'Puoi modificare il nickname ancora una volta.'}
+              </p>
+            ) : null}
           </div>
 
           <section className="mt-6 rounded-[1.5rem] border border-cyan-200/18 bg-white/[0.055] p-4 shadow-inner shadow-white/5 sm:p-5">
@@ -383,8 +374,7 @@ export default function Profile() {
                     {progress.level}
                   </div>
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200">Livello vault</p>
-                    <h3 className="mt-1 text-2xl font-black text-white">LV {progress.level}</h3>
+                    <h3 className="text-2xl font-black text-white">Livello {progress.level}</h3>
                   </div>
                 </div>
 
@@ -438,8 +428,7 @@ export default function Profile() {
             <section className="rounded-[1.5rem] border border-white/10 bg-slate-950/72 p-4 shadow-inner shadow-black/10 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Informazioni</p>
-                  <h3 className="mt-2 text-xl font-semibold text-white">Dettagli account</h3>
+                  <h3 className="text-xl font-semibold text-white">Account</h3>
                 </div>
               </div>
 
@@ -508,8 +497,7 @@ export default function Profile() {
           <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-slate-950/68 p-4 sm:p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">Badge vault</p>
-                <h3 className="mt-1 text-2xl font-black text-white">Obiettivi e ricompense</h3>
+                <h3 className="text-2xl font-black text-white">Badge e obiettivi</h3>
               </div>
               <p className="text-sm font-bold text-slate-300">
                 {unlockedBadges.length} sbloccati, {lockedBadges.length} da conquistare

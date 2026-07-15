@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Crown, LoaderCircle, RotateCcw, Sparkles } from 'lucide-react'
+import { ArrowLeft, LoaderCircle, RotateCcw, Sparkles } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
@@ -227,11 +227,7 @@ export default function DailyRewardPage() {
 
       <main className={styles.shell}>
         <header className={styles.header}>
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-amber-200 shadow-[0_0_22px_rgba(251,191,36,0.12)]">
-            <Crown size={14} />
-            Reward giornaliero
-          </div>
-          <h1 className="mt-2 text-xl font-black text-white sm:mt-3 sm:text-4xl">Scegli una carta tra queste</h1>
+          <h1 className="text-xl font-black text-white sm:text-4xl">Scegli una carta</h1>
           <p className="mt-1 text-xs text-slate-300 sm:mt-2 sm:text-base">
             Se trovi la carta speciale vinci 7 giorni di VIP gratis.
           </p>

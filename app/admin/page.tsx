@@ -780,7 +780,6 @@ export default function AdminPage() {
             <ArrowLeft />
           </button>
           <div className="flex-1 text-center">
-            <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Pannello Founder</p>
             <h1 className="text-3xl font-extrabold text-white">{sectionTitle[activeSection]}</h1>
           </div>
           <button
@@ -840,8 +839,7 @@ export default function AdminPage() {
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Bug report</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Segnalazioni bug</h2>
+              <h2 className="text-xl font-semibold text-white">Bug</h2>
             </div>
             <div className="flex items-center gap-2">
               {bugReports.length > 0 ? (
@@ -904,8 +902,7 @@ export default function AdminPage() {
         <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Notifiche</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Richieste carte</h2>
+              <h2 className="text-xl font-semibold text-white">Carte mancanti</h2>
             </div>
             <ShieldCheck className="text-amber-400" />
           </div>
@@ -961,8 +958,7 @@ export default function AdminPage() {
         <div className={activeSection === 'analytics' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Statistiche</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Abbonati e utilizzo sito</h2>
+              <h2 className="text-xl font-semibold text-white">Utilizzo sito</h2>
               <p className="mt-1 text-sm text-slate-400">
                 Abbonamenti, VIP, free, pagine usate, ricerche manuali e scan per periodo selezionato.
               </p>
@@ -1164,8 +1160,7 @@ export default function AdminPage() {
         <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-amber-300/80">Google Vision</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Scansioni mensili</h2>
+              <h2 className="text-xl font-semibold text-white">Google Vision</h2>
               <p className="mt-1 text-sm text-slate-400">
                 {scanUsage?.month ? `Mese ${scanUsage.month}` : 'Mese corrente'} · limite globale prima del blocco automatico.
               </p>
@@ -1202,8 +1197,7 @@ export default function AdminPage() {
         <div className={activeSection === 'info' ? 'mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/80">Sistema</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Salute sistema</h2>
+              <h2 className="text-xl font-semibold text-white">Stato servizi</h2>
               <p className="mt-1 text-sm text-slate-400">
                 Controllo rapido su Supabase, notifiche, analytics, chat, scan e prezzi.
               </p>
@@ -1265,8 +1259,7 @@ export default function AdminPage() {
         <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Prezzi</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Aggiornamento manuale</h2>
+              <h2 className="text-xl font-semibold text-white">Aggiorna prezzi</h2>
               <p className="mt-1 text-sm text-slate-400">
                 Il cron automatico gira 1 volta al giorno. Da qui puoi aggiornare manualmente quando vuoi.
               </p>
@@ -1395,8 +1388,7 @@ export default function AdminPage() {
           <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Utenti registrati</p>
-                <h2 className="mt-2 text-xl font-semibold text-white">Gestione utenti</h2>
+                <h2 className="text-xl font-semibold text-white">Utenti</h2>
               </div>
               <div className="rounded-full bg-slate-800/80 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300">Totale {profiles.length}</div>
             </div>

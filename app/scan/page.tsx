@@ -155,12 +155,8 @@ export default function ScanPage() {
         const data = await res.json()
         setOcrStatus(data)
 
-        if (!data?.googleVisionConfigured) {
-          setRecognitionMessage('Google Vision non configurato: aggiungi GOOGLE_VISION_API_KEY su Vercel.')
-        } else if (!data?.serviceRoleConfigured) {
-          setRecognitionMessage('Limite scansioni non configurato: aggiungi SUPABASE_SERVICE_ROLE_KEY su Vercel.')
-        } else if (data?.error) {
-          setRecognitionMessage(`Limite scansioni non pronto: ${data.error}. Esegui google_vision_scan_limit.sql su Supabase.`)
+        if (!data?.googleVisionConfigured || !data?.serviceRoleConfigured || data?.error) {
+          setRecognitionMessage('Scanner temporaneamente non disponibile.')
         }
       } catch {
         setRecognitionMessage('Impossibile controllare la configurazione Google Vision.')
@@ -1716,11 +1712,11 @@ export default function ScanPage() {
   const openNativeCamera = () => {
     if (photoProcessing) return
     if (ocrStatus && !ocrStatus.googleVisionConfigured) {
-      setCameraError('Google Vision non e configurato. Devi aggiungere GOOGLE_VISION_API_KEY su Vercel.')
+      setCameraError('Scanner temporaneamente non disponibile.')
       return
     }
     if (ocrStatus && !ocrStatus.serviceRoleConfigured) {
-      setCameraError('Il blocco delle 1000 scansioni non e configurato. Devi aggiungere SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+      setCameraError('Scanner temporaneamente non disponibile.')
       return
     }
     if (ocrStatus?.error) {
@@ -2052,7 +2048,7 @@ export default function ScanPage() {
     }
 
     if (ocrStatus?.error) {
-      setCameraError(`Il blocco delle 1000 scansioni non e pronto: ${ocrStatus.error}. Devi eseguire google_vision_scan_limit.sql su Supabase.`)
+      setCameraError('Scanner temporaneamente non disponibile.')
       return
     }
 
@@ -2450,10 +2446,7 @@ export default function ScanPage() {
                       <div className="rounded-full border border-cyan-300/30 bg-cyan-300/10 p-5 shadow-[0_0_28px_rgba(103,232,249,0.12)]">
                         <Camera className="text-cyan-200" size={54} />
                       </div>
-                      <div>
-                        <p className="text-xl font-bold text-white">Scanner foto</p>
-                        <p className="mt-2 text-sm text-slate-400">Carta intera, luce uniforme, niente riflessi.</p>
-                      </div>
+                      <p className="text-sm text-slate-300">Inquadra tutta la carta, senza riflessi.</p>
                     </div>
                   )}
 
@@ -2523,7 +2516,6 @@ export default function ScanPage() {
               <div className="flex h-full w-full max-w-[540px] flex-col">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.35em] text-amber-300">Risultati scan</p>
                     <h3 className="text-xl font-extrabold text-white">{scannedCards.length > 0 ? `${scannedQuantity} carte pescate` : 'Nessuna carta'}</h3>
                   </div>
                   <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-right">

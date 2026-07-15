@@ -825,19 +825,10 @@ export default function DeckBuilderPage() {
     ].filter(Boolean).join(' ').toLowerCase().includes(query)
   })
 
-  const pageTitle = mode === 'saved' ? 'I miei deck' : mode === 'create' ? 'Crea deck' : 'Deck meta'
   const premiumTier = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email })
   const premiumAccess = premiumTier !== 'free'
   const isDeckUnlocked = (_deck: SavedDeck, index: number) => premiumAccess || index < FREE_DECK_LIMIT
   const lockedDeckCount = premiumAccess ? 0 : Math.max(0, savedDecks.length - FREE_DECK_LIMIT)
-  const pageDescription = mode === 'saved'
-    ? premiumAccess
-      ? 'Tutti i deck salvati, apribili e modificabili.'
-      : `Profilo free: puoi usare ${FREE_DECK_LIMIT} deck. Gli altri restano salvati e si sbloccano con Premium.`
-    : mode === 'create'
-    ? 'Costruisci Leader + 50 carte main. I DON sono nascosti.'
-    : 'Decklist reali recenti da Limitless, apribili come i tuoi deck.'
-
   const renderDeckModal = (deck: SavedDeck) => (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setOpenDeck(null)}>
       <div className="max-h-[90dvh] w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl" onClick={event => event.stopPropagation()}>
@@ -917,16 +908,10 @@ export default function DeckBuilderPage() {
 
       <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">
         <section className="rounded-[1.6rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-white sm:text-3xl">{pageTitle}</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{pageDescription}</p>
-            </div>
-            <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
+          <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
               <button onClick={() => setMode('saved')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'saved' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>I miei deck</button>
               <button onClick={startNewDeck} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea deck</button>
               <button onClick={() => setMode('meta')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'meta' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Deck meta</button>
-            </div>
           </div>
         </section>
 
@@ -1203,10 +1188,7 @@ export default function DeckBuilderPage() {
         >
           <div className="max-h-[92dvh] w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
-                <h3 className="truncate text-lg font-black text-white">{selectedCard.name || selectedCard.card_id}</h3>
-              </div>
+              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedCard.name || selectedCard.card_id}</h3>
               <button
                 onClick={() => {
                   setSelectedCard(null)

@@ -494,19 +494,8 @@ export default function FriendsPage() {
         <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/72 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="space-y-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-white sm:text-3xl">Connetti con gli altri giocatori</h2>
-                </div>
-              </div>
-
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Ricerca</p>
-                    <p className="mt-2 text-sm text-slate-300">Trova altri giocatori e manda loro una richiesta di amicizia.</p>
-                  </div>
-                  <div className="relative flex-1 min-w-0">
+                <div className="relative min-w-0">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                     <input
                       value={searchTerm}
@@ -514,17 +503,13 @@ export default function FriendsPage() {
                       placeholder="Cerca per username"
                       className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-10 py-3 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                     />
-                  </div>
                 </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Amici</p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">La tua squadra</h3>
-                    </div>
+                    <h3 className="text-lg font-semibold text-white">Amici</h3>
                     <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-200">
                       <Users size={14} />
                       {friendProfiles.length}
@@ -575,10 +560,7 @@ export default function FriendsPage() {
 
                 <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Richieste</p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">Da gestire</h3>
-                    </div>
+                    <h3 className="text-lg font-semibold text-white">Richieste</h3>
                     <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-200">
                       {incomingRequests.length} in arrivo
                     </div>
@@ -643,15 +625,7 @@ export default function FriendsPage() {
             </section>
 
             <aside className="min-w-0 space-y-5 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
-              <div className="flex items-center gap-3 text-slate-300">
-                <div className="rounded-3xl bg-amber-500/10 p-3 text-amber-200">
-                  <UserPlus size={20} />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Invia richiesta</p>
-                  <p className="mt-1 text-sm text-slate-300">Invia una richiesta a un nuovo amico e scopri i suoi deck.</p>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold text-white">Giocatori</h3>
 
               <div className="space-y-4">
                 {peopleToShow.slice(0, 6).map((profile) => {
@@ -743,12 +717,9 @@ export default function FriendsPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-800/70 bg-slate-900/95 p-5 backdrop-blur-xl">
-              <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Profilo giocatore</p>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                   <h3 className={`text-2xl font-semibold text-white ${premiumClassName(selectedTier)}`}>{selectedProfile.username || 'Giocatore'}</h3>
                   {selectedLabel ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-1 text-[10px] font-black uppercase text-cyan-100">{selectedLabel}</span> : null}
-                </div>
               </div>
               <button
                 onClick={closeModal}
@@ -863,10 +834,7 @@ export default function FriendsPage() {
 
               <div className="min-h-[360px] rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Carte</p>
-                    <h4 className="mt-2 text-lg font-semibold text-white">Collezione</h4>
-                  </div>
+                  <h4 className="text-lg font-semibold text-white">Collezione</h4>
                   {isFriend ? (
                     <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-200">Visibile</span>
                   ) : (
@@ -899,10 +867,7 @@ export default function FriendsPage() {
                         <div className="mb-3 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
                             <LibraryBig size={16} className="text-cyan-100" />
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Deck</p>
-                              <p className="text-xs text-slate-400">Deck salvati da questo amico</p>
-                            </div>
+                            <p className="text-sm font-black text-white">Deck</p>
                           </div>
                           <span className="rounded-full bg-white/[0.08] px-2 py-1 text-[10px] font-black text-slate-200">{selectedDecks.length}</span>
                         </div>
@@ -987,10 +952,7 @@ export default function FriendsPage() {
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedFriendDeck(null)}>
           <div className="w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Deck amico</p>
-                <h3 className="truncate text-lg font-black text-white">{selectedFriendDeck.name}</h3>
-              </div>
+              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedFriendDeck.name}</h3>
               <button onClick={() => setSelectedFriendDeck(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi deck">
                 <X size={18} />
               </button>
@@ -1051,10 +1013,7 @@ export default function FriendsPage() {
         >
           <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Carta</p>
-                <h3 className="truncate text-lg font-black text-white">{selectedFriendCard.name || selectedFriendCard.card_id}</h3>
-              </div>
+              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedFriendCard.name || selectedFriendCard.card_id}</h3>
               <button
                 onClick={() => {
                   setSelectedFriendCard(null)
