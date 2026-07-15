@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from 'lucide-react'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
@@ -28,6 +28,7 @@ type ScannedCard = {
   price_source?: string | null
   price_url?: string | null
   price_updated_at?: string | null
+  quantity?: number
 }
 
 type ReferenceCard = ScannedCard & {
@@ -80,6 +81,7 @@ export default function ScanPage() {
   const [detectedRect, setDetectedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const [recognitionMessage, setRecognitionMessage] = useState('Attendi il riconoscimento...')
   const [pendingRecognition, setPendingRecognition] = useState<ScannedCard | null>(null)
+  const [recognitionQuantity, setRecognitionQuantity] = useState(1)
   const [recognitionVariants, setRecognitionVariants] = useState<ScannedCard[]>([])
   const [recognitionVariantsLoading, setRecognitionVariantsLoading] = useState(false)
   const [variantChoiceRequired, setVariantChoiceRequired] = useState(false)
@@ -1739,6 +1741,7 @@ export default function ScanPage() {
 
     const savedCard = {
       ...card,
+      quantity: recognitionQuantity,
       id: `${card.card_id || card.name || 'card'}-${Date.now()}-${Math.random()}`
     }
 
@@ -1754,6 +1757,7 @@ export default function ScanPage() {
       pendingRecognitionSignatureRef.current = null
       setCarouselIndex(0)
       setPendingRecognition(null)
+      setRecognitionQuantity(1)
       setVariantChoiceRequired(false)
       clearCapturedPhoto()
       scanCooldownUntilRef.current = Date.now() + 150
@@ -1806,6 +1810,7 @@ export default function ScanPage() {
     ocrMissStreakRef.current = 0
     scanCooldownUntilRef.current = Date.now() + 80
     setPendingRecognition(null)
+    setRecognitionQuantity(1)
     setVariantChoiceRequired(false)
     setRecognitionMessage('Carta scartata. Scatta la foto della prossima carta.')
   }
@@ -2270,6 +2275,7 @@ export default function ScanPage() {
 
   const saveCardToCollection = async (card: ScannedCard) => {
     if (!userId) return
+    const quantityToAdd = Math.max(1, Math.min(99, Math.floor(card.quantity || 1)))
 
     const { data: existing, error: lookupError } = await supabase
       .from('user_cards')
@@ -2300,7 +2306,7 @@ export default function ScanPage() {
       const { error } = await supabase
         .from('user_cards')
         .update({
-          quantity: existing.quantity + 1,
+          quantity: existing.quantity + quantityToAdd,
           ...payload,
           market_price: shouldBackfillPrice ? savedPrice : existing.market_price ?? null,
           inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
@@ -2313,7 +2319,7 @@ export default function ScanPage() {
         .from('user_cards')
         .insert({
           ...payload,
-          quantity: 1
+          quantity: quantityToAdd
         })
 
       if (error) throw error
@@ -2340,8 +2346,9 @@ export default function ScanPage() {
 
   const totalValue = scannedCards.reduce((sum, card) => {
     const price = card.market_price || card.inventory_price || 0
-    return sum + price
+    return sum + price * Number(card.quantity || 1)
   }, 0)
+  const scannedQuantity = scannedCards.reduce((sum, card) => sum + Number(card.quantity || 1), 0)
 
   const currentCard = scannedCards[carouselIndex] ?? null
   const currentCardValue = currentCard ? (currentCard.market_price ?? currentCard.inventory_price ?? 0) : 0
@@ -2493,7 +2500,7 @@ export default function ScanPage() {
                   <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Carte</p>
-                      <p className="text-lg font-bold text-amber-300">{scannedCards.length}</p>
+                      <p className="text-lg font-bold text-amber-300">{scannedQuantity}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
@@ -2517,7 +2524,7 @@ export default function ScanPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.35em] text-amber-300">Risultati scan</p>
-                    <h3 className="text-xl font-extrabold text-white">{scannedCards.length > 0 ? `${scannedCards.length} carte pescate` : 'Nessuna carta'}</h3>
+                    <h3 className="text-xl font-extrabold text-white">{scannedCards.length > 0 ? `${scannedQuantity} carte pescate` : 'Nessuna carta'}</h3>
                   </div>
                   <div className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-right">
                     <p className="text-[9px] uppercase tracking-[0.25em] text-slate-400">Totale</p>
@@ -2584,6 +2591,11 @@ export default function ScanPage() {
                         <p className="mt-2 text-base font-extrabold text-white">{currentCard.name}</p>
                         <div className="mt-1 flex items-center justify-center gap-2 text-[11px] text-slate-400">
                           <span>{displayCardId(currentCard.card_id)}</span>
+                          {Number(currentCard.quantity || 1) > 1 ? (
+                            <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-1 font-black text-amber-100">
+                              x{currentCard.quantity} · {formatPrice(currentCardValue * Number(currentCard.quantity || 1))}
+                            </span>
+                          ) : null}
                           <span className="rounded-full border border-slate-700 px-2 py-1">{carouselIndex + 1} / {scannedCards.length}</span>
                         </div>
                       </div>
@@ -2682,6 +2694,31 @@ export default function ScanPage() {
                   <p className="mt-3 text-center text-sm text-slate-300">
                     Questa è la carta che hai appena scansionato?
                   </p>
+
+                  <div className="mx-auto mt-3 flex w-fit items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/75 p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setRecognitionQuantity(current => Math.max(1, current - 1))}
+                      disabled={recognitionQuantity <= 1 || adding === 'pending'}
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-700 bg-slate-800 text-slate-100 transition active:scale-90 disabled:opacity-35"
+                      aria-label="Riduci quantita"
+                    >
+                      <Minus size={18} />
+                    </button>
+                    <div className="min-w-16 text-center">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Quantita</p>
+                      <p className="text-xl font-black text-white">{recognitionQuantity}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRecognitionQuantity(current => Math.min(99, current + 1))}
+                      disabled={recognitionQuantity >= 99 || adding === 'pending'}
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-100 transition active:scale-90 disabled:opacity-35"
+                      aria-label="Aumenta quantita"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="shrink-0 border-t border-slate-700 bg-slate-950/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl">
@@ -2702,7 +2739,7 @@ export default function ScanPage() {
                         ? 'Aggiungo...'
                         : variantChoiceRequired
                           ? 'Scegli variante'
-                          : 'Aggiungi alla collezione'}
+                          : `Aggiungi x${recognitionQuantity} alla collezione`}
                     </button>
                   </div>
                 </div>

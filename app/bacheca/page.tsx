@@ -96,6 +96,8 @@ export default function BachecaPage() {
   const [boardReady, setBoardReady] = useState(true)
   const [posting, setPosting] = useState(false)
   const [message, setMessage] = useState('')
+  const [postType, setPostType] = useState<'looking' | 'trade'>('looking')
+  const [boardSearch, setBoardSearch] = useState('')
   const [cardQuery, setCardQuery] = useState('')
   const [cardResults, setCardResults] = useState<CatalogCard[]>([])
   const [selectedPostCard, setSelectedPostCard] = useState<CatalogCard | null>(null)
@@ -109,6 +111,12 @@ export default function BachecaPage() {
   const [selectedBoardCardPriceLoading, setSelectedBoardCardPriceLoading] = useState(false)
 
   const visibleUserIds = useMemo(() => userId ? [userId, ...friendIds] : [], [userId, friendIds])
+  const filteredPosts = useMemo(() => {
+    const query = boardSearch.trim().toLocaleLowerCase('it-IT')
+    if (!query) return posts
+    return posts.filter(post => [post.card_name, post.card_code, post.title, post.message]
+      .some(value => value?.toLocaleLowerCase('it-IT').includes(query)))
+  }, [boardSearch, posts])
 
   const getAvatarPublicUrl = async (avatarPath: string | null) => {
     if (!avatarPath) return ''
@@ -323,7 +331,7 @@ export default function BachecaPage() {
     setPosting(true)
     setStatus('')
 
-    const fallbackTitle = `Cerco ${selectedPostCard.name}`
+    const fallbackTitle = `${postType === 'trade' ? 'Vendo' : 'Cerco'} ${selectedPostCard.name}`
     const ownTier = getPremiumTier(profiles[userId], { id: userId })
 
     if (ownTier === 'free') {
@@ -365,6 +373,7 @@ export default function BachecaPage() {
         .from('board_posts')
         .select('id')
         .eq('user_id', userId)
+        .eq('type', postType)
         .or(`card_id.eq.${selectedPostCard.id},card_code.eq.${displayCardId(selectedPostCard.id)}`)
         .gte('created_at', duplicateCutoff)
         .limit(1)
@@ -386,7 +395,7 @@ export default function BachecaPage() {
       .from('board_posts')
       .insert({
         user_id: userId,
-        type: 'looking',
+        type: postType,
         title: fallbackTitle,
         message: cleanMessage || null,
         card_id: selectedPostCard.id,
@@ -405,6 +414,7 @@ export default function BachecaPage() {
     }
 
     setMessage('')
+    setPostType('looking')
     setCardQuery('')
     setCardResults([])
     setSelectedPostCard(null)
@@ -516,6 +526,22 @@ export default function BachecaPage() {
             Nuovo annuncio
           </div>
           <div className="mt-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-700 bg-slate-950/60 p-1.5">
+              {(['looking', 'trade'] as const).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setPostType(type)}
+                  className={`rounded-xl px-3 py-2.5 text-sm font-black transition active:scale-[0.97] ${postType === type
+                    ? type === 'trade'
+                      ? 'bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-950/20'
+                      : 'bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/20'
+                    : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}
+                >
+                  {type === 'trade' ? 'Vendo' : 'Cerco'}
+                </button>
+              ))}
+            </div>
             {selectedPostCard ? (
               <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] p-2">
                 <CardImage
@@ -580,7 +606,7 @@ export default function BachecaPage() {
                 ) : null}
               </div>
             )}
-            <textarea value={message} onChange={event => setMessage(event.target.value)} placeholder="Esempio: cerco x2 di questa carta, contattatemi." rows={4} className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300" />
+            <textarea value={message} onChange={event => setMessage(event.target.value)} placeholder={postType === 'trade' ? 'Esempio: vendo x2 copie, contattatemi.' : 'Esempio: cerco x2 copie, contattatemi.'} rows={4} className="w-full resize-none rounded-2xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300" />
             <button onClick={submitPost} disabled={posting} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60">
               <Send size={16} />
               {posting ? 'Pubblico...' : 'Pubblica'}
@@ -597,6 +623,21 @@ export default function BachecaPage() {
             <Bell className="text-cyan-100" size={22} />
           </div>
 
+          <label className="relative mt-3 block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <input
+              value={boardSearch}
+              onChange={event => setBoardSearch(event.target.value)}
+              placeholder="Cerca annunci per carta"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 py-3 pl-10 pr-10 text-base text-white outline-none focus:border-cyan-300"
+            />
+            {boardSearch ? (
+              <button type="button" onClick={() => setBoardSearch('')} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 active:scale-90" aria-label="Cancella ricerca">
+                <X size={16} />
+              </button>
+            ) : null}
+          </label>
+
           {!boardReady && (
             <div className="mt-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 text-sm text-amber-100">
               Gli annunci sono pronti nel sito, ma manca la tabella Supabase. Esegui `board_posts.sql` per attivarli.
@@ -605,14 +646,14 @@ export default function BachecaPage() {
 
           {loading ? (
             <p className="mt-3 rounded-2xl border border-slate-700 p-4 text-sm text-slate-400">Carico bacheca...</p>
-          ) : posts.length === 0 ? (
+          ) : filteredPosts.length === 0 ? (
             <div className="mt-3 rounded-3xl border border-dashed border-slate-700 bg-slate-950/55 p-5 text-center">
-              <p className="text-lg font-black text-white">Ancora nessun annuncio</p>
-              <p className="mt-2 text-sm text-slate-400">Pubblica una carta che stai cercando per farla vedere ai tuoi amici.</p>
+              <p className="text-lg font-black text-white">{boardSearch ? 'Nessun annuncio trovato' : 'Ancora nessun annuncio'}</p>
+              <p className="mt-2 text-sm text-slate-400">{boardSearch ? 'Prova con un altro nome o codice carta.' : 'Pubblica una carta che cerchi o vuoi vendere.'}</p>
             </div>
           ) : (
             <div className="mt-3 space-y-2">
-              {posts.map(post => {
+              {filteredPosts.map(post => {
                 const profile = profiles[post.user_id]
                 const tier = getPremiumTier(profile, { id: post.user_id })
                 const label = premiumLabel(tier)
@@ -661,7 +702,12 @@ export default function BachecaPage() {
                             </button>
                           ) : null}
                         </div>
-                        <p className="mt-2 text-base font-black text-white">{post.title}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${post.type === 'trade' ? 'bg-emerald-300/15 text-emerald-200' : 'bg-cyan-300/15 text-cyan-100'}`}>
+                            {post.type === 'trade' ? 'Vendo' : 'Cerco'}
+                          </span>
+                          <p className="min-w-0 truncate text-base font-black text-white">{post.card_name || post.title}</p>
+                        </div>
                         {(post.card_name || post.card_code) && (
                           <button
                             type="button"
