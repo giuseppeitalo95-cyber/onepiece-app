@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database, ChevronRight, Eraser, Info, MessageCircle, Search, Settings, Users, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
@@ -131,6 +131,27 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
+type AdminSection = 'home' | 'reports' | 'analytics' | 'services' | 'users' | 'cleanup' | 'info'
+
+type CleanupAction = {
+  key: string
+  title: string
+  description: string
+  needsUser?: boolean
+  tone?: 'danger' | 'warning'
+}
+
+const cleanupActions: CleanupAction[] = [
+  { key: 'expired_data', title: 'Pulisci dati scaduti', description: 'Elimina chat più vecchie di 24 ore e analytics oltre la retention.', tone: 'warning' },
+  { key: 'board_all', title: 'Svuota bacheca', description: 'Elimina definitivamente tutti gli annunci pubblicati.' },
+  { key: 'chats_all', title: 'Svuota tutte le chat', description: 'Elimina definitivamente tutti i messaggi di ogni utente.' },
+  { key: 'chats_user', title: 'Svuota chat di un utente', description: 'Elimina tutti i messaggi inviati o ricevuti dall’utente selezionato.', needsUser: true },
+  { key: 'daily_scans_user', title: 'Azzera scan giornalieri utente', description: 'Ripristina solo il limite giornaliero dell’utente selezionato.', needsUser: true, tone: 'warning' },
+  { key: 'analytics_all', title: 'Svuota analytics', description: 'Elimina lo storico di utilizzo e i dati dei grafici.' },
+  { key: 'bug_reports', title: 'Svuota segnalazioni bug', description: 'Elimina tutte le segnalazioni bug dal database.' },
+  { key: 'resolved_card_reports', title: 'Elimina richieste carte risolte', description: 'Conserva le richieste aperte ed elimina solo quelle risolte.', tone: 'warning' },
+]
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -149,6 +170,19 @@ export default function AdminPage() {
   const [chartGranularity, setChartGranularity] = useState<ChartGranularityKey>('daily')
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null)
   const [systemHealthLoading, setSystemHealthLoading] = useState(false)
+  const [activeSection, setActiveSection] = useState<AdminSection>('home')
+  const [cleanupConfirmation, setCleanupConfirmation] = useState('')
+  const [cleanupUserId, setCleanupUserId] = useState('')
+  const [cleanupBusyKey, setCleanupBusyKey] = useState('')
+  const [userSearch, setUserSearch] = useState('')
+
+  const filteredProfiles = useMemo(() => {
+    const query = userSearch.trim().toLocaleLowerCase('it-IT')
+    if (!query) return profiles
+    return profiles.filter(profile =>
+      profile.username?.toLocaleLowerCase('it-IT').includes(query) || profile.id.toLowerCase().includes(query)
+    )
+  }, [profiles, userSearch])
 
 
   const refreshData = async () => {
@@ -626,6 +660,23 @@ export default function AdminPage() {
     setBusy(false)
   }
 
+  const unlockNickname = async (profile: ProfileItem) => {
+    if (busy || profile.username_locked === false) return
+    if (!confirm(`Consentire a ${profile.username || profile.id} una modifica del nickname?`)) return
+
+    setBusy(true)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ username_locked: false })
+      .eq('id', profile.id)
+
+    setActionMessage(error
+      ? `Errore modifica nickname: ${error.message}`
+      : `${profile.username || 'Utente'} potrà modificare il nickname una volta.`)
+    await fetchProfiles()
+    setBusy(false)
+  }
+
   const deleteAllBugReports = async () => {
     if (bugReports.length === 0) return
     if (!confirm(`Eliminare definitivamente tutte le ${bugReports.length} segnalazioni bug?`)) return
@@ -646,6 +697,69 @@ export default function AdminPage() {
     setBusy(false)
   }
 
+  const runCleanup = async (action: CleanupAction) => {
+    if (cleanupBusyKey || cleanupConfirmation !== 'SVUOTA') return
+    if (action.needsUser && !cleanupUserId) {
+      setActionMessage('Seleziona prima un utente.')
+      return
+    }
+
+    const targetUser = profiles.find(profile => profile.id === cleanupUserId)
+    const targetLabel = action.needsUser ? ` per ${targetUser?.username || cleanupUserId}` : ''
+    if (!window.confirm(`${action.title}${targetLabel}? L'operazione non può essere annullata.`)) return
+
+    setCleanupBusyKey(action.key)
+    setActionMessage('Operazione in corso...')
+    try {
+      const token = await getAccessToken()
+      const res = await fetch('/api/admin/cleanup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          action: action.key,
+          userId: action.needsUser ? cleanupUserId : undefined,
+          confirmation: cleanupConfirmation
+        })
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        setActionMessage(data?.error || 'Svuotamento non riuscito.')
+      } else {
+        const detail = data.details
+          ? ` Chat: ${data.details.chats || 0}, analytics: ${data.details.analytics || 0}.`
+          : ''
+        setActionMessage(`${action.title} completato. Elementi eliminati: ${data.deleted || 0}.${detail}`)
+        setCleanupConfirmation('')
+        await refreshData()
+      }
+    } catch {
+      setActionMessage('Impossibile completare lo svuotamento.')
+    }
+    setCleanupBusyKey('')
+  }
+
+  const sectionTitle: Record<AdminSection, string> = {
+    home: 'Impostazioni Admin',
+    reports: 'Segnalazioni',
+    analytics: 'Statistiche',
+    services: 'Servizi',
+    users: 'Gestione utenti',
+    cleanup: 'Svuotamenti',
+    info: 'Info sistema',
+  }
+
+  const adminSections = [
+    { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
+    { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
+    { key: 'services' as const, title: 'Servizi', description: 'Google Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
+    { key: 'users' as const, title: 'Utenti', description: `${profiles.length} profili, VIP e blocchi`, icon: Users, count: profiles.length, tone: 'text-violet-100 bg-violet-300/10' },
+    { key: 'cleanup' as const, title: 'Svuotamenti', description: 'Pulizia controllata del database', icon: Eraser, tone: 'text-rose-100 bg-rose-400/10' },
+    { key: 'info' as const, title: 'Info', description: 'Database, cron e configurazione', icon: Info, tone: 'text-emerald-100 bg-emerald-300/10' },
+  ]
+
   if (loading) {
     return (
       <div className="min-h-screen text-white onepiece-wave-bg onepiece-clouds flex items-center justify-center">
@@ -659,16 +773,25 @@ export default function AdminPage() {
       <div className="mx-auto max-w-7xl rounded-[2rem] border border-teal-800/30 bg-slate-950/90 shadow-2xl shadow-slate-950/40 p-6">
         <div className="flex items-center justify-between gap-3 mb-6">
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => activeSection === 'home' ? router.push('/dashboard') : setActiveSection('home')}
             className="p-2 rounded-2xl bg-slate-800/70 border border-teal-800/30 hover:scale-105 transition"
+            aria-label={activeSection === 'home' ? 'Torna alla collezione' : 'Torna alle impostazioni admin'}
           >
             <ArrowLeft />
           </button>
           <div className="flex-1 text-center">
             <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Pannello Founder</p>
-            <h1 className="text-3xl font-extrabold text-white">Admin Dashboard</h1>
+            <h1 className="text-3xl font-extrabold text-white">{sectionTitle[activeSection]}</h1>
           </div>
-          <div className="w-10"></div>
+          <button
+            type="button"
+            onClick={refreshData}
+            disabled={busy || systemHealthLoading}
+            className="grid h-10 w-10 place-items-center rounded-2xl border border-teal-800/30 bg-slate-800/70 text-slate-200 transition active:scale-90 disabled:opacity-50"
+            aria-label="Aggiorna dati admin"
+          >
+            <RotateCcw size={17} />
+          </button>
         </div>
 
         {actionMessage && (
@@ -677,7 +800,43 @@ export default function AdminPage() {
           </div>
         )}
 
-        <div className="mt-6">
+        {activeSection === 'home' ? (
+          <div className="mt-6">
+            <div className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-300">
+              <Settings size={17} className="text-cyan-100" />
+              Seleziona una sezione
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {adminSections.map(section => {
+                const Icon = section.icon
+                return (
+                  <button
+                    key={section.key}
+                    type="button"
+                    onClick={() => setActiveSection(section.key)}
+                    className="group flex min-h-28 items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 p-4 text-left transition hover:border-cyan-300/30 hover:bg-slate-900 active:scale-[0.985]"
+                  >
+                    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${section.tone}`}>
+                      <Icon size={22} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="text-base font-black text-white">{section.title}</span>
+                        {'count' in section && typeof section.count === 'number' ? (
+                          <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] font-black text-slate-300">{section.count}</span>
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-400">{section.description}</span>
+                    </span>
+                    <ChevronRight size={18} className="shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-100" />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -741,7 +900,7 @@ export default function AdminPage() {
 
         </div>
 
-        <div className="mt-6">
+        <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -799,7 +958,7 @@ export default function AdminPage() {
 
         </div>
 
-        <div className="mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5">
+        <div className={activeSection === 'analytics' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Statistiche</p>
@@ -1002,7 +1161,7 @@ export default function AdminPage() {
           ) : null}
         </div>
 
-        <div className="mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5">
+        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-amber-300/80">Google Vision</p>
@@ -1040,7 +1199,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5">
+        <div className={activeSection === 'info' ? 'mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-emerald-200/80">Sistema</p>
@@ -1103,7 +1262,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5">
+        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Prezzi</p>
@@ -1129,7 +1288,110 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        {activeSection === 'cleanup' ? (
+          <div className="mt-6 space-y-4">
+            <section className="rounded-[1.75rem] border border-rose-300/20 bg-slate-900/90 p-5">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-400/10 text-rose-100">
+                  <Eraser size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white">Pulizia database</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    Le eliminazioni sono definitive. Per abilitare i pulsanti scrivi <strong className="text-rose-200">SVUOTA</strong> nel campo di conferma.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Conferma operazioni</span>
+                  <input
+                    value={cleanupConfirmation}
+                    onChange={event => setCleanupConfirmation(event.target.value.toUpperCase())}
+                    placeholder="Scrivi SVUOTA"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base font-black text-white outline-none focus:border-rose-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Utente per operazioni mirate</span>
+                  <select
+                    value={cleanupUserId}
+                    onChange={event => setCleanupUserId(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base text-white outline-none focus:border-cyan-300"
+                  >
+                    <option value="">Seleziona utente</option>
+                    {profiles.map(profile => (
+                      <option key={profile.id} value={profile.id}>{profile.username || profile.id}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {cleanupActions.map(action => {
+                const needsSelectedUser = action.needsUser && !cleanupUserId
+                const isRunning = cleanupBusyKey === action.key
+                const Icon = action.key.includes('chat') ? MessageCircle : action.key.includes('board') ? Database : Trash2
+                return (
+                  <section key={action.key} className={`rounded-[1.5rem] border p-4 ${action.tone === 'warning' ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-rose-300/20 bg-rose-400/[0.055]'}`}>
+                    <div className="flex items-start gap-3">
+                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${action.tone === 'warning' ? 'bg-amber-300/10 text-amber-100' : 'bg-rose-400/10 text-rose-100'}`}>
+                        <Icon size={18} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="font-black text-white">{action.title}</h3>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{action.description}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void runCleanup(action)}
+                      disabled={cleanupConfirmation !== 'SVUOTA' || needsSelectedUser || Boolean(cleanupBusyKey)}
+                      className={`mt-4 w-full rounded-2xl border px-3 py-2.5 text-xs font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${action.tone === 'warning' ? 'border-amber-300/25 bg-amber-300/10 text-amber-100' : 'border-rose-300/25 bg-rose-400/10 text-rose-100'}`}
+                    >
+                      {isRunning ? 'Operazione in corso...' : action.title}
+                    </button>
+                  </section>
+                )
+              })}
+            </div>
+
+            <div className="rounded-3xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4 text-xs leading-5 text-slate-300">
+              Il contatore mensile Google Vision non viene azzerato da questa pagina: deve restare allineato al consumo reale per proteggere il budget.
+            </div>
+          </div>
+        ) : null}
+
+        {activeSection === 'info' ? (
+          <section className="mt-4 rounded-[1.75rem] border border-white/10 bg-slate-900/90 p-5">
+            <div className="flex items-center gap-3">
+              <Info size={20} className="text-cyan-100" />
+              <div>
+                <h2 className="text-lg font-black text-white">Informazioni operative</h2>
+                <p className="mt-1 text-xs text-slate-400">Riepilogo della configurazione che mantiene attiva l’app.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ['Ambiente', 'Produzione Vercel'],
+                ['Database', 'Supabase PostgreSQL'],
+                ['Autenticazione', 'Supabase Auth + Google'],
+                ['OCR', 'Google Cloud Vision'],
+                ['Prezzi', 'Catalogo Cardmarket sincronizzato'],
+                ['Chat', 'Conservazione 24 ore'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-200">{value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <div className={activeSection === 'users' ? 'mt-8 grid gap-6' : 'hidden'}>
           <section className="rounded-[1.75rem] border border-slate-800/70 bg-slate-900/90 p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1139,10 +1401,20 @@ export default function AdminPage() {
               <div className="rounded-full bg-slate-800/80 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-300">Totale {profiles.length}</div>
             </div>
 
+            <label className="relative mt-4 block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                value={userSearch}
+                onChange={event => setUserSearch(event.target.value)}
+                placeholder="Cerca utente per nickname o ID"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/75 py-3 pl-10 pr-3 text-base text-white outline-none focus:border-cyan-300"
+              />
+            </label>
+
             <div className="mt-6 space-y-3">
-              {profiles.length === 0 ? (
+              {filteredProfiles.length === 0 ? (
                 <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-6 text-center">
-                  <p className="text-amber-200 font-semibold mb-2">Nessun profilo trovato</p>
+                  <p className="text-amber-200 font-semibold mb-2">{userSearch ? 'Nessun utente corrisponde alla ricerca' : 'Nessun profilo trovato'}</p>
                   <p className="text-sm text-amber-300/80 mb-4">
                     Gli utenti potrebbero non aver completato la registrazione o le policies RLS non sono configurate correttamente.
                   </p>
@@ -1156,7 +1428,7 @@ export default function AdminPage() {
                   </div>
                 </div>
               ) : (
-                profiles.map((profile) => (
+                filteredProfiles.map((profile) => (
                 <div key={profile.id} className="rounded-3xl border border-slate-800/80 bg-slate-950/80 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{profile.username || 'Utente anonimo'}</p>
@@ -1174,6 +1446,13 @@ export default function AdminPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => unlockNickname(profile)}
+                      disabled={busy || profile.username_locked === false}
+                      className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-40"
+                    >
+                      {profile.username_locked === false ? 'Nickname modificabile' : 'Modifica nickname'}
+                    </button>
                     <button
                       onClick={() => toggleVipUser(profile)}
                       disabled={busy || profile.id === ADMIN_ACCOUNT.id}
