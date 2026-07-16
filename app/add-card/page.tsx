@@ -22,6 +22,23 @@ type Card = {
   inventory_price?: number
 }
 
+type ApiCard = {
+  id?: string | number | null
+  card_id?: string | number | null
+  card_set_id?: string | number | null
+  name?: string | null
+  card_name?: string | null
+  image_url?: string | null
+  card_image?: string | null
+  rarity?: string | null
+  card_color?: string | null
+  card_type?: string | null
+  card_cost?: string | number | null
+  card_power?: string | number | null
+  market_price?: string | number | null
+  inventory_price?: string | number | null
+}
+
 export default function AddCard() {
   const router = useRouter()
 
@@ -59,7 +76,7 @@ export default function AddCard() {
     }
 
     loadUser()
-  }, [])
+  }, [router])
 
   // SEARCH
 // SEARCH
@@ -84,7 +101,7 @@ useEffect(() => {
       if (runId !== searchRunRef.current) return
 
       const clean: Card[] = (data || [])
-        .map((c: any) => ({
+        .map((c: ApiCard) => ({
           
           id: String(c.card_set_id ?? c.card_id ?? c.id),
           name: c.card_name || c.name,
@@ -329,18 +346,18 @@ useEffect(() => {
       </div>
       {selectedCard ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/72 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setSelectedCard(null)}>
-          <div className="w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl lg:max-w-5xl" onClick={event => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-800 p-3">
-              <h3 className="min-w-0 truncate text-lg font-black text-white">{selectedCard.name}</h3>
-              <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
+          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/97 shadow-2xl sm:max-h-[88dvh] lg:max-w-5xl" onClick={event => event.stopPropagation()}>
+            <div className="flex shrink-0 items-center border-b border-slate-800 p-3">
+              <h3 className="min-w-0 flex-1 truncate pr-2 text-lg font-black leading-tight text-white">{selectedCard.name}</h3>
+              <button onClick={() => setSelectedCard(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-100" aria-label="Chiudi carta">
                 X
               </button>
             </div>
-            <div className="grid max-h-[82dvh] gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_1fr] lg:grid-cols-[360px_1fr] lg:gap-6 lg:p-5 xl:grid-cols-[420px_1fr]">
-              <CardImage src={selectedCard.image_url} cardId={selectedCard.id} alt={selectedCard.name} className="aspect-[3/4] overflow-hidden rounded-3xl bg-slate-950 lg:max-h-[70vh]" />
-              <div className="space-y-3">
+            <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-6 lg:p-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+              <CardImage src={selectedCard.image_url} cardId={selectedCard.id} alt={selectedCard.name} className="mx-auto aspect-[3/4] w-full max-w-[280px] shrink-0 overflow-hidden rounded-3xl bg-slate-950 sm:max-w-none lg:max-h-[70vh]" />
+              <div className="min-w-0 space-y-3">
                 <div>
-                  <p className="text-2xl font-black text-white">{selectedCard.name}</p>
+                  <p className="break-words text-2xl font-black leading-tight text-white">{selectedCard.name}</p>
                   <p className="mt-1 text-sm font-bold text-cyan-100">{displayCardId(selectedCard.id)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 lg:gap-3">
