@@ -241,7 +241,18 @@ export default function AdminPage() {
 
 
   const refreshData = async () => {
-    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports(), fetchSystemHealth()])
+    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports()])
+  }
+
+  const openSection = (section: AdminSection) => {
+    setActiveSection(section)
+
+    if (section === 'services' || section === 'status' || section === 'info') {
+      void fetchSystemHealth()
+    }
+    if (section === 'services') void fetchScanUsage()
+    if (section === 'reports') void Promise.all([fetchRequests(), fetchBugReports()])
+    if (section === 'users' || section === 'cleanup') void fetchProfiles()
   }
 
   const syncPricesNow = async () => {
@@ -613,8 +624,8 @@ export default function AdminPage() {
       }
 
       console.log('✅ [ADMIN] User is admin, loading data...')
-      await refreshData()
       setLoading(false)
+      void refreshData()
     }
 
     init()
@@ -918,7 +929,7 @@ export default function AdminPage() {
                   <button
                     key={section.key}
                     type="button"
-                    onClick={() => setActiveSection(section.key)}
+                    onClick={() => openSection(section.key)}
                     className="group flex min-h-28 items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 p-4 text-left transition hover:border-cyan-300/30 hover:bg-slate-900 active:scale-[0.985]"
                   >
                     <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${section.tone}`}>
