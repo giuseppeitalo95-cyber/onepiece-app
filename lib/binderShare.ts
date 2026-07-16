@@ -50,7 +50,7 @@ const getCardImage = async (card: BinderCard | null) => {
 }
 
 export const binderShareText = (binder: BinderRecord) =>
-  `Questo e il mio raccoglitore personalizzato "${binder.title}". Crealo anche tu con OPV, clicca qui:`
+  `Questo è il mio raccoglitore personalizzato "${binder.title}". Crealo anche tu con OPV, clicca qui:`
 
 export const createBinderShareImage = async (binder: BinderRecord, spreadIndex: number, username: string) => {
   const canvas = document.createElement('canvas')
@@ -217,7 +217,7 @@ export const createBinderShareImage = async (binder: BinderRecord, spreadIndex: 
 
   ctx.fillStyle = '#ffffff'
   ctx.font = '900 70px system-ui, sans-serif'
-  ctx.fillText(binder.title, 92, 128)
+  ctx.fillText(`"${binder.title}"`, 92, 128)
   ctx.fillStyle = '#a5f3fc'
   ctx.font = '700 31px system-ui, sans-serif'
   ctx.fillText(`Raccoglitore di ${username || 'Giocatore OPV'}`, 95, 184)

@@ -84,7 +84,7 @@ export default function SharedBinderPage() {
               <button type="button" onClick={() => router.back()} className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-slate-950/60 active:scale-90" aria-label="Torna indietro"><ArrowLeft size={18} /></button>
               <button type="button" onClick={() => router.push(`/friends?profile=${binder.user_id}`)} className="flex min-w-0 flex-1 items-center gap-2 text-left active:scale-[0.99]">
                 <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-200/25 bg-slate-800 text-xs font-black text-cyan-100">{ownerAvatar ? <img src={ownerAvatar} alt="" className="h-full w-full object-cover" /> : ownerName.charAt(0).toUpperCase()}</span>
-                <span className="min-w-0"><span className="block truncate text-lg font-black">{binder.title}</span><span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">di {ownerName}</span></span>
+                <span className="min-w-0"><span className="block truncate text-lg font-black">{`"${binder.title}"`}</span><span className="block truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">di {ownerName}</span></span>
               </button>
             </div>
             <div className="mt-2 overflow-x-hidden">

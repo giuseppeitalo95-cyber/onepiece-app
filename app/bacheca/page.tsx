@@ -720,7 +720,7 @@ export default function BachecaPage() {
                           >
                             <span className="grid h-14 w-11 shrink-0 place-items-center rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg"><BookOpen size={20} /></span>
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-black text-white">{post.title}</span>
+                              <span className="block truncate text-sm font-black text-white">{`"${post.title}"`}</span>
                               <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e lascia un like.</span>
                             </span>
                           </button>

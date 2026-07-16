@@ -200,18 +200,18 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
         <div className="binder-open-shell relative mx-auto aspect-[1.48/1] w-full overflow-visible rounded-[4%] border border-black/35 p-[4.2%] shadow-[0_34px_70px_rgba(0,0,0,0.48)]" style={{ backgroundColor: binder.cover_color }}>
           {binder.cover_image_url ? <img src={binder.cover_image_url} alt="" className="absolute inset-0 h-full w-full rounded-[4%] object-cover opacity-30" /> : null}
           <div className="pointer-events-none absolute inset-[2%] rounded-[3%] border border-white/12 shadow-inner shadow-black/45" />
-          <div className="absolute inset-y-[4%] left-1/2 z-20 w-[3.2%] -translate-x-1/2 rounded-full border-x border-black/28 bg-black/26 shadow-[0_0_20px_rgba(0,0,0,0.48)]" />
-          <div className="relative z-10 grid h-full grid-cols-2 gap-[3.3%] [perspective:1600px]">
+          <div className="absolute inset-y-[4%] left-1/2 z-0 w-[3.2%] -translate-x-1/2 rounded-full border-x border-black/28 bg-black/32 shadow-[0_0_20px_rgba(0,0,0,0.48)]" />
+          <div className="binder-spread-pages relative z-10 grid h-full grid-cols-2 gap-0 [perspective:1600px]">
             {surface(baseLeft, editable && !turning)}
             {surface(baseRight, editable && !turning)}
             {turning === 'next' && current.right != null ? (
-              <div className="binder-turn-page binder-turn-next absolute inset-y-0 right-0 z-30 w-[48.4%] origin-left">
+              <div className="binder-turn-page binder-turn-next absolute inset-y-0 right-0 z-30 w-1/2 origin-left">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.right, false)}</div>
                 <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} />}</div>
               </div>
             ) : null}
             {turning === 'prev' && current.left != null ? (
-              <div className="binder-turn-page binder-turn-prev absolute inset-y-0 left-0 z-30 w-[48.4%] origin-right">
+              <div className="binder-turn-page binder-turn-prev absolute inset-y-0 left-0 z-30 w-1/2 origin-right">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.left, false)}</div>
                 <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} />}</div>
               </div>

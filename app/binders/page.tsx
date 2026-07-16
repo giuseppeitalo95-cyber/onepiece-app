@@ -377,7 +377,7 @@ export default function BindersPage() {
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setActiveBinder(null)} className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-slate-950/62 text-white transition active:scale-90" aria-label="Torna ai raccoglitori"><ArrowLeft size={19} /></button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xl font-black sm:text-2xl">{activeBinder.title}</p>
+                <p className="truncate text-xl font-black sm:text-2xl">{`"${activeBinder.title}"`}</p>
                 <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{activeBinder.columns_count}x{activeBinder.rows_count} / {activeBinder.pages.length} pagine</p>
               </div>
             </div>

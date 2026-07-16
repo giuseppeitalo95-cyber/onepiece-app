@@ -25,7 +25,7 @@ export default function BinderCover({ binder, className = '', compact = false }:
         <img src="/opv-text-cutout.png" alt="OPV" className="-mt-[1%] h-[35%] w-auto object-contain" />
       </div>
       <div className="absolute inset-x-[14%] bottom-[7%] text-center">
-        <p className={`line-clamp-2 font-black text-white drop-shadow-lg ${compact ? 'text-[9px]' : 'text-sm'}`}>{binder.title}</p>
+        <p className={`line-clamp-2 font-black text-white drop-shadow-lg ${compact ? 'text-[9px]' : 'text-sm'}`}>{`"${binder.title}"`}</p>
         <p className={`mt-1 font-bold uppercase text-white/70 ${compact ? 'text-[6px]' : 'text-[9px]'}`}>{binder.columns_count}x{binder.rows_count} &middot; {cards} {cards === 1 ? 'carta' : 'carte'}</p>
       </div>
       <div className="absolute inset-x-[14%] bottom-[5%] h-px bg-white/25" />
