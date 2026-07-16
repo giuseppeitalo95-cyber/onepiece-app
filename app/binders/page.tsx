@@ -271,6 +271,7 @@ export default function BindersPage() {
       return false
     }
     setSaving(true)
+    const shouldPublish = !activeBinder.is_shared
     const now = new Date().toISOString()
     const { error } = await supabase.from('binders').update({
       title,
@@ -292,24 +293,14 @@ export default function BindersPage() {
         card_image_url: saved.cover_image_url,
       }
       let postFailed = false
-      const existingPost = await supabase
-        .from('board_posts')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('binder_id', saved.id)
-        .limit(1)
-      if (existingPost.error) postFailed = true
-      else if (existingPost.data?.[0]?.id) {
-        const result = await supabase.from('board_posts').update(postData).eq('id', existingPost.data[0].id)
-        postFailed = Boolean(result.error)
-      } else {
+      if (shouldPublish) {
         const result = await supabase.from('board_posts').insert({ user_id: userId, type: 'binder', binder_id: saved.id, ...postData })
         postFailed = Boolean(result.error)
       }
       setActiveBinder(saved)
       setBinders(current => current.map(item => item.id === saved.id ? saved : item))
       setEditing(false)
-      setStatus(postFailed ? 'Raccoglitore salvato. Attivita in bacheca non aggiornata.' : 'Raccoglitore salvato e pubblicato.')
+      setStatus(postFailed ? 'Raccoglitore salvato. Attivita in bacheca non pubblicata.' : shouldPublish ? 'Raccoglitore salvato e pubblicato.' : 'Raccoglitore salvato.')
     }
     setSaving(false)
     return !error
@@ -401,12 +392,13 @@ export default function BindersPage() {
               <BinderBook binder={activeBinder} spreadIndex={spreadIndex} onSpreadChange={setSpreadIndex} viewMode={viewMode} singlePageIndex={singlePageIndex} onSinglePageChange={index => { setSinglePageIndex(index); setSpreadIndex(Math.ceil(index / 2)) }} editable={editing} onSelectSlot={(page, slot) => setPickerSlot({ page, slot })} onRemoveCard={removeCard} onOpenCard={card => setSelectedBinderCard(card)} />
             </div>
 
-            <div className="mx-auto mt-3 flex w-fit rounded-2xl border border-white/10 bg-slate-950/55 p-1">
+            <button type="button" onClick={addPage} className="mx-auto mt-3 flex items-center gap-2 rounded-2xl border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-sm font-black text-cyan-100 transition active:scale-95"><Plus size={17} /> Aggiungi pagina</button>
+
+            <p className="mt-4 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Modalita di visualizzazione</p>
+            <div className="mx-auto mt-1.5 flex w-fit rounded-2xl border border-white/10 bg-slate-950/55 p-1">
               <button type="button" onClick={() => setViewMode('spread')} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition ${viewMode === 'spread' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}><BookOpen size={16} /> Due pagine</button>
               <button type="button" onClick={() => { const indexes = binderSpreadIndexes(spreadIndex); setSinglePageIndex(indexes.right != null && activeBinder.pages[indexes.right] ? indexes.right : indexes.left || 0); setViewMode('single') }} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition ${viewMode === 'single' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}><Square size={15} /> Una pagina</button>
             </div>
-
-            <button type="button" onClick={addPage} className="mx-auto mt-3 flex items-center gap-2 rounded-2xl border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-sm font-black text-cyan-100 transition active:scale-95"><Plus size={17} /> Aggiungi pagina</button>
 
             <div className="mx-auto mt-3 grid max-w-xl grid-cols-4 gap-2">
               <button type="button" onClick={() => setEditing(value => !value)} className={`flex min-w-0 flex-col items-center gap-1 rounded-2xl border px-2 py-2.5 text-[10px] font-black transition active:scale-95 ${editing ? 'border-amber-200/35 bg-amber-300 text-slate-950' : 'border-white/10 bg-slate-950/60 text-white'}`}><Pencil size={17} /> Modifica</button>

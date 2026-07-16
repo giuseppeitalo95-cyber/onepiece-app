@@ -20,9 +20,9 @@ export default function BinderCover({ binder, className = '', compact = false }:
       ) : null}
       <div className="absolute inset-y-0 left-0 w-[10%] border-r border-black/30 bg-black/20 shadow-[6px_0_12px_rgba(0,0,0,0.22)]" />
       <div className="absolute inset-[8%] border border-white/18 bg-black/12" />
-      <div className="absolute left-[18%] right-[10%] top-[20%] flex h-[35%] flex-col items-center justify-center drop-shadow-[0_8px_14px_rgba(0,0,0,0.42)]">
-        <img src="/opv-hat-cutout.png" alt="" className="relative z-10 h-[48%] w-auto object-contain" />
-        <img src="/opv-text-cutout.png" alt="OPV" className="-mt-[2%] h-[38%] w-auto object-contain" />
+      <div className="absolute left-1/2 top-[23%] flex h-[27%] w-[48%] -translate-x-1/2 flex-col items-center justify-center drop-shadow-[0_8px_14px_rgba(0,0,0,0.42)]">
+        <img src="/opv-hat-cutout.png" alt="" className="relative z-10 h-[46%] w-auto object-contain" />
+        <img src="/opv-text-cutout.png" alt="OPV" className="-mt-[1%] h-[35%] w-auto object-contain" />
       </div>
       <div className="absolute inset-x-[14%] bottom-[7%] text-center">
         <p className={`line-clamp-2 font-black text-white drop-shadow-lg ${compact ? 'text-[9px]' : 'text-sm'}`}>{binder.title}</p>

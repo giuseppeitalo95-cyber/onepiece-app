@@ -214,16 +214,6 @@ export const createBinderShareImage = async (binder: BinderRecord, spreadIndex: 
   ctx.fillStyle = spineGradient
   roundedRect(ctx, spineX - 31, shell.y + 34, 62, shell.height - 68, 25)
   ctx.fill()
-  for (let y = shell.y + 155; y < shell.y + shell.height - 100; y += 190) {
-    ctx.beginPath()
-    ctx.arc(spineX, y, 15, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(226,232,240,0.72)'
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(spineX, y, 7, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(15,23,42,0.72)'
-    ctx.fill()
-  }
 
   ctx.fillStyle = '#ffffff'
   ctx.font = '900 70px system-ui, sans-serif'

@@ -18,9 +18,10 @@ type Props = {
   onSinglePageChange?: (index: number) => void
 }
 
-const EmptySlot = ({ editable }: { editable: boolean }) => (
+const EmptySlot = ({ editable, hasCardBehind = false }: { editable: boolean; hasCardBehind?: boolean }) => (
   <div className="grid h-full w-full place-items-center rounded-[5px] border border-dashed border-slate-400/28 bg-white/[0.035] text-slate-500">
-    {editable ? <Plus className="h-[35%] w-[35%]" /> : null}
+    {hasCardBehind ? <img src="/rewards/opv-card-back.jpeg" alt="" className="absolute inset-[3%] h-[94%] w-[94%] rounded-[4px] object-cover opacity-20 grayscale-[25%]" /> : null}
+    {editable ? <Plus className="relative z-10 h-[35%] w-[35%]" /> : null}
   </div>
 )
 
@@ -33,6 +34,9 @@ function BinderPagePanel({ binder, page, pageIndex, editable, onSelectSlot, onRe
   onRemoveCard?: (pageIndex: number, slotIndex: number) => void
   onOpenCard?: (card: BinderCard) => void
 }) {
+  const oppositePageIndex = pageIndex % 2 === 0 ? pageIndex + 1 : pageIndex - 1
+  const oppositePage = binder.pages[oppositePageIndex]
+
   return (
     <div className="binder-page relative h-full min-w-0 overflow-hidden rounded-[6px] border border-white/30 bg-slate-300/14 p-[3.5%] shadow-inner shadow-white/20">
       <div className="grid h-full w-full" style={{
@@ -40,28 +44,31 @@ function BinderPagePanel({ binder, page, pageIndex, editable, onSelectSlot, onRe
         gridTemplateRows: `repeat(${binder.rows_count}, minmax(0, 1fr))`,
         gap: binder.columns_count >= 4 ? '2.4%' : '3.2%',
       }}>
-        {page.slots.map((card, slotIndex) => (
-          <div key={`${pageIndex}-${slotIndex}`} className="binder-pocket group relative min-h-0 min-w-0 overflow-hidden rounded-[5px] border border-white/28 bg-slate-950/24 p-[3%] shadow-[inset_0_0_8px_rgba(255,255,255,0.12)]">
-            <button
-              type="button"
-              onClick={() => {
-                if (editable) onSelectSlot?.(pageIndex, slotIndex)
-                else if (card) onOpenCard?.(card)
-              }}
-              disabled={!editable && !card}
-              className="block h-full w-full disabled:cursor-default"
-              aria-label={card ? editable ? `Sostituisci ${card.name}` : `Apri ${card.name}` : 'Aggiungi carta'}
-            >
-              {card ? <CardImage src={card.image_url} cardId={card.card_id} alt={card.name} className="h-full w-full overflow-hidden rounded-[4px] bg-slate-900" imgClassName="h-full w-full object-contain" loading="eager" /> : <EmptySlot editable={editable} />}
-            </button>
-            {editable && card ? (
-              <button type="button" onClick={event => { event.stopPropagation(); onRemoveCard?.(pageIndex, slotIndex) }} className="absolute right-[4%] top-[4%] grid h-6 w-6 place-items-center rounded-full bg-rose-500/92 text-white shadow-lg opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100" aria-label={`Rimuovi ${card.name}`}>
-                <Trash2 size={12} />
+        {page.slots.map((card, slotIndex) => {
+          const hasCardBehind = !card && Boolean(oppositePage?.slots[slotIndex])
+          return (
+            <div key={`${pageIndex}-${slotIndex}`} className="binder-pocket group relative min-h-0 min-w-0 overflow-hidden rounded-[5px] border border-white/28 bg-slate-950/24 p-[3%] shadow-[inset_0_0_8px_rgba(255,255,255,0.12)]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (editable) onSelectSlot?.(pageIndex, slotIndex)
+                  else if (card) onOpenCard?.(card)
+                }}
+                disabled={!editable && !card}
+                className="block h-full w-full disabled:cursor-default"
+                aria-label={card ? editable ? `Sostituisci ${card.name}` : `Apri ${card.name}` : 'Aggiungi carta'}
+              >
+                {card ? <CardImage src={card.image_url} cardId={card.card_id} alt={card.name} className="h-full w-full overflow-hidden rounded-[4px] bg-slate-900" imgClassName="h-full w-full object-contain" loading="eager" /> : <EmptySlot editable={editable} hasCardBehind={hasCardBehind} />}
               </button>
-            ) : null}
-            <div className="pointer-events-none absolute inset-x-[5%] top-[3%] h-[7%] rounded-full bg-white/12 blur-[1px]" />
-          </div>
-        ))}
+              {editable && card ? (
+                <button type="button" onClick={event => { event.stopPropagation(); onRemoveCard?.(pageIndex, slotIndex) }} className="absolute right-[4%] top-[4%] grid h-6 w-6 place-items-center rounded-full bg-rose-500/92 text-white shadow-lg opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100" aria-label={`Rimuovi ${card.name}`}>
+                  <Trash2 size={12} />
+                </button>
+              ) : null}
+              <div className="pointer-events-none absolute inset-x-[5%] top-[3%] h-[7%] rounded-full bg-white/12 blur-[1px]" />
+            </div>
+          )
+        })}
       </div>
       <span className="absolute bottom-1 right-2 text-[7px] font-black text-slate-400/70">{pageIndex + 1}</span>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,transparent_20%,rgba(255,255,255,0.10)_43%,transparent_62%)]" />
@@ -79,23 +86,9 @@ function BinderInsideCover({ binder }: { binder: BinderRecord }) {
   )
 }
 
-function BinderPageBack({ binder, page }: { binder: BinderRecord; page: BinderPage }) {
-  return (
-    <div className="binder-page relative h-full overflow-hidden rounded-[6px] border border-white/25 bg-slate-300/14 p-[3.5%] shadow-inner shadow-black/20">
-      <div className="grid h-full w-full" style={{
-        gridTemplateColumns: `repeat(${binder.columns_count}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${binder.rows_count}, minmax(0, 1fr))`,
-        gap: binder.columns_count >= 4 ? '2.4%' : '3.2%',
-      }}>
-        {page.slots.map((card, index) => (
-          <div key={index} className="binder-pocket relative min-h-0 min-w-0 overflow-hidden rounded-[5px] border border-white/25 bg-slate-950/22 p-[3%]">
-            {card ? <img src="/rewards/opv-card-back.jpeg" alt="Dorso carta OPV" className="h-full w-full rounded-[4px] object-cover" /> : null}
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.16),transparent_35%,rgba(255,255,255,0.04))]" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function BinderPageBack({ binder, pageIndex }: { binder: BinderRecord; pageIndex: number }) {
+  const page = binder.pages[pageIndex]
+  return <BinderPagePanel binder={binder} page={page} pageIndex={pageIndex} editable={false} />
 }
 
 export default function BinderBook({ binder, spreadIndex, onSpreadChange, editable = false, onSelectSlot, onRemoveCard, onOpenCard, viewMode = 'spread', singlePageIndex = 0, onSinglePageChange }: Props) {
@@ -183,13 +176,13 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
             {turning === 'next' && current.right != null ? (
               <div className="binder-turn-page binder-turn-next absolute inset-y-0 right-0 z-30 w-[48.4%] origin-left">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.right, false)}</div>
-                <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} page={binder.pages[target.left]} /> : <BinderInsideCover binder={binder} />}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} />}</div>
               </div>
             ) : null}
             {turning === 'prev' && current.left != null ? (
               <div className="binder-turn-page binder-turn-prev absolute inset-y-0 left-0 z-30 w-[48.4%] origin-right">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.left, false)}</div>
-                <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} page={binder.pages[target.right]} /> : <BinderInsideCover binder={binder} />}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} />}</div>
               </div>
             ) : null}
           </div>

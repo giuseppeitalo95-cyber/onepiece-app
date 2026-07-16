@@ -26,16 +26,6 @@ export type BinderRecord = {
   updated_at?: string
 }
 
-export type BinderComment = {
-  id: string
-  binder_id: string
-  user_id: string
-  message: string
-  created_at: string
-  username?: string | null
-  avatar_url?: string | null
-}
-
 export const BINDER_COLORS = [
   '#164e63', '#0f4c5c', '#075985', '#1e3a8a',
   '#312e81', '#4c1d95', '#701a75', '#9f1239',
