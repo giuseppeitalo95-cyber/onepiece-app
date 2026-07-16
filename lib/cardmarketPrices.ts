@@ -1,13 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
+import { getAllCards } from './cardData'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const PRODUCT_CATALOG_URL = 'https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_18.json'
 const PRICE_GUIDE_URL = 'https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_18.json'
-const OPTCG_CARD_URLS = [
-  'https://www.optcgapi.com/api/allSetCards/',
-  'https://www.optcgapi.com/api/allSTCards/',
-  'https://www.optcgapi.com/api/allPromoCards/'
-]
 
 type ProductExport = {
   idProduct: number
@@ -33,6 +29,8 @@ type PriceExport = {
 }
 
 type OptcgCard = {
+  card_id?: string | null
+  base_card_id?: string | null
   card_set_id?: string | null
   card_image_id?: string | null
   card_name?: string | null
@@ -283,13 +281,11 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
 }
 
 const getVariantReferences = async () => {
-  const results = await Promise.all(OPTCG_CARD_URLS.map(url =>
-    fetchJson<OptcgCard[]>(url).catch(() => [])
-  ))
+  const cards = await getAllCards().catch(() => []) as OptcgCard[]
   const staged = new Map<string, VariantReference[]>()
 
-  for (const card of results.flat()) {
-    const imageId = card.card_image_id || card.card_set_id || ''
+  for (const card of cards) {
+    const imageId = card.card_image_id || card.card_id || card.card_set_id || card.base_card_id || ''
     const cardId = baseCardId(imageId)
     const price = toNumber(card.market_price) ?? toNumber(card.inventory_price)
     if (!cardId || price == null || price <= 0) continue

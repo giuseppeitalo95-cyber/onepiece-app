@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdminAccount } from '@/lib/admin'
+import { syncCardCatalog, syncCatalogImages } from '@/lib/cardCatalogSync'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -71,12 +73,25 @@ export async function GET(req: NextRequest) {
     return Response.json({ ok: false, error: chatCleanup.error.message }, { status: 500 })
   }
 
+  let catalogSync = null
+  let imageSync = null
+  let catalogSyncError = null
+  try {
+    catalogSync = await syncCardCatalog()
+    imageSync = await syncCatalogImages(24)
+  } catch (error) {
+    catalogSyncError = error instanceof Error ? error.message : 'Sincronizzazione catalogo fallita'
+  }
+
   return Response.json({
     ok: true,
     chatDeleted: chatCleanup.count || 0,
     analyticsDeleted: analyticsCleanup.error ? 0 : analyticsCleanup.count || 0,
     analyticsCleanupError: analyticsCleanup.error?.message || null,
-    analyticsRetentionDays
+    analyticsRetentionDays,
+    catalogSync,
+    imageSync,
+    catalogSyncError,
   })
 }
 

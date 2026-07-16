@@ -60,6 +60,20 @@ type BugReport = {
   updated_at?: string | null
 }
 
+type CatalogSyncResult = {
+  ok?: boolean
+  fetched?: number
+  sourceRows?: number
+  catalogRows?: number
+  processed?: number
+  ready?: number
+  failed?: number
+  blocked?: number
+  remaining?: number
+  syncedAt?: string
+  error?: string
+}
+
 type AdminAnalytics = {
   ok?: boolean
   days?: number
@@ -100,14 +114,46 @@ type AdminAnalytics = {
 type SystemHealth = {
   ok?: boolean
   month?: string
+  checkedAt?: string
+  services?: Array<{
+    key: string
+    label: string
+    status: 'online' | 'degraded' | 'offline'
+    message: string
+    latencyMs?: number | null
+    updatedAt?: string | null
+  }>
   tables?: Record<string, { count: number; error?: string | null }>
   scans?: { used: number; limit: number; error?: string | null }
   prices?: { latestSync?: string | null; error?: string | null }
+  catalog?: {
+    source_rows?: number
+    catalog_rows?: number
+    image_ready?: number
+    image_failed?: number
+    image_pending?: number
+    r2_bytes?: number
+    last_catalog_sync_at?: string | null
+    last_image_sync_at?: string | null
+    last_error?: string | null
+  } | null
+  r2?: {
+    configured: boolean
+    online: boolean
+    bucket?: string
+    objects: number
+    bytes: number
+    limitBytes: number
+    freeTierBytes: number
+    latencyMs?: number
+    error?: string | null
+  }
   config?: {
     serviceRoleConfigured: boolean
     cronSecretConfigured: boolean
     cardmarketSyncSecretConfigured: boolean
     maintenanceSecretConfigured: boolean
+    r2Configured: boolean
     analyticsRetentionDays: number
   }
   error?: string
@@ -131,7 +177,14 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'reports' | 'analytics' | 'services' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'reports' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+
+const formatBytes = (bytes?: number | null) => {
+  const value = Number(bytes || 0)
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(value > 10_000 ? 0 : 1)} KB`
+  if (value < 1_000_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
+  return `${(value / 1_000_000_000).toFixed(2)} GB`
+}
 
 type CleanupAction = {
   key: string
@@ -162,6 +215,8 @@ export default function AdminPage() {
   const [scanUsage, setScanUsage] = useState<ScanUsage | null>(null)
   const [priceSyncing, setPriceSyncing] = useState(false)
   const [priceSyncResult, setPriceSyncResult] = useState<PriceSyncResult | null>(null)
+  const [catalogSyncing, setCatalogSyncing] = useState<'catalog' | 'images' | ''>('')
+  const [catalogSyncResult, setCatalogSyncResult] = useState<CatalogSyncResult | null>(null)
   const [bugReports, setBugReports] = useState<BugReport[]>([])
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
@@ -216,6 +271,55 @@ export default function AdminPage() {
     }
 
     setPriceSyncing(false)
+  }
+
+  const syncCatalogNow = async (mode: 'catalog' | 'images', migrateAll = false) => {
+    if (catalogSyncing) return
+    setCatalogSyncing(mode)
+    setCatalogSyncResult(null)
+    setActionMessage(mode === 'catalog' ? 'Sincronizzazione catalogo in corso...' : 'Copia immagini su Cloudflare in corso...')
+
+    try {
+      const token = await getAccessToken()
+      let totalReady = 0
+      let totalFailed = 0
+      let rounds = 0
+      let data: CatalogSyncResult = {}
+      let responseOk = true
+
+      do {
+        const res = await fetch('/api/cards/catalog-sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ mode, limit: migrateAll ? 100 : 80 }),
+        })
+        data = await res.json()
+        responseOk = res.ok && data?.ok !== false
+        totalReady += Number(data.ready || 0)
+        totalFailed += Number(data.failed || 0)
+        rounds += 1
+        setCatalogSyncResult({ ...data, ready: totalReady, failed: totalFailed })
+        if (mode === 'images') {
+          setActionMessage(`Migrazione immagini: ${totalReady} copiate, ${data.remaining || 0} restanti.`)
+        }
+        if (!responseOk || mode !== 'images' || !migrateAll || !data.processed || !data.remaining || data.blocked) break
+      } while (rounds < 75)
+
+      setActionMessage(responseOk
+        ? mode === 'catalog'
+          ? `Catalogo aggiornato: ${data.catalogRows || 0} carte.`
+          : `Immagini copiate: ${totalReady}. Restanti: ${data.remaining || 0}.`
+        : data?.error || 'Sincronizzazione catalogo fallita.')
+      await fetchSystemHealth()
+    } catch {
+      setCatalogSyncResult({ ok: false, error: 'Impossibile avviare la sincronizzazione.' })
+      setActionMessage('Impossibile avviare la sincronizzazione del catalogo.')
+    }
+
+    setCatalogSyncing('')
   }
 
   const fetchScanUsage = async () => {
@@ -746,6 +850,7 @@ export default function AdminPage() {
     reports: 'Segnalazioni',
     analytics: 'Statistiche',
     services: 'Servizi',
+    status: 'Status',
     users: 'Gestione utenti',
     cleanup: 'Svuotamenti',
     info: 'Info sistema',
@@ -754,7 +859,8 @@ export default function AdminPage() {
   const adminSections = [
     { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
     { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
-    { key: 'services' as const, title: 'Servizi', description: 'Google Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
+    { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
+    { key: 'status' as const, title: 'Status', description: 'Stato API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
     { key: 'users' as const, title: 'Utenti', description: `${profiles.length} profili, VIP e blocchi`, icon: Users, count: profiles.length, tone: 'text-violet-100 bg-violet-300/10' },
     { key: 'cleanup' as const, title: 'Svuotamenti', description: 'Pulizia controllata del database', icon: Eraser, tone: 'text-rose-100 bg-rose-400/10' },
     { key: 'info' as const, title: 'Info', description: 'Database, cron e configurazione', icon: Info, tone: 'text-emerald-100 bg-emerald-300/10' },
@@ -1194,12 +1300,81 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className={activeSection === 'info' ? 'mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5' : 'hidden'}>
+        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-violet-300/25 bg-slate-900/90 p-5' : 'hidden'}>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-white">Catalogo OPV e immagini</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+                  Ricerca, scanner e deck leggono il catalogo Supabase. Le immagini vengono compresse e archiviate nel bucket Cloudflare R2.
+                </p>
+                {catalogSyncResult?.error ? <p className="mt-2 text-sm text-red-300">{catalogSyncResult.error}</p> : null}
+                {systemHealth?.catalog?.last_error ? <p className="mt-2 text-xs text-amber-200">Ultimo avviso: {systemHealth.catalog.last_error}</p> : null}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => syncCatalogNow('catalog')}
+                  disabled={Boolean(catalogSyncing)}
+                  className="rounded-2xl border border-violet-200/40 bg-violet-300 px-4 py-3 text-sm font-black text-slate-950 transition active:scale-95 disabled:opacity-60"
+                >
+                  {catalogSyncing === 'catalog' ? 'Sincronizzo...' : 'Aggiorna catalogo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => syncCatalogNow('images')}
+                  disabled={Boolean(catalogSyncing) || (systemHealth?.catalog?.image_pending ?? 1) === 0}
+                  className="rounded-2xl border border-cyan-200/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition active:scale-95 disabled:opacity-60"
+                >
+                  {catalogSyncing === 'images' ? 'Copio...' : 'Copia prossimo lotto'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => syncCatalogNow('images', true)}
+                  disabled={Boolean(catalogSyncing) || (systemHealth?.catalog?.image_pending ?? 1) === 0}
+                  className="rounded-2xl border border-emerald-200/40 bg-emerald-300 px-4 py-3 text-sm font-black text-slate-950 transition active:scale-95 disabled:opacity-60"
+                >
+                  {catalogSyncing === 'images' ? 'Migrazione attiva...' : 'Migra tutte'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ['Righe sorgente', systemHealth?.catalog?.source_rows ?? systemHealth?.tables?.catalogSources?.count ?? '-'],
+                ['Carte catalogo', systemHealth?.catalog?.catalog_rows ?? systemHealth?.tables?.catalogCards?.count ?? '-'],
+                ['Immagini R2', systemHealth?.catalog?.image_ready ?? systemHealth?.r2?.objects ?? '-'],
+                ['Da copiare', systemHealth?.catalog?.image_pending ?? '-'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/75 p-3">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                  <p className="mt-1 text-xl font-black text-violet-100">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+              <div className="flex items-center justify-between gap-3 text-xs font-bold">
+                <span className="text-slate-300">Cloudflare R2: {formatBytes(systemHealth?.r2?.bytes)}</span>
+                <span className="text-slate-400">Blocco OPV a {formatBytes(systemHealth?.r2?.limitBytes || 9_000_000_000)}</span>
+              </div>
+              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-cyan-300 transition-all"
+                  style={{ width: `${Math.min(100, ((systemHealth?.r2?.bytes || 0) / Math.max(systemHealth?.r2?.limitBytes || 9_000_000_000, 1)) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">Il caricamento si ferma automaticamente prima dei 10 GB inclusi nel piano R2.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className={activeSection === 'status' ? 'mt-6 rounded-[1.75rem] border border-emerald-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Stato servizi</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Controllo rapido su Supabase, notifiche, analytics, chat, scan e prezzi.
+                Controllo reale di API, database, deploy, repository e storage con latenza e ultimo aggiornamento.
               </p>
               {systemHealth?.error ? <p className="mt-2 text-sm text-red-300">{systemHealth.error}</p> : null}
             </div>
@@ -1213,6 +1388,35 @@ export default function AdminPage() {
             </button>
           </div>
 
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {(systemHealth?.services || []).map(service => {
+              const tone = service.status === 'online'
+                ? 'border-emerald-300/25 bg-emerald-300/[0.06] text-emerald-200'
+                : service.status === 'degraded'
+                  ? 'border-amber-300/25 bg-amber-300/[0.06] text-amber-200'
+                  : 'border-rose-300/25 bg-rose-300/[0.06] text-rose-200'
+              return (
+                <div key={service.key} className={`rounded-2xl border p-4 ${tone}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-black text-white">{service.label}</p>
+                    <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.16em]">
+                      <span className="h-2 w-2 rounded-full bg-current shadow-[0_0_10px_currentColor]" />
+                      {service.status === 'online' ? 'Online' : service.status === 'degraded' ? 'Attenzione' : 'Offline'}
+                    </span>
+                  </div>
+                  <p className="mt-2 min-h-10 text-xs leading-5 text-slate-300">{service.message}</p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                    {service.latencyMs != null ? <span>{service.latencyMs} ms</span> : null}
+                    {service.updatedAt ? <span>{service.updatedAt.includes('T') ? new Date(service.updatedAt).toLocaleString('it-IT') : service.updatedAt}</span> : null}
+                  </div>
+                </div>
+              )
+            })}
+            {!systemHealthLoading && (systemHealth?.services || []).length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Premi Aggiorna stato per eseguire i controlli.</p>
+            ) : null}
+          </div>
+
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ['Utenti', systemHealth?.tables?.profiles?.count ?? profiles.length],
@@ -1223,6 +1427,8 @@ export default function AdminPage() {
               ['Push device', systemHealth?.tables?.pushSubscriptions?.count ?? '-'],
               ['Annunci', systemHealth?.tables?.boardPosts?.count ?? '-'],
               ['Prezzi CM', systemHealth?.tables?.cardmarketPrices?.count ?? '-'],
+              ['Catalogo', systemHealth?.tables?.catalogCards?.count ?? '-'],
+              ['Righe sorgente', systemHealth?.tables?.catalogSources?.count ?? '-'],
             ].map(([label, value]) => (
               <div key={label} className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
@@ -1231,7 +1437,13 @@ export default function AdminPage() {
             ))}
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cloudflare R2</p>
+              <p className="mt-2 text-sm font-black text-white">
+                {systemHealth?.r2 ? `${formatBytes(systemHealth.r2.bytes)} / ${formatBytes(systemHealth.r2.limitBytes)}` : 'Dato non caricato'}
+              </p>
+            </div>
             <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Google Vision</p>
               <p className="mt-2 text-sm font-black text-white">
@@ -1373,6 +1585,8 @@ export default function AdminPage() {
                 ['Autenticazione', 'Supabase Auth + Google'],
                 ['OCR', 'Google Cloud Vision'],
                 ['Prezzi', 'Catalogo Cardmarket sincronizzato'],
+                ['Carte', 'Catalogo OPV su Supabase'],
+                ['Immagini', 'Cloudflare R2 con blocco a 9 GB'],
                 ['Chat', 'Conservazione 24 ore'],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">

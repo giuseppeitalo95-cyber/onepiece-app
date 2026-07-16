@@ -468,6 +468,9 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
   const cardmarketExportPrice = await getCardmarketExportPrice(enrichedInput)
   if (cardmarketExportPrice) return cardmarketExportPrice
 
+  // OPV usa normalmente solo i prezzi gia sincronizzati su Supabase.
+  if (process.env.PRICE_RUNTIME_EXTERNAL_FALLBACK !== 'true') return null
+
   const useEuPrices = process.env.PRICE_MARKET !== 'US'
   const allowUsFallback = process.env.PRICE_ALLOW_US_FALLBACK === 'true'
 

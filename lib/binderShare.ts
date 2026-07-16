@@ -38,7 +38,7 @@ const drawContainedImage = (ctx: CanvasRenderingContext2D, image: HTMLImageEleme
 
 const getCardImage = async (card: BinderCard | null) => {
   if (!card) return null
-  const candidates = [card.image_url, `https://en.onepiece-cardgame.com/images/cardlist/card/${card.card_id}.png`].filter(Boolean) as string[]
+  const candidates = [card.image_url].filter(Boolean) as string[]
   for (const source of candidates) {
     try {
       return await loadImage(source)

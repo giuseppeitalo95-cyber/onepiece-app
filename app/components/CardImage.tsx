@@ -14,15 +14,21 @@ type CardImageProps = {
   preferProxy?: boolean
 }
 
-const imageProxy = (url: string) =>
-  url.startsWith('/') ? url : `/api/cards/recognition-image?url=${encodeURIComponent(url)}`
+const imageProxy = (url: string, cardId?: string | null) => {
+  if (url.startsWith('/')) return url
+  const params = new URLSearchParams({ url })
+  if (cardId) params.set('id', cardId)
+  return `/api/cards/recognition-image?${params.toString()}`
+}
+
+const isOwnedImage = (url: string) => url.startsWith('/') || url.includes('.r2.dev/')
 
 const failedImageSources = new Set<string>()
 
 const getCardIds = (cardId?: string | null, src?: string | null) => {
   const values = [cardId || '', src || '']
   const ids = values
-    .map(value => value.match(/([A-Z]{1,4}\d{2}-\d{3}(?:_p\d+)?)/i)?.[1])
+    .map(value => value.match(/((?:[A-Z]{1,4}\d{2}|P|DON)-\d{3}(?:_p\d+)?)/i)?.[1])
     .filter(Boolean)
     .map(value => String(value).toUpperCase())
 
@@ -37,22 +43,21 @@ const getCardIds = (cardId?: string | null, src?: string | null) => {
   return [...unique]
 }
 
-const buildSources = (src?: string | null, cardId?: string | null, preferProxy = false) => {
+const buildSources = (src?: string | null, cardId?: string | null, preferProxy = true) => {
   const sources: string[] = []
   const push = (url?: string | null) => {
     if (url && !sources.includes(url)) sources.push(url)
   }
 
-  if (src && !src.startsWith('/') && preferProxy) push(imageProxy(src))
-  push(src)
-  if (src && !src.startsWith('/') && !preferProxy) push(imageProxy(src))
+  if (src) push(isOwnedImage(src) ? src : imageProxy(src, cardId))
+  if (src && !isOwnedImage(src) && !preferProxy) push(src)
 
   for (const id of getCardIds(cardId, src)) {
-    push(`https://en.onepiece-cardgame.com/images/cardlist/card/${id}.png`)
-    push(`https://en.onepiece-cardgame.com/images/cardlist/card/${id.toLowerCase()}.png`)
-    push(`https://www.optcgapi.com/media/static/Card_Images/${id}.jpg`)
-    push(`https://www.optcgapi.com/media/static/Card_Images/${id}.png`)
-    push(`https://www.optcgapi.com/media/static/Card_Images/${id.toLowerCase()}.jpg`)
+    push(imageProxy(`https://en.onepiece-cardgame.com/images/cardlist/card/${id}.png`, id))
+    push(imageProxy(`https://en.onepiece-cardgame.com/images/cardlist/card/${id.toLowerCase()}.png`, id))
+    push(imageProxy(`https://www.optcgapi.com/media/static/Card_Images/${id}.jpg`, id))
+    push(imageProxy(`https://www.optcgapi.com/media/static/Card_Images/${id}.png`, id))
+    push(imageProxy(`https://www.optcgapi.com/media/static/Card_Images/${id.toLowerCase()}.jpg`, id))
   }
 
   return sources
@@ -67,7 +72,7 @@ export default function CardImage({
   fallbackClassName = 'flex h-full w-full items-center justify-center text-[10px] text-slate-500',
   loading = 'lazy',
   fetchPriority = 'auto',
-  preferProxy = false,
+  preferProxy = true,
 }: CardImageProps) {
   const sources = useMemo(() => buildSources(src, cardId, preferProxy).filter(source => !failedImageSources.has(source)), [src, cardId, preferProxy])
   const [index, setIndex] = useState(0)

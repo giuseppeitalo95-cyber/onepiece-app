@@ -26,9 +26,6 @@ const decodeHtml = (value: string) =>
     .replace(/<[^>]+>/g, '')
     .trim()
 
-const cardImageUrl = (cardId: string) =>
-  `https://en.onepiece-cardgame.com/images/cardlist/card/${cardId}.png`
-
 const compactCardId = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
 const findCatalogCard = (catalogById: Map<string, any>, cardId: string) =>
@@ -75,7 +72,7 @@ const parseDeckDetail = (
       card_id: String(catalogCard?.card_id || catalogCard?.id || cardId),
       name: catalogCard?.card_name || catalogCard?.name || name,
       quantity,
-      image_url: catalogCard?.card_image || catalogCard?.image_url || cardImageUrl(cardId),
+      image_url: catalogCard?.card_image || catalogCard?.image_url || null,
       rarity: catalogCard?.rarity || null,
       card_color: catalogCard?.card_color ?? null,
       card_type: catalogCard?.card_type || (isLeader ? 'Leader' : null),
