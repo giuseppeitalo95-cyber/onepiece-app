@@ -18,8 +18,8 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Collezione', href: '/dashboard', key: 'collezione', Icon: Layers3 },
   { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
-  { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
   { label: 'Deck', href: '/decks', key: 'decks', Icon: LibraryBig },
+  { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
   { label: 'Amici', href: '/friends', key: 'amici', Icon: Users },
   { label: 'Profilo', href: '/profile', key: 'profilo', Icon: User },
 ]
@@ -133,7 +133,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
       style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
     >
       {(isAdmin
-        ? [...navItems.slice(0, 4), { label: 'Raccolte', href: '/binders', key: 'binders', Icon: BookOpen }, ...navItems.slice(4)]
+        ? [...navItems.slice(0, 4), { label: 'Raccoglitori', href: '/binders', key: 'binders', Icon: BookOpen }, ...navItems.slice(4)]
         : navItems
       ).map(({ label, href, key, Icon }) => {
         const active = currentPage === key

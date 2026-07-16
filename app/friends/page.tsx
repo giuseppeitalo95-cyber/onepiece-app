@@ -854,7 +854,6 @@ export default function FriendsPage() {
                       {selectedBinders.map(binder => (
                         <button key={binder.id} type="button" onClick={() => router.push(`/binders/${binder.id}`)} className="min-w-0 text-left transition hover:-translate-y-1 active:scale-95">
                           <BinderCover binder={binder} compact />
-                          <p className="mt-1.5 truncate text-[10px] font-black text-white">{binder.title}</p>
                         </button>
                       ))}
                     </div>

@@ -3,6 +3,9 @@ export type BinderCard = {
   name: string
   image_url: string | null
   rarity?: string | null
+  card_color?: string | null
+  card_cost?: number | null
+  card_power?: number | null
 }
 
 export type BinderPage = {
@@ -33,7 +36,12 @@ export type BinderComment = {
   avatar_url?: string | null
 }
 
-export const BINDER_COLORS = ['#164e63', '#1e3a5f', '#3f3f46', '#14532d', '#7f1d1d', '#713f12', '#4c1d95', '#111827']
+export const BINDER_COLORS = [
+  '#164e63', '#0f4c5c', '#075985', '#1e3a8a',
+  '#312e81', '#4c1d95', '#701a75', '#9f1239',
+  '#7f1d1d', '#9a3412', '#854d0e', '#713f12',
+  '#14532d', '#065f46', '#334155', '#18181b',
+]
 
 export const binderCapacity = (binder: Pick<BinderRecord, 'columns_count' | 'rows_count'>) =>
   binder.columns_count * binder.rows_count
@@ -42,7 +50,7 @@ export const normalizeBinderPages = (
   pages: unknown,
   columns: number,
   rows: number,
-  minimumPages = 2
+  minimumPages = 1
 ): BinderPage[] => {
   const capacity = columns * rows
   const input = Array.isArray(pages) ? pages : []
@@ -60,15 +68,23 @@ export const normalizeBinderPages = (
           name: String(card.name || card.card_id),
           image_url: card.image_url ? String(card.image_url) : null,
           rarity: card.rarity ? String(card.rarity) : null,
+          card_color: card.card_color ? String(card.card_color) : null,
+          card_cost: card.card_cost == null || !Number.isFinite(Number(card.card_cost)) ? null : Number(card.card_cost),
+          card_power: card.card_power == null || !Number.isFinite(Number(card.card_power)) ? null : Number(card.card_power),
         }
       })
     }
   })
 
   while (normalized.length < minimumPages) normalized.push({ slots: Array(capacity).fill(null) })
-  if (normalized.length % 2 !== 0) normalized.push({ slots: Array(capacity).fill(null) })
   return normalized
 }
+
+export const binderSpreadIndexes = (spreadIndex: number) => spreadIndex <= 0
+  ? { left: null, right: 0 }
+  : { left: spreadIndex * 2 - 1, right: spreadIndex * 2 }
+
+export const binderMaxSpread = (pageCount: number) => Math.max(0, Math.ceil((Math.max(1, pageCount) - 1) / 2))
 
 export const normalizeBinder = (value: unknown): BinderRecord => {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}

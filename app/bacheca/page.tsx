@@ -710,7 +710,7 @@ export default function BachecaPage() {
                           <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${post.type === 'trade' ? 'bg-emerald-300/15 text-emerald-200' : post.type === 'binder' ? 'bg-amber-300/15 text-amber-100' : 'bg-cyan-300/15 text-cyan-100'}`}>
                             {post.type === 'trade' ? 'Vendo' : post.type === 'binder' ? 'Raccoglitore' : 'Cerco'}
                           </span>
-                          <p className="min-w-0 truncate text-base font-black text-white">{post.type === 'binder' ? post.title : post.card_name || post.title}</p>
+                          <p className="min-w-0 flex-1 text-sm font-black leading-5 text-white sm:text-base">{post.type === 'binder' ? post.message || 'Ha creato un raccoglitore personalizzato' : post.card_name || post.title}</p>
                         </div>
                         {post.type === 'binder' && post.binder_id ? (
                           <button

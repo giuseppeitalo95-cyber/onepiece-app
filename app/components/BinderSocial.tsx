@@ -78,7 +78,7 @@ export default function BinderSocial({ binder }: { binder: BinderRecord }) {
   }
 
   if (!binder.is_shared) {
-    return <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-3 text-sm text-slate-400">Condividi il raccoglitore per attivare like e commenti.</div>
+    return <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-3 text-sm text-slate-400">Salva il raccoglitore per attivare like e commenti.</div>
   }
 
   return (
