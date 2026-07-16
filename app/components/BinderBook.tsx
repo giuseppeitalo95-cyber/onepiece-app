@@ -205,16 +205,16 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
             {surface(baseLeft, editable && !turning)}
             {surface(baseRight, editable && !turning)}
             {turning === 'next' && current.right != null ? (
-              <>
-                <div className="binder-turn-half binder-turn-front-next absolute inset-y-0 right-0 z-30 w-[48.4%] origin-left">{surface(current.right, false)}</div>
-                <div className="binder-turn-half binder-turn-back-next absolute inset-y-0 left-0 z-30 w-[48.4%] origin-right">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} />}</div>
-              </>
+              <div className="binder-turn-page binder-turn-next absolute inset-y-0 right-0 z-30 w-[48.4%] origin-left">
+                <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.right, false)}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} />}</div>
+              </div>
             ) : null}
             {turning === 'prev' && current.left != null ? (
-              <>
-                <div className="binder-turn-half binder-turn-front-prev absolute inset-y-0 left-0 z-30 w-[48.4%] origin-right">{surface(current.left, false)}</div>
-                <div className="binder-turn-half binder-turn-back-prev absolute inset-y-0 right-0 z-30 w-[48.4%] origin-left">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} />}</div>
-              </>
+              <div className="binder-turn-page binder-turn-prev absolute inset-y-0 left-0 z-30 w-[48.4%] origin-right">
+                <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.left, false)}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} />}</div>
+              </div>
             ) : null}
           </div>
         </div>
