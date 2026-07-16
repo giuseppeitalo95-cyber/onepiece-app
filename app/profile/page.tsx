@@ -7,7 +7,9 @@ import { Award, Camera, Flame, LockKeyhole, Trophy, UploadCloud } from 'lucide-r
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
+import BinderGallery from '@/app/components/BinderGallery'
 import { isAdminAccount } from '@/lib/admin'
+import { normalizeBinder, type BinderRecord } from '@/lib/binders'
 import { emptyProgressSummary, evaluateProgressSynced, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
 import { validateUserText } from '@/lib/textModeration'
@@ -30,6 +32,7 @@ export default function Profile() {
   const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
   const [adminNotifications, setAdminNotifications] = useState(0)
   const [progress, setProgress] = useState<ProgressSummary>(emptyProgressSummary())
+  const [profileBinders, setProfileBinders] = useState<BinderRecord[]>([])
 
   useEffect(() => {
     const load = async () => {
@@ -65,6 +68,12 @@ export default function Profile() {
         .select('card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
         .eq('user_id', user.id)
 
+      const { data: binderData } = await supabase
+        .from('binders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+
       const rawAvatarUrl = profileData?.avatar_url ?? ''
       const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
       const isFirstAccess = !profileData?.username
@@ -80,6 +89,7 @@ export default function Profile() {
       setIsAdmin(isAdminUser)
       setPremiumTier(tier)
       setProgress(await evaluateProgressSynced(user.id, cardData || [], { claimDaily: true }))
+      setProfileBinders((binderData || []).map(normalizeBinder))
 
       if (isAdminUser) {
         await fetchAdminNotifications()
@@ -423,6 +433,12 @@ export default function Profile() {
               </div>
             )}
           </section>
+
+          {!firstAccess ? (
+            <div className="mt-6">
+              <BinderGallery binders={profileBinders} title="I miei raccoglitori" emptyText="Non hai ancora creato raccoglitori." />
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr]">
             <section className="rounded-[1.5rem] border border-white/10 bg-slate-950/72 p-4 shadow-inner shadow-black/10 sm:p-5">

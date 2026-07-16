@@ -7,10 +7,12 @@ import { Check, Crown, Heart, Inbox, LibraryBig, MessageCircle, Search, UserPlus
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
+import BinderCover from '@/app/components/BinderCover'
 import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 import { isProfileOnline } from '@/lib/onlineStatus'
 import { getRarityLabel } from '@/lib/rarity'
+import { normalizeBinder, type BinderRecord } from '@/lib/binders'
 
 type ProfileItem = {
   id: string
@@ -81,6 +83,7 @@ export default function FriendsPage() {
   const [selectedProfile, setSelectedProfile] = useState<ProfileItem | null>(null)
   const [selectedCards, setSelectedCards] = useState<UserCard[]>([])
   const [selectedDecks, setSelectedDecks] = useState<FriendDeck[]>([])
+  const [selectedBinders, setSelectedBinders] = useState<BinderRecord[]>([])
   const [selectedDeckValues, setSelectedDeckValues] = useState<Record<string, number | null>>({})
   const [selectedFriendDeck, setSelectedFriendDeck] = useState<FriendDeck | null>(null)
   const [selectedFriendCard, setSelectedFriendCard] = useState<(UserCard | DeckCard) | null>(null)
@@ -303,6 +306,7 @@ export default function FriendsPage() {
   const openProfile = async (profile: ProfileItem) => {
     setSelectedProfile(profile)
     setSelectedDecks([])
+    setSelectedBinders([])
     setSelectedDeckValues({})
     setSelectedFriendDeck(null)
     setSelectedFriendCard(null)
@@ -313,7 +317,7 @@ export default function FriendsPage() {
       return
     }
 
-    const [{ data: cards }, { data: decks }] = await Promise.all([
+    const [{ data: cards }, { data: decks }, { data: binderRows }] = await Promise.all([
       supabase
         .from('user_cards')
         .select('card_id, name, image_url, rarity, quantity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
@@ -322,6 +326,12 @@ export default function FriendsPage() {
         .from('user_decks')
         .select('id, name, leader, cards, updated_at')
         .eq('user_id', profile.id)
+        .order('updated_at', { ascending: false }),
+      supabase
+        .from('binders')
+        .select('*')
+        .eq('user_id', profile.id)
+        .eq('is_shared', true)
         .order('updated_at', { ascending: false })
     ])
 
@@ -343,6 +353,7 @@ export default function FriendsPage() {
       updated_at: deck.updated_at || null
     }))
     setSelectedDecks(friendDecks)
+    setSelectedBinders((binderRows || []).map(normalizeBinder))
     void loadFriendDeckValues(friendDecks)
 
     const prices = await fetchLivePricesForCards(baseCards)
@@ -833,6 +844,22 @@ export default function FriendsPage() {
               </div>
 
               <div className="min-h-[360px] rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
+                {isFriend && selectedBinders.length > 0 ? (
+                  <div className="mb-5 border-b border-white/8 pb-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-lg font-semibold text-white">Raccoglitori</h4>
+                      <span className="rounded-full bg-amber-300/10 px-2.5 py-1 text-[10px] font-black text-amber-100">{selectedBinders.length}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5">
+                      {selectedBinders.map(binder => (
+                        <button key={binder.id} type="button" onClick={() => router.push(`/binders/${binder.id}`)} className="min-w-0 text-left transition hover:-translate-y-1 active:scale-95">
+                          <BinderCover binder={binder} compact />
+                          <p className="mt-1.5 truncate text-[10px] font-black text-white">{binder.title}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="text-lg font-semibold text-white">Collezione</h4>
                   {isFriend ? (

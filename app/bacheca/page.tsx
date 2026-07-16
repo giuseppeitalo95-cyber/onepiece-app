@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Megaphone, Search, Send, Trash2, X } from 'lucide-react'
+import { Bell, BookOpen, Megaphone, Search, Send, Trash2, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -34,7 +34,7 @@ type ProfileItem = {
 type BoardPost = {
   id: string
   user_id: string
-  type: 'announcement' | 'looking' | 'trade'
+  type: 'announcement' | 'looking' | 'trade' | 'binder'
   title: string
   message: string | null
   card_id: string | null
@@ -42,6 +42,7 @@ type BoardPost = {
   card_code: string | null
   card_image_url: string | null
   card_rarity: string | null
+  binder_id: string | null
   created_at: string
 }
 
@@ -243,20 +244,33 @@ export default function BachecaPage() {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - BOARD_RETENTION_DAYS)
 
-    const { data, error } = await supabase
+    const primary = await supabase
       .from('board_posts')
-      .select('id, user_id, type, title, message, card_id, card_name, card_code, card_image_url, card_rarity, created_at')
+      .select('id, user_id, type, title, message, card_id, card_name, card_code, card_image_url, card_rarity, binder_id, created_at')
       .gte('created_at', cutoff.toISOString())
       .order('created_at', { ascending: false })
       .limit(BOARD_FETCH_POSTS)
 
-    if (error) {
+    let boardError = primary.error
+    let boardRows: unknown[] = primary.data || []
+    if (primary.error) {
+      const fallback = await supabase
+        .from('board_posts')
+        .select('id, user_id, type, title, message, card_id, card_name, card_code, card_image_url, card_rarity, created_at')
+        .gte('created_at', cutoff.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(BOARD_FETCH_POSTS)
+      boardError = fallback.error
+      boardRows = (fallback.data || []).map(row => ({ ...row, binder_id: null }))
+    }
+
+    if (boardError) {
       setBoardReady(false)
       setPosts([])
       return
     }
 
-    const loadedPosts = (data || []) as BoardPost[]
+    const loadedPosts = boardRows as BoardPost[]
     const missingProfileIds = loadedPosts
       .map(post => post.user_id)
       .filter(id => id && !profileMap[id])
@@ -273,7 +287,9 @@ export default function BachecaPage() {
       const cutoffForPost = new Date()
       cutoffForPost.setDate(cutoffForPost.getDate() - days)
       const stillVisible = new Date(post.created_at).getTime() >= cutoffForPost.getTime()
-      const isVisibleToViewer = visibleSet.has(post.user_id) || tier !== 'free'
+      const isVisibleToViewer = post.type === 'binder'
+        ? visibleSet.has(post.user_id)
+        : visibleSet.has(post.user_id) || tier !== 'free'
       return stillVisible && isVisibleToViewer
     }).slice(0, BOARD_MAX_POSTS))
   }
@@ -691,11 +707,24 @@ export default function BachecaPage() {
                           ) : null}
                         </div>
                         <div className="mt-2 flex items-center gap-2">
-                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${post.type === 'trade' ? 'bg-emerald-300/15 text-emerald-200' : 'bg-cyan-300/15 text-cyan-100'}`}>
-                            {post.type === 'trade' ? 'Vendo' : 'Cerco'}
+                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${post.type === 'trade' ? 'bg-emerald-300/15 text-emerald-200' : post.type === 'binder' ? 'bg-amber-300/15 text-amber-100' : 'bg-cyan-300/15 text-cyan-100'}`}>
+                            {post.type === 'trade' ? 'Vendo' : post.type === 'binder' ? 'Raccoglitore' : 'Cerco'}
                           </span>
-                          <p className="min-w-0 truncate text-base font-black text-white">{post.card_name || post.title}</p>
+                          <p className="min-w-0 truncate text-base font-black text-white">{post.type === 'binder' ? post.title : post.card_name || post.title}</p>
                         </div>
+                        {post.type === 'binder' && post.binder_id ? (
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/binders/${post.binder_id}`)}
+                            className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-amber-200/20 bg-amber-300/[0.07] p-3 text-left transition hover:border-amber-200/45 hover:bg-amber-300/[0.11] active:scale-[0.99]"
+                          >
+                            <span className="grid h-14 w-11 shrink-0 place-items-center rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg"><BookOpen size={20} /></span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-black text-white">{post.title}</span>
+                              <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e commentalo.</span>
+                            </span>
+                          </button>
+                        ) : null}
                         {(post.card_name || post.card_code) && (
                           <button
                             type="button"
@@ -720,8 +749,8 @@ export default function BachecaPage() {
                             </div>
                           </button>
                         )}
-                        {post.message && <p className="mt-2 text-sm leading-6 text-slate-300">{post.message}</p>}
-                        {post.user_id !== userId ? (
+                        {post.message && post.type !== 'binder' && <p className="mt-2 text-sm leading-6 text-slate-300">{post.message}</p>}
+                        {post.user_id !== userId && post.type !== 'binder' ? (
                           <button
                             type="button"
                             onClick={() => contactPostOwner(post)}
