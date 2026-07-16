@@ -76,7 +76,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
         .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
         .eq('status', 'accepted')
 
-      const friendIds = (requests || []).map((request: any) =>
+      const friendIds = (requests || []).map((request: { requester_id: string; receiver_id: string }) =>
         request.requester_id === uid ? request.receiver_id : request.requester_id
       )
 
@@ -147,7 +147,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
                 </span>
               )}
             </span>
-            <span className="relative max-w-full whitespace-nowrap">
+            <span className={`relative block w-full max-w-full whitespace-nowrap text-center ${key === 'binders' ? 'text-[7px] min-[390px]:text-[8px] sm:text-xs' : ''}`}>
               {label}
               {badge > 0 && <span className="sr-only">, {badge} notifiche</span>}
             </span>
