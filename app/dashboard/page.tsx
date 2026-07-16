@@ -483,21 +483,16 @@ export default function Dashboard() {
     setLivePriceLoading(false)
   }
 
-  const fetchCatalogDetailsForCard = async (card: UserCard) => {
-    try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(card.card_id)}`)
-      const data = await res.json()
-      if (!Array.isArray(data)) return null
-
+  const catalogDetailsForCard = (card: UserCard, candidates: any[]) => {
       const wanted = compactCardCode(card.card_id)
-      const detail = data.find((candidate: any) => {
+      const detail = candidates.find((candidate: any) => {
         const ids = [
           candidate.card_set_id,
           candidate.card_id,
           candidate.id
         ].map(compactCardCode)
         return ids.includes(wanted)
-      }) || data[0]
+      }) || candidates[0]
 
       if (!detail) return null
 
@@ -510,6 +505,14 @@ export default function Dashboard() {
         card_cost: numberOrNull(detail.card_cost),
         card_power: numberOrNull(detail.card_power),
       } satisfies Partial<UserCard>
+  }
+
+  const fetchCatalogDetailsForCard = async (card: UserCard) => {
+    try {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(card.card_id)}`)
+      const data = await res.json()
+      if (!Array.isArray(data)) return null
+      return catalogDetailsForCard(card, data)
     } catch {
       return null
     }
@@ -532,8 +535,21 @@ export default function Dashboard() {
     const targets = cardsToBackfill.filter(needsDetailBackfill).slice(0, 120)
     if (targets.length === 0) return
 
-    const updates = await Promise.all(targets.map(async card => {
-      const detail = await fetchCatalogDetailsForCard(card)
+    let candidates: any[] = []
+    try {
+      const response = await fetch('/api/cards/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: targets.map(card => card.card_id) }),
+      })
+      const data = await response.json()
+      candidates = Array.isArray(data) ? data : []
+    } catch {
+      return
+    }
+
+    const updates = targets.map(card => {
+      const detail = catalogDetailsForCard(card, candidates)
       if (!detail) return null
 
       return {
@@ -547,7 +563,7 @@ export default function Dashboard() {
         card_cost: detail.card_cost ?? card.card_cost ?? null,
         card_power: detail.card_power ?? card.card_power ?? null,
       } as UserCard
-    }))
+    })
 
     const cleanUpdates = updates.filter((card): card is UserCard => Boolean(card))
     if (cleanUpdates.length === 0) return

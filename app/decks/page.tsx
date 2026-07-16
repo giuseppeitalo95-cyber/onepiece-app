@@ -487,31 +487,47 @@ export default function DeckBuilderPage() {
     inventory_price: null
   })
 
-  const fillMissingDeckCardDetails = async (card: DeckCard): Promise<DeckCard> => {
+  const fillMissingDeckCardDetails = (card: DeckCard, candidates: SearchCardResponse[]): DeckCard => {
     if (card.rarity && card.card_color && card.card_type && card.image_url) return card
 
+    const wantedBase = compact(displayCardId(card.card_id))
+    const family = candidates.filter(item =>
+      compact(displayCardId(String(item.card_id ?? item.id ?? ''))) === wantedBase
+    )
+    const match = family.find(item => compact(String(item.card_id ?? item.id ?? '')) === compact(card.card_id)) || family[0]
+
+    if (!match) return card
+
+    const detail = toDeckCard(match, card.quantity)
+    return {
+      ...card,
+      name: card.name || detail.name,
+      image_url: card.image_url || detail.image_url,
+      rarity: card.rarity || detail.rarity,
+      card_color: card.card_color ?? detail.card_color ?? null,
+      card_type: card.card_type ?? detail.card_type ?? null,
+      card_cost: card.card_cost ?? detail.card_cost ?? null,
+      card_power: card.card_power ?? detail.card_power ?? null
+    }
+  }
+
+  const fillMissingDeckCards = async (cards: DeckCard[]) => {
+    const ids = cards
+      .filter(card => !card.rarity || !card.card_color || !card.card_type || !card.image_url)
+      .map(card => card.card_id)
+    if (ids.length === 0) return cards
+
     try {
-      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(card.card_id)}`)
-      const data = await res.json()
-      const match = Array.isArray(data)
-        ? data.find((item: SearchCardResponse) => compact(String(item.card_id ?? item.id ?? '')) === compact(card.card_id)) || data[0]
-        : null
-
-      if (!match) return card
-
-      const detail = toDeckCard(match, card.quantity)
-      return {
-        ...card,
-        name: card.name || detail.name,
-        image_url: card.image_url || detail.image_url,
-        rarity: card.rarity || detail.rarity,
-        card_color: card.card_color ?? detail.card_color ?? null,
-        card_type: card.card_type ?? detail.card_type ?? null,
-        card_cost: card.card_cost ?? detail.card_cost ?? null,
-        card_power: card.card_power ?? detail.card_power ?? null
-      }
+      const response = await fetch('/api/cards/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await response.json()
+      const candidates = Array.isArray(data) ? data as SearchCardResponse[] : []
+      return cards.map(card => fillMissingDeckCardDetails(card, candidates))
     } catch {
-      return card
+      return cards
     }
   }
 
@@ -727,12 +743,12 @@ export default function DeckBuilderPage() {
       const inserts: Array<Record<string, unknown>> = []
       const updates: Array<Promise<{ error: unknown }>> = []
       let addedQuantity = 0
-      const detailEntries = await Promise.all(
-        [...grouped.entries()].map(async ([cardId, item]) => [cardId, {
-          ...item,
-          card: await fillMissingDeckCardDetails(item.card)
-        }] as const)
-      )
+      const groupedEntries = [...grouped.entries()]
+      const detailedCards = await fillMissingDeckCards(groupedEntries.map(([, item]) => item.card))
+      const detailEntries = groupedEntries.map(([cardId, item], index) => [cardId, {
+        ...item,
+        card: detailedCards[index]
+      }] as const)
       const detailedGrouped = new Map(detailEntries)
       const livePrices = await fetchLivePriceMap([...detailedGrouped.values()].map(item => item.card))
 

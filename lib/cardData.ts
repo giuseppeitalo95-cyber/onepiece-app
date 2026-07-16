@@ -6,6 +6,7 @@ export type RawCard = Record<string, any>
 
 const CACHE_DURATION_MS = 15 * 60 * 1000
 const PAGE_SIZE = 1000
+const CATALOG_SELECT = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,market_price,inventory_price,source,source_image_url,r2_image_url,image_status'
 
 let cardCache: {
   expiresAt: number
@@ -243,7 +244,7 @@ const loadCatalogCards = async () => {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await client
       .from('card_catalog')
-      .select('variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,market_price,inventory_price,source,source_image_url,r2_image_url,image_status')
+      .select(CATALOG_SELECT)
       .order('variant_id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
 
@@ -254,6 +255,27 @@ const loadCatalogCards = async () => {
   }
 
   if (rows.length === 0) throw new Error('Catalogo Supabase vuoto: esegui la prima sincronizzazione')
+  return rows.map(fromCatalogRow)
+}
+
+export const getCatalogCardsByBaseIds = async (values: string[]) => {
+  const client = requireServiceClient()
+  const baseIds = [...new Set(values
+    .map(value => String(value || '').trim().toUpperCase().replace(/_P\d+$/i, ''))
+    .filter(Boolean))]
+  const rows: RawCard[] = []
+
+  for (let index = 0; index < baseIds.length; index += 80) {
+    const { data, error } = await client
+      .from('card_catalog')
+      .select(CATALOG_SELECT)
+      .in('base_card_id', baseIds.slice(index, index + 80))
+      .order('variant_id', { ascending: true })
+
+    if (error) throw new Error(`Catalogo Supabase non disponibile: ${error.message}`)
+    rows.push(...(data || []))
+  }
+
   return rows.map(fromCatalogRow)
 }
 
