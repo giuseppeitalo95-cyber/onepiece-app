@@ -45,7 +45,10 @@ function BinderPagePanel({ binder, page, pageIndex, editable, onSelectSlot, onRe
         gap: binder.columns_count >= 4 ? '2.4%' : '3.2%',
       }}>
         {page.slots.map((card, slotIndex) => {
-          const hasCardBehind = !card && Boolean(oppositePage?.slots[slotIndex])
+          const row = Math.floor(slotIndex / binder.columns_count)
+          const column = slotIndex % binder.columns_count
+          const mirroredSlotIndex = row * binder.columns_count + (binder.columns_count - 1 - column)
+          const hasCardBehind = !card && Boolean(oppositePage?.slots[mirroredSlotIndex])
           return (
             <div key={`${pageIndex}-${slotIndex}`} className="binder-pocket group relative min-h-0 min-w-0 overflow-hidden rounded-[5px] border border-white/28 bg-slate-950/24 p-[3%] shadow-[inset_0_0_8px_rgba(255,255,255,0.12)]">
               <button
@@ -58,7 +61,7 @@ function BinderPagePanel({ binder, page, pageIndex, editable, onSelectSlot, onRe
                 className="block h-full w-full disabled:cursor-default"
                 aria-label={card ? editable ? `Sostituisci ${card.name}` : `Apri ${card.name}` : 'Aggiungi carta'}
               >
-                {card ? <CardImage src={card.image_url} cardId={card.card_id} alt={card.name} className="h-full w-full overflow-hidden rounded-[4px] bg-slate-900" imgClassName="h-full w-full object-contain" loading="eager" /> : <EmptySlot editable={editable} hasCardBehind={hasCardBehind} />}
+                {card ? <CardImage src={card.image_url} cardId={card.card_id} alt={card.name} className="h-full w-full overflow-hidden rounded-[4px] bg-slate-900" imgClassName="h-full w-full object-contain" loading="eager" fetchPriority="high" preferProxy /> : <EmptySlot editable={editable} hasCardBehind={hasCardBehind} />}
               </button>
               {editable && card ? (
                 <button type="button" onClick={event => { event.stopPropagation(); onRemoveCard?.(pageIndex, slotIndex) }} className="absolute right-[4%] top-[4%] grid h-6 w-6 place-items-center rounded-full bg-rose-500/92 text-white shadow-lg opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100" aria-label={`Rimuovi ${card.name}`}>
@@ -108,6 +111,32 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
   useEffect(() => {
     if (singlePageIndex > safeSinglePage) onSinglePageChange?.(safeSinglePage)
   }, [onSinglePageChange, safeSinglePage, singlePageIndex])
+
+  useEffect(() => {
+    const pageIndexes = new Set<number>()
+    if (viewMode === 'single') {
+      for (const index of [safeSinglePage - 1, safeSinglePage, safeSinglePage + 1]) {
+        if (index >= 0 && index < binder.pages.length) pageIndexes.add(index)
+      }
+    } else {
+      for (const index of [spreadIndex - 1, spreadIndex, spreadIndex + 1]) {
+        const spread = binderSpreadIndexes(index)
+        if (spread.left != null) pageIndexes.add(spread.left)
+        if (spread.right != null) pageIndexes.add(spread.right)
+      }
+    }
+
+    const urls = new Set<string>(['/rewards/opv-card-back.jpeg'])
+    pageIndexes.forEach(index => binder.pages[index]?.slots.forEach(card => {
+      if (!card?.image_url) return
+      urls.add(card.image_url.startsWith('/') ? card.image_url : `/api/cards/recognition-image?url=${encodeURIComponent(card.image_url)}`)
+    }))
+    urls.forEach(url => {
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = url
+    })
+  }, [binder.pages, safeSinglePage, spreadIndex, viewMode])
 
   const turn = (direction: 'next' | 'prev') => {
     if (turning) return

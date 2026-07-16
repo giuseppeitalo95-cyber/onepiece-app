@@ -11,6 +11,7 @@ type CardImageProps = {
   fallbackClassName?: string
   loading?: 'eager' | 'lazy'
   fetchPriority?: 'high' | 'low' | 'auto'
+  preferProxy?: boolean
 }
 
 const imageProxy = (url: string) =>
@@ -36,14 +37,15 @@ const getCardIds = (cardId?: string | null, src?: string | null) => {
   return [...unique]
 }
 
-const buildSources = (src?: string | null, cardId?: string | null) => {
+const buildSources = (src?: string | null, cardId?: string | null, preferProxy = false) => {
   const sources: string[] = []
   const push = (url?: string | null) => {
     if (url && !sources.includes(url)) sources.push(url)
   }
 
+  if (src && !src.startsWith('/') && preferProxy) push(imageProxy(src))
   push(src)
-  if (src && !src.startsWith('/')) push(imageProxy(src))
+  if (src && !src.startsWith('/') && !preferProxy) push(imageProxy(src))
 
   for (const id of getCardIds(cardId, src)) {
     push(`https://en.onepiece-cardgame.com/images/cardlist/card/${id}.png`)
@@ -65,8 +67,9 @@ export default function CardImage({
   fallbackClassName = 'flex h-full w-full items-center justify-center text-[10px] text-slate-500',
   loading = 'lazy',
   fetchPriority = 'auto',
+  preferProxy = false,
 }: CardImageProps) {
-  const sources = useMemo(() => buildSources(src, cardId).filter(source => !failedImageSources.has(source)), [src, cardId])
+  const sources = useMemo(() => buildSources(src, cardId, preferProxy).filter(source => !failedImageSources.has(source)), [src, cardId, preferProxy])
   const [index, setIndex] = useState(0)
 
   useEffect(() => {

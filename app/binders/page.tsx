@@ -11,7 +11,6 @@ import BinderSocial from '@/app/components/BinderSocial'
 import BinderCardDetail from '@/app/components/BinderCardDetail'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
-import { isAdminAccount } from '@/lib/admin'
 import { BINDER_COLORS, binderSpreadIndexes, normalizeBinder, normalizeBinderPages, type BinderCard, type BinderRecord } from '@/lib/binders'
 import { shareBinder } from '@/lib/binderShare'
 import { validateUserText } from '@/lib/textModeration'
@@ -113,11 +112,6 @@ export default function BindersPage() {
         supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle(),
         supabase.from('user_cards').select('card_id, name, image_url, rarity, card_color, card_cost, card_power').eq('user_id', session.user.id).order('name'),
       ])
-
-      if (!isAdminAccount(session.user, profile)) {
-        router.replace('/dashboard')
-        return
-      }
 
       setUserId(session.user.id)
       setUsername(profile?.username || 'Peppitalo')

@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation'
 import { BookOpen, House, Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { isAdminAccount } from '@/lib/admin'
 
 type NavItem = {
   label: string
@@ -20,6 +19,7 @@ const navItems: NavItem[] = [
   { label: 'Scanner', href: '/scan', key: 'scan', Icon: ScanLine },
   { label: 'Deck', href: '/decks', key: 'decks', Icon: LibraryBig },
   { label: 'Bacheca', href: '/bacheca', key: 'bacheca', Icon: House },
+  { label: 'Raccoglitori', href: '/binders', key: 'binders', Icon: BookOpen },
   { label: 'Amici', href: '/friends', key: 'amici', Icon: Users },
   { label: 'Profilo', href: '/profile', key: 'profilo', Icon: User },
 ]
@@ -43,7 +43,6 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
   const currentPage = getPageKey(pathname || '/dashboard') || activePage || 'collezione'
   const [badges, setBadges] = useState<Record<string, number>>({})
-  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -55,13 +54,6 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
         if (!cancelled) setBadges({})
         return
       }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', uid)
-        .maybeSingle()
-      if (!cancelled) setIsAdmin(isAdminAccount(session.user, profile))
 
       const { count: friendRequestsCount } = await supabase
         .from('friend_requests')
@@ -132,10 +124,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
       className="op-bottom-nav fixed inset-x-0 z-50 mx-auto flex w-[min(calc(100%-0.4rem),680px)] items-center justify-between rounded-[1.55rem] border border-white/16 bg-[#1a414b]/90 p-1 shadow-[0_18px_38px_rgba(0,0,0,0.24)] backdrop-blur-2xl sm:p-1.5"
       style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
     >
-      {(isAdmin
-        ? [...navItems.slice(0, 4), { label: 'Raccoglitori', href: '/binders', key: 'binders', Icon: BookOpen }, ...navItems.slice(4)]
-        : navItems
-      ).map(({ label, href, key, Icon }) => {
+      {navItems.map(({ label, href, key, Icon }) => {
         const active = currentPage === key
         const badge = badges[key] || 0
 
