@@ -62,11 +62,19 @@ const canonicalRow = (raw: RawCard, normalized: RawCard) => {
 
 const upsertBatches = async (table: string, rows: Record<string, unknown>[], conflict: string) => {
   const client = requireServiceClient()
-  for (let index = 0; index < rows.length; index += UPSERT_BATCH_SIZE) {
-    const batch = rows.slice(index, index + UPSERT_BATCH_SIZE)
+  const conflictColumns = conflict.split(',').map(column => column.trim()).filter(Boolean)
+  const uniqueRows = [...new Map(rows.map(row => [
+    conflictColumns.map(column => String(row[column] ?? '')).join('\u0000'),
+    row,
+  ])).values()]
+
+  for (let index = 0; index < uniqueRows.length; index += UPSERT_BATCH_SIZE) {
+    const batch = uniqueRows.slice(index, index + UPSERT_BATCH_SIZE)
     const { error } = await client.from(table).upsert(batch, { onConflict: conflict })
     if (error) throw new Error(`${table}: ${error.message}`)
   }
+
+  return uniqueRows.length
 }
 
 export const readCatalogSyncState = async () => {
@@ -149,8 +157,8 @@ export const syncCardCatalog = async () => {
   }
 
   const catalogRows = [...canonical.values()].map(({ raw, normalized }) => canonicalRow(raw, normalized))
-  await upsertBatches('card_catalog_sources', sourceRows, 'source_key')
-  await upsertBatches('card_catalog', catalogRows, 'variant_id')
+  const sourceRowCount = await upsertBatches('card_catalog_sources', sourceRows, 'source_key')
+  const catalogRowCount = await upsertBatches('card_catalog', catalogRows, 'variant_id')
   clearCardCache()
 
   const state = await refreshCatalogSyncState({
@@ -161,8 +169,8 @@ export const syncCardCatalog = async () => {
   return {
     ok: true,
     fetched: rawCards.length,
-    sourceRows: sourceRows.length,
-    catalogRows: catalogRows.length,
+    sourceRows: sourceRowCount,
+    catalogRows: catalogRowCount,
     syncedAt,
     state,
   }
