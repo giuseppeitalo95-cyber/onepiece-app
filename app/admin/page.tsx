@@ -305,9 +305,18 @@ export default function AdminPage() {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ mode, limit: migrateAll ? 100 : 80 }),
+          body: JSON.stringify({
+            mode,
+            limit: mode === 'images' ? 16 : 80,
+            resetFailed: mode === 'images' && migrateAll && rounds === 0,
+          }),
         })
-        data = await res.json()
+        const responseBody = await res.text()
+        try {
+          data = responseBody ? JSON.parse(responseBody) : {}
+        } catch {
+          data = { ok: false, error: `Errore server HTTP ${res.status}` }
+        }
         responseOk = res.ok && data?.ok !== false
         totalReady += Number(data.ready || 0)
         totalFailed += Number(data.failed || 0)
@@ -317,7 +326,7 @@ export default function AdminPage() {
           setActionMessage(`Migrazione immagini: ${totalReady} copiate, ${data.remaining || 0} restanti.`)
         }
         if (!responseOk || mode !== 'images' || !migrateAll || !data.processed || !data.remaining || data.blocked) break
-      } while (rounds < 75)
+      } while (rounds < 400)
 
       setActionMessage(responseOk
         ? mode === 'catalog'
@@ -325,9 +334,10 @@ export default function AdminPage() {
           : `Immagini copiate: ${totalReady}. Restanti: ${data.remaining || 0}.`
         : data?.error || 'Sincronizzazione catalogo fallita.')
       await fetchSystemHealth()
-    } catch {
-      setCatalogSyncResult({ ok: false, error: 'Impossibile avviare la sincronizzazione.' })
-      setActionMessage('Impossibile avviare la sincronizzazione del catalogo.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Impossibile avviare la sincronizzazione.'
+      setCatalogSyncResult({ ok: false, error: message })
+      setActionMessage(`Sincronizzazione interrotta: ${message}`)
     }
 
     setCatalogSyncing('')

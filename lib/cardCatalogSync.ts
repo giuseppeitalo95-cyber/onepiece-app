@@ -209,9 +209,19 @@ const migrateOneImage = async (row: RawCard) => {
   }
 }
 
-export const syncCatalogImages = async (requestedLimit = 40) => {
+export const syncCatalogImages = async (requestedLimit = 40, resetFailed = false) => {
   const client = requireServiceClient()
   const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit)))
+
+  if (resetFailed) {
+    const { error: resetError } = await client
+      .from('card_catalog')
+      .update({ image_status: 'pending', image_error: null })
+      .eq('image_status', 'failed')
+      .is('r2_image_url', null)
+    if (resetError) throw new Error(resetError.message)
+  }
+
   const { data, error } = await client
     .from('card_catalog')
     .select('variant_id,source_image_url,image_status')

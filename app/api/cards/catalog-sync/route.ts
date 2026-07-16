@@ -50,10 +50,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!(await authorize(request))) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 
-  const body = await request.json().catch(() => ({})) as { mode?: string; limit?: number }
+  const body = await request.json().catch(() => ({})) as { mode?: string; limit?: number; resetFailed?: boolean }
   try {
     if (body.mode === 'images') {
-      return Response.json(await syncCatalogImages(body.limit || 40))
+      return Response.json(await syncCatalogImages(body.limit || 40, Boolean(body.resetFailed)))
     }
     if (body.mode === 'status') {
       return Response.json({ ok: true, state: await refreshCatalogSyncState() })
