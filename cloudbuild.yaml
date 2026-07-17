@@ -16,7 +16,7 @@ steps:
       - --env
       - R2_PUBLIC_BASE_URL=$_R2_PUBLIC_BASE_URL
 
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
       - run
@@ -44,9 +44,6 @@ steps:
       - --cpu-boost
       - --update-env-vars
       - DEPLOY_GIT_SHA=$COMMIT_SHA,GITHUB_REPO_OWNER=giuseppeitalo95-cyber,GITHUB_REPO_SLUG=onepiece-app,GITHUB_BRANCH=main
-
-images:
-  - europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/onepiece-vault:$COMMIT_SHA
 
 options:
   logging: CLOUD_LOGGING_ONLY
