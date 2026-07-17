@@ -89,6 +89,7 @@ export async function GET(request: Request) {
   const startedSupabase = Date.now()
   const profiles = await countTable(client, 'profiles')
   const supabaseLatencyMs = Date.now() - startedSupabase
+  const isCloudRun = Boolean(process.env.K_SERVICE)
   const [
     cards,
     decks,
@@ -131,7 +132,9 @@ export async function GET(request: Request) {
     probeUrl('https://vision.googleapis.com/$discovery/rest?version=v1'),
     probeUrl('https://status.supabase.com/api/v2/status.json'),
     probeUrl('https://www.cloudflarestatus.com/api/v2/status.json'),
-    probeUrl('https://www.vercel-status.com/api/v2/status.json'),
+    isCloudRun
+      ? Promise.resolve({ online: true, status: 200, latencyMs: 0, response: null })
+      : probeUrl('https://www.vercel-status.com/api/v2/status.json'),
     probeUrl('https://www.githubstatus.com/api/v2/status.json'),
   ])
 
@@ -143,18 +146,20 @@ export async function GET(request: Request) {
   ])
   const supabaseProviderState = supabasePageProbe.online ? providerState(supabasePage?.status?.indicator) : 'degraded'
   const cloudflareProviderState = cloudflarePageProbe.online ? providerState(cloudflarePage?.status?.indicator) : 'degraded'
-  const vercelProviderState = vercelPageProbe.online ? providerState(vercelPage?.status?.indicator) : 'degraded'
+  const hostingProviderState = isCloudRun
+    ? 'online'
+    : vercelPageProbe.online ? providerState(vercelPage?.status?.indicator) : 'degraded'
   const githubProviderState = githubPageProbe.online ? providerState(githubPage?.status?.indicator) : 'degraded'
 
-  const githubOwner = process.env.VERCEL_GIT_REPO_OWNER || 'giuseppeitalo95-cyber'
-  const githubRepo = process.env.VERCEL_GIT_REPO_SLUG || 'onepiece-app'
-  const githubBranch = process.env.VERCEL_GIT_COMMIT_REF || 'main'
+  const githubOwner = process.env.GITHUB_REPO_OWNER || process.env.VERCEL_GIT_REPO_OWNER || 'giuseppeitalo95-cyber'
+  const githubRepo = process.env.GITHUB_REPO_SLUG || process.env.VERCEL_GIT_REPO_SLUG || 'onepiece-app'
+  const githubBranch = process.env.GITHUB_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || 'main'
   const githubProbe = await probeUrl(`https://api.github.com/repos/${githubOwner}/${githubRepo}/commits/${githubBranch}`, {
     headers: { Accept: 'application/vnd.github+json' },
   })
   const githubPayload = githubProbe.response ? await githubProbe.response.json().catch(() => null) : null
   const githubSha = typeof githubPayload?.sha === 'string' ? githubPayload.sha : null
-  const deployedSha = process.env.VERCEL_GIT_COMMIT_SHA || null
+  const deployedSha = process.env.DEPLOY_GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || null
   const deployMatchesGitHub = Boolean(!githubSha || !deployedSha || githubSha.startsWith(deployedSha) || deployedSha.startsWith(githubSha))
   const githubPubliclyReadable = githubProbe.status === 200
 
@@ -177,11 +182,15 @@ export async function GET(request: Request) {
       latencyMs: r2.latencyMs,
     },
     {
-      key: 'vercel',
-      label: 'Vercel',
-      status: vercelProviderState === 'offline' ? 'offline' : !process.env.VERCEL || vercelProviderState === 'degraded' ? 'degraded' : 'online',
-      message: process.env.VERCEL ? `${providerMessage(vercelPage?.status?.description)} · deployment ${deployedSha?.slice(0, 7) || 'attivo'}` : 'Ambiente locale',
-      updatedAt: process.env.VERCEL_ENV || null,
+      key: isCloudRun ? 'cloud-run' : 'vercel',
+      label: isCloudRun ? 'Google Cloud Run' : 'Vercel',
+      status: isCloudRun
+        ? 'online'
+        : hostingProviderState === 'offline' ? 'offline' : !process.env.VERCEL || hostingProviderState === 'degraded' ? 'degraded' : 'online',
+      message: isCloudRun
+        ? `Servizio ${process.env.K_SERVICE} · revisione ${process.env.K_REVISION || 'attiva'}`
+        : process.env.VERCEL ? `${providerMessage(vercelPage?.status?.description)} · deployment ${deployedSha?.slice(0, 7) || 'attivo'}` : 'Ambiente locale',
+      updatedAt: isCloudRun ? process.env.K_REVISION || null : process.env.VERCEL_ENV || null,
     },
     {
       key: 'github',
