@@ -2,6 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
     {
+      "source": "/",
+      "destination": "https://onepiece-vault-877418996348.europe-west1.run.app/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "destination": "https://onepiece-vault-877418996348.europe-west1.run.app/:path*",
       "permanent": true
