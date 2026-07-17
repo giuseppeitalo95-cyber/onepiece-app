@@ -1004,7 +1004,7 @@ export default function Dashboard() {
       return acc
     }, {})
   ).sort((a, b) => b[1] - a[1])
-  const rarityStats = groupByQuantity('rarity').slice(0, 5)
+  const rarityStats = groupByQuantity('rarity')
   const colorCounts = cards.reduce<Record<string, number>>((acc, card) => {
     for (const color of normalizeCardColors(card.card_color)) {
       acc[color] = (acc[color] || 0) + card.quantity
