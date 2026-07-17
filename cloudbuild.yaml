@@ -1,0 +1,54 @@
+steps:
+  - name: gcr.io/k8s-skaffold/pack
+    entrypoint: pack
+    args:
+      - build
+      - europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/onepiece-vault:$COMMIT_SHA
+      - --builder
+      - gcr.io/buildpacks/builder:google-24
+      - --network
+      - cloudbuild
+      - --publish
+      - --env
+      - NEXT_PUBLIC_SUPABASE_URL=$_NEXT_PUBLIC_SUPABASE_URL
+      - --env
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=$_NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      - --env
+      - R2_PUBLIC_BASE_URL=$_R2_PUBLIC_BASE_URL
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - onepiece-vault
+      - --image
+      - europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/onepiece-vault:$COMMIT_SHA
+      - --region
+      - europe-west1
+      - --platform
+      - managed
+      - --min
+      - '0'
+      - --max
+      - '2'
+      - --concurrency
+      - '40'
+      - --cpu
+      - '1'
+      - --memory
+      - 1Gi
+      - --timeout
+      - '300'
+      - --cpu-throttling
+      - --cpu-boost
+      - --update-env-vars
+      - DEPLOY_GIT_SHA=$COMMIT_SHA,GITHUB_REPO_OWNER=giuseppeitalo95-cyber,GITHUB_REPO_SLUG=onepiece-app,GITHUB_BRANCH=main
+
+images:
+  - europe-west1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/onepiece-vault:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s
