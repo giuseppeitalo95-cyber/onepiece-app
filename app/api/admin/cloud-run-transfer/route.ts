@@ -55,13 +55,6 @@ export async function GET(request: Request) {
   }
 
   const values = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key] || '']))
-  const missing = ENV_KEYS.filter(key => !values[key])
-  if (missing.length > 0) {
-    return Response.json({ error: 'Missing environment variables', missing }, {
-      status: 500,
-      headers: { 'Cache-Control': 'no-store' },
-    })
-  }
 
   const encryptionKey = randomBytes(32)
   const iv = randomBytes(12)
