@@ -1,13 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
+  "redirects": [
     {
-      "path": "/api/cardmarket/sync",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/maintenance/cleanup",
-      "schedule": "30 4 * * *"
+      "source": "/:path*",
+      "destination": "https://onepiece-vault-877418996348.europe-west1.run.app/:path*",
+      "permanent": true
     }
   ]
 }

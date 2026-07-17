@@ -232,10 +232,6 @@ export const createBinderShareImage = async (binder: BinderRecord, spreadIndex: 
     ctx.fillText('OPV', 1770, 150)
   }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.75)'
-  ctx.font = '700 27px system-ui, sans-serif'
-  ctx.fillText(window.location.host, 92, 1954)
-
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 0.96))
   if (!blob) throw new Error('Immagine non generata')
   const safeTitle = binder.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'raccoglitore'
