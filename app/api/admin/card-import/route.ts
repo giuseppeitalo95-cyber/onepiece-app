@@ -139,7 +139,11 @@ const probeImage = async (row: PriceRow, folders: string[]) => {
       })
       const contentType = response.headers.get('content-type') || ''
       await response.body?.cancel().catch(() => undefined)
-      if (response.ok && contentType.startsWith('image/')) return imageUrl
+      // Cardmarket's S3 currently returns the literal multer metadata value
+      // instead of image/jpeg, so the HTTP status is the reliable signal here.
+      if (response.ok && (contentType.startsWith('image/') || contentType === 'multerS3.AUTO_CONTENT_TYPE')) {
+        return imageUrl
+      }
     } catch {
       // Il candidato resta selezionabile anche se Cardmarket non espone l'immagine.
     } finally {
