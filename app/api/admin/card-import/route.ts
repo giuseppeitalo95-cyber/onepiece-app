@@ -74,6 +74,11 @@ const CARDMARKET_IMAGE_FOLDER_ALIASES: Record<string, string> = {
   'demo-decks': 'DEMO',
 }
 
+const CARDMARKET_EXPANSION_ALIASES: Record<string, number> = {
+  'promos': 5230,
+  'promos-japanese': 5511,
+}
+
 const getAdmin = async (request: Request) => {
   const client = requireServiceClient()
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
@@ -86,13 +91,17 @@ const getAdmin = async (request: Request) => {
 }
 
 const normalizeBaseCode = (value: unknown) => {
-  const match = String(value || '').trim().toUpperCase().match(/((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})/i)
+  const match = String(value || '').trim().toUpperCase().match(/((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3}|CM-\d+)/i)
   return match?.[1]?.toUpperCase() || ''
 }
 
 const cleanProductName = (value: string) => value
-  .replace(/\s*\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})\)\s*$/i, '')
+  .replace(/\s*\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3}|CM-\d+)\)\s*$/i, '')
   .trim()
+
+const compactProductName = (value: unknown) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '')
 
 const nullableText = (value: unknown, max = 4000) => {
   const text = String(value ?? '').trim()
@@ -173,13 +182,14 @@ const parseCardmarketUrl = (value: unknown) => {
   const setFolder = parts[singlesIndex + 1]
   const productSlug = parts[singlesIndex + 2]
   const cardCode = normalizeBaseCode(productSlug)
-  if (!cardCode) throw new Error('Non riesco a leggere il codice carta dal link Cardmarket.')
   const version = Math.max(1, Number(productSlug.match(/-V(\d+)$/i)?.[1] || 1))
+  const productNameSlug = productSlug.replace(/-V\d+$/i, '')
 
   return {
     normalizedUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles/${encodeURIComponent(setFolder)}/${encodeURIComponent(productSlug)}`,
     setFolder,
     productSlug,
+    productNameSlug,
     cardCode,
     version,
   }
@@ -239,16 +249,49 @@ const analyze = async (body: Record<string, unknown>) => {
   const client = requireServiceClient()
   const parsed = parseCardmarketUrl(body?.url)
 
+  let resolvedCardCode = parsed.cardCode
+  let resolvedPriceRows: PriceRow[] | null = null
+
+  if (!resolvedCardCode) {
+    const expansionId = CARDMARKET_EXPANSION_ALIASES[parsed.setFolder.toLowerCase()]
+    if (!expansionId) {
+      throw new Error('Questa promo non mostra un codice. La sua sezione Cardmarket non e ancora supportata automaticamente.')
+    }
+
+    const { data, error } = await client
+      .from('cardmarket_prices')
+      .select('*')
+      .eq('expansion_id', expansionId)
+      .like('card_id', 'CM-%')
+      .order('product_date_added', { ascending: true, nullsFirst: false })
+      .order('product_id', { ascending: true })
+      .limit(1000)
+    if (error) throw new Error(error.message)
+
+    const wantedName = compactProductName(parsed.productNameSlug)
+    const matchingRows = ((data || []) as PriceRow[])
+      .filter(row => compactProductName(row.clean_name || row.product_name) === wantedName)
+    const metacardId = matchingRows[0]?.metacard_id
+    resolvedPriceRows = metacardId
+      ? matchingRows.filter(row => row.metacard_id === metacardId)
+      : []
+    resolvedCardCode = resolvedPriceRows[0]?.card_id || ''
+
+    if (!resolvedCardCode || resolvedPriceRows.length === 0) {
+      throw new Error('Promo senza numero non ancora sincronizzata. Aggiorna i prezzi Cardmarket dalla pagina Admin e riprova.')
+    }
+  }
+
   const [catalogResult, pricesResult] = await Promise.all([
     client
       .from('card_catalog')
       .select(CATALOG_FIELDS)
-      .eq('base_card_id', parsed.cardCode)
+      .eq('base_card_id', resolvedCardCode)
       .order('variant_id', { ascending: true }),
     client
       .from('cardmarket_prices')
       .select('*')
-      .eq('card_id', parsed.cardCode)
+      .eq('card_id', resolvedCardCode)
       .order('product_date_added', { ascending: true, nullsFirst: false })
       .order('product_id', { ascending: true })
       .limit(40),
@@ -263,12 +306,12 @@ const analyze = async (body: Record<string, unknown>) => {
   if (pricesResult.error) throw new Error(pricesResult.error.message)
 
   const existing = (catalogResult.data || []) as CatalogRow[]
-  const priceRows = (pricesResult.data || []) as PriceRow[]
+  const priceRows = resolvedPriceRows || (pricesResult.data || []) as PriceRow[]
   if (priceRows.length === 0) {
     throw new Error('Cardmarket non ha ancora questo codice nell export sincronizzato. Aggiorna prima i prezzi e riprova.')
   }
 
-  const prefix = parsed.cardCode.split('-')[0]
+  const prefix = resolvedCardCode.split('-')[0]
   const folderAlias = CARDMARKET_IMAGE_FOLDER_ALIASES[parsed.setFolder.toLowerCase()]
   const folders = [...new Set([
     folderAlias,
@@ -281,12 +324,12 @@ const analyze = async (body: Record<string, unknown>) => {
   const selected = candidates[0]
   const orderedExisting = [...existing].sort((a, b) => variantIndex(a.variant_id) - variantIndex(b.variant_id))
   const reference = orderedExisting[Math.min(parsed.version - 1, Math.max(orderedExisting.length - 1, 0))] || orderedExisting[0] || null
-  const proposedVariantId = nextFreeVariantId(parsed.cardCode, existing, parsed.version)
+  const proposedVariantId = nextFreeVariantId(resolvedCardCode, existing, parsed.version)
 
   return {
     ok: true,
     parsed: {
-      card_code: parsed.cardCode,
+      card_code: resolvedCardCode,
       version: parsed.version,
       set_folder: parsed.setFolder,
       cardmarket_url: parsed.normalizedUrl,
@@ -303,7 +346,7 @@ const analyze = async (body: Record<string, unknown>) => {
     })),
     card: {
       variant_id: proposedVariantId,
-      base_card_id: parsed.cardCode,
+      base_card_id: resolvedCardCode,
       name: cleanProductName(selected.product_name),
       rarity: reference?.rarity || '',
       card_color: reference?.card_color || '',

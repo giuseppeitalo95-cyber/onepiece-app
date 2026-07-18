@@ -117,7 +117,7 @@ export const displayCardmarketPrice = (value?: number | null) =>
 
 const baseCardId = (value?: string | null) => {
   const raw = (value || '').trim().toUpperCase()
-  const direct = raw.match(/((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})/i)?.[1]
+  const direct = raw.match(/((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|CM-\d+)/i)?.[1]
   return direct ? direct.toUpperCase() : ''
 }
 
@@ -141,7 +141,7 @@ const parseProductCardId = (name?: string | null) =>
   (name || '').match(/\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})\)/i)?.[1]?.toUpperCase() || ''
 
 const cleanProductName = (name?: string | null) =>
-  (name || '').replace(/\s*\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})\)\s*$/i, '').trim()
+  (name || '').replace(/\s*\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|CM-\d+)\)\s*$/i, '').trim()
 
 const toNumber = (value?: number | string | null) => {
   if (value == null) return null
@@ -456,7 +456,10 @@ export const syncCardmarketExports = async () => {
   const products = (catalog.products || [])
     .map(product => ({
       product,
-      cardId: parseProductCardId(product.name),
+      // A few official promos have no printed card number. Cardmarket still
+      // groups their versions under a stable metacard, which becomes the OPV
+      // identifier so images and prices keep updating like numbered cards.
+      cardId: parseProductCardId(product.name) || (product.idMetacard ? `CM-${product.idMetacard}` : ''),
       cleanName: cleanProductName(product.name)
     }))
     .filter(item => item.cardId)
