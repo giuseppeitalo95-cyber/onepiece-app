@@ -4,12 +4,21 @@ import { assertSafeRemoteImageUrl, isR2Configured, isR2PublicUrl, mirrorCardImag
 export const dynamic = 'force-dynamic'
 
 const imageResponse = async (url: string, fallbackContentType = 'image/webp') => {
+  const hostname = new URL(url).hostname.toLowerCase()
   const response = await fetch(url, {
-    headers: { 'User-Agent': 'OnePieceVault/1.0' },
+    headers: {
+      'User-Agent': 'OnePieceVault/1.0',
+      ...(hostname === 'product-images.s3.cardmarket.com'
+        ? { Referer: 'https://www.cardmarket.com/' }
+        : {}),
+    },
     cache: 'force-cache',
   })
   if (!response.ok) throw new Error(`Immagine non disponibile (${response.status})`)
-  const contentType = response.headers.get('content-type') || fallbackContentType
+  const sourceContentType = response.headers.get('content-type') || ''
+  const cardmarketImage = hostname === 'product-images.s3.cardmarket.com'
+    && sourceContentType === 'multerS3.AUTO_CONTENT_TYPE'
+  const contentType = cardmarketImage ? 'image/jpeg' : sourceContentType || fallbackContentType
   if (!contentType.startsWith('image/')) throw new Error('La sorgente non contiene una immagine')
   const buffer = Buffer.from(await response.arrayBuffer())
   if (buffer.length > 15_000_000) throw new Error('Immagine troppo grande')
