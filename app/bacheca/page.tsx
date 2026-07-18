@@ -44,6 +44,12 @@ type BoardPost = {
   card_rarity: string | null
   binder_id: string | null
   created_at: string
+  binder_group?: Array<{
+    id: string
+    binder_id: string | null
+    title: string
+    created_at: string
+  }>
 }
 
 type CatalogCard = {
@@ -71,6 +77,32 @@ const BOARD_MAX_POSTS = 30
 const BOARD_FETCH_POSTS = 80
 const BOARD_RETENTION_DAYS = PREMIUM_BOARD_POST_DAYS
 const FREE_DUPLICATE_BLOCK_DAYS = 7
+
+const groupConsecutiveBinderPosts = (items: BoardPost[]) => {
+  const grouped: BoardPost[] = []
+
+  for (const post of items) {
+    const previous = grouped[grouped.length - 1]
+    if (post.type === 'binder' && previous?.type === 'binder' && previous.user_id === post.user_id) {
+      const currentGroup = previous.binder_group || [{
+        id: previous.id,
+        binder_id: previous.binder_id,
+        title: previous.title,
+        created_at: previous.created_at,
+      }]
+      previous.binder_group = [...currentGroup, {
+        id: post.id,
+        binder_id: post.binder_id,
+        title: post.title,
+        created_at: post.created_at,
+      }]
+      continue
+    }
+    grouped.push({ ...post })
+  }
+
+  return grouped
+}
 
 const displayCardId = (value?: string | null) =>
   (value || '')
@@ -115,7 +147,7 @@ export default function BachecaPage() {
   const filteredPosts = useMemo(() => {
     const query = boardSearch.trim().toLocaleLowerCase('it-IT')
     if (!query) return posts
-    return posts.filter(post => [post.card_name, post.card_code, post.title, post.message]
+    return posts.filter(post => [post.card_name, post.card_code, post.title, post.message, post.binder_group?.map(item => item.title).join(' ')]
       .some(value => value?.toLocaleLowerCase('it-IT').includes(query)))
   }, [boardSearch, posts])
 
@@ -280,7 +312,7 @@ export default function BachecaPage() {
 
     const visibleSet = new Set(ids)
     setBoardReady(true)
-    setPosts(loadedPosts.filter(post => {
+    const visiblePosts = loadedPosts.filter(post => {
       const profile = fullProfileMap[post.user_id]
       const tier = getPremiumTier(profile, { id: post.user_id })
       const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
@@ -291,7 +323,8 @@ export default function BachecaPage() {
         ? visibleSet.has(post.user_id)
         : visibleSet.has(post.user_id) || tier !== 'free'
       return stillVisible && isVisibleToViewer
-    }).slice(0, BOARD_MAX_POSTS))
+    })
+    setPosts(groupConsecutiveBinderPosts(visiblePosts).slice(0, BOARD_MAX_POSTS))
   }
 
   const cleanupOwnPosts = async (uid: string) => {
@@ -492,10 +525,11 @@ export default function BachecaPage() {
     setDeletingPostId(post.id)
     setStatus('')
 
+    const groupedIds = post.binder_group?.map(item => item.id) || [post.id]
     let query = supabase
       .from('board_posts')
       .delete()
-      .eq('id', post.id)
+      .in('id', groupedIds)
 
     if (!isAdmin) {
       query = query.eq('user_id', userId)
@@ -710,20 +744,25 @@ export default function BachecaPage() {
                           <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${post.type === 'trade' ? 'bg-emerald-300/15 text-emerald-200' : post.type === 'binder' ? 'bg-amber-300/15 text-amber-100' : 'bg-cyan-300/15 text-cyan-100'}`}>
                             {post.type === 'trade' ? 'Vendo' : post.type === 'binder' ? 'Raccoglitore' : 'Cerco'}
                           </span>
-                          <p className="min-w-0 flex-1 text-sm font-black leading-5 text-white sm:text-base">{post.type === 'binder' ? post.message || 'Ha creato un raccoglitore personalizzato' : post.card_name || post.title}</p>
+                          <p className="min-w-0 flex-1 text-sm font-black leading-5 text-white sm:text-base">{post.type === 'binder' ? post.binder_group && post.binder_group.length > 1 ? `Ha creato ${post.binder_group.length} raccoglitori personalizzati` : post.message || 'Ha creato un raccoglitore personalizzato' : post.card_name || post.title}</p>
                         </div>
-                        {post.type === 'binder' && post.binder_id ? (
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/binders/${post.binder_id}`)}
-                            className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-amber-200/20 bg-amber-300/[0.07] p-3 text-left transition hover:border-amber-200/45 hover:bg-amber-300/[0.11] active:scale-[0.99]"
-                          >
-                            <span className="grid h-14 w-11 shrink-0 place-items-center rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg"><BookOpen size={20} /></span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-black text-white">{`"${post.title}"`}</span>
-                              <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e lascia un like.</span>
-                            </span>
-                          </button>
+                        {post.type === 'binder' ? (
+                          <div className="mt-2 space-y-2">
+                            {(post.binder_group || [{ id: post.id, binder_id: post.binder_id, title: post.title, created_at: post.created_at }]).map(item => item.binder_id ? (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => router.push(`/binders/${item.binder_id}`)}
+                                className="flex w-full items-center gap-3 rounded-2xl border border-amber-200/20 bg-amber-300/[0.07] p-3 text-left transition hover:border-amber-200/45 hover:bg-amber-300/[0.11] active:scale-[0.99]"
+                              >
+                                <span className="grid h-12 w-10 shrink-0 place-items-center rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg"><BookOpen size={18} /></span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-black text-white">{`"${item.title}"`}</span>
+                                  <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e lascia un like.</span>
+                                </span>
+                              </button>
+                            ) : null)}
+                          </div>
                         ) : null}
                         {(post.card_name || post.card_code) && (
                           <button

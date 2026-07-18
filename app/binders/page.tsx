@@ -41,6 +41,46 @@ const mapCatalogCard = (value: unknown): BinderCard => {
 
 const messageFromError = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
 
+const fetchCollectionCards = async (userId: string) => {
+  const { data: userCards } = await supabase
+    .from('user_cards')
+    .select('card_id, name, image_url, rarity, card_color, card_cost, card_power')
+    .eq('user_id', userId)
+    .order('name')
+
+  const mapped = (userCards || []).map(mapCatalogCard)
+  const manualIds = [...new Set(mapped.map(card => card.card_id).filter(id => /^CM-\d+/i.test(id)))]
+  const catalogById = new Map<string, BinderCard>()
+
+  for (let index = 0; index < manualIds.length; index += 80) {
+    const { data } = await supabase
+      .from('card_catalog')
+      .select('variant_id, name, rarity, card_color, card_cost, card_power, r2_image_url, source_image_url')
+      .in('variant_id', manualIds.slice(index, index + 80))
+
+    for (const row of data || []) {
+      catalogById.set(String(row.variant_id), mapCatalogCard({
+        card_id: row.variant_id,
+        name: row.name,
+        rarity: row.rarity,
+        card_color: row.card_color,
+        card_cost: row.card_cost,
+        card_power: row.card_power,
+        image_url: row.r2_image_url || row.source_image_url,
+      }))
+    }
+  }
+
+  const seen = new Set<string>()
+  return mapped
+    .map(card => catalogById.get(card.card_id) || card)
+    .filter(card => {
+      if (!card.card_id || seen.has(card.card_id)) return false
+      seen.add(card.card_id)
+      return true
+    })
+}
+
 export default function BindersPage() {
   const router = useRouter()
   const searchRunRef = useRef(0)
@@ -108,19 +148,14 @@ export default function BindersPage() {
         return
       }
 
-      const [{ data: profile }, { data: userCards }] = await Promise.all([
+      const [{ data: profile }, freshCollectionCards] = await Promise.all([
         supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle(),
-        supabase.from('user_cards').select('card_id, name, image_url, rarity, card_color, card_cost, card_power').eq('user_id', session.user.id).order('name'),
+        fetchCollectionCards(session.user.id),
       ])
 
       setUserId(session.user.id)
       setUsername(profile?.username || 'Peppitalo')
-      const seen = new Set<string>()
-      setCollectionCards((userCards || []).map(mapCatalogCard).filter(card => {
-        if (!card.card_id || seen.has(card.card_id)) return false
-        seen.add(card.card_id)
-        return true
-      }))
+      setCollectionCards(freshCollectionCards)
 
       const { data, error } = await supabase
         .from('binders')
@@ -175,6 +210,20 @@ export default function BindersPage() {
   const closeIntro = () => {
     window.localStorage.setItem('opv_binders_intro_seen_v1', '1')
     setIntroOpen(false)
+  }
+
+  const choosePickerSource = (source: PickerSource) => {
+    setPickerSource(source)
+    setFilterColor('all')
+    setFilterRarity('all')
+    setFilterCost('all')
+    setFilterPower('all')
+  }
+
+  const openCardPicker = (page: number, slot: number) => {
+    setPickerSlot({ page, slot })
+    choosePickerSource('collection')
+    if (userId) void fetchCollectionCards(userId).then(setCollectionCards)
   }
 
   const createBinder = async () => {
@@ -383,7 +432,7 @@ export default function BindersPage() {
             </div>
 
             <div className="mt-2 overflow-x-hidden">
-              <BinderBook binder={activeBinder} spreadIndex={spreadIndex} onSpreadChange={setSpreadIndex} viewMode={viewMode} singlePageIndex={singlePageIndex} onSinglePageChange={index => { setSinglePageIndex(index); setSpreadIndex(Math.ceil(index / 2)) }} editable={editing} onSelectSlot={(page, slot) => setPickerSlot({ page, slot })} onRemoveCard={removeCard} onOpenCard={card => setSelectedBinderCard(card)} />
+              <BinderBook binder={activeBinder} spreadIndex={spreadIndex} onSpreadChange={setSpreadIndex} viewMode={viewMode} singlePageIndex={singlePageIndex} onSinglePageChange={index => { setSinglePageIndex(index); setSpreadIndex(Math.ceil(index / 2)) }} editable={editing} onSelectSlot={openCardPicker} onRemoveCard={removeCard} onOpenCard={card => setSelectedBinderCard(card)} />
             </div>
 
             <button type="button" onClick={addPage} className="mx-auto mt-3 flex items-center gap-2 rounded-2xl border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-sm font-black text-cyan-100 transition active:scale-95"><Plus size={17} /> Aggiungi pagina</button>
@@ -446,8 +495,8 @@ export default function BindersPage() {
           <div className="flex max-h-[88dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-white/12 bg-[#163943] shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="flex items-center gap-2 border-b border-white/10 p-3">
               <div className="flex rounded-xl border border-white/10 bg-slate-950/40 p-1">
-                <button type="button" onClick={() => { setPickerSource('collection'); setFilterRarity('all') }} className={`rounded-lg px-3 py-2 text-xs font-black ${pickerSource === 'collection' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Mie carte</button>
-                <button type="button" onClick={() => { setPickerSource('catalog'); setFilterRarity('all') }} className={`rounded-lg px-3 py-2 text-xs font-black ${pickerSource === 'catalog' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Catalogo</button>
+                <button type="button" onClick={() => choosePickerSource('collection')} className={`rounded-lg px-3 py-2 text-xs font-black ${pickerSource === 'collection' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Mie carte</button>
+                <button type="button" onClick={() => choosePickerSource('catalog')} className={`rounded-lg px-3 py-2 text-xs font-black ${pickerSource === 'catalog' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Catalogo</button>
               </div>
               <button type="button" onClick={() => setPickerSlot(null)} className="ml-auto grid h-9 w-9 place-items-center rounded-xl bg-white/[0.06]" aria-label="Chiudi"><X size={17} /></button>
             </div>
