@@ -6,7 +6,9 @@ import { Bell, BookOpen, Megaphone, Search, Send, Trash2, X } from 'lucide-react
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
+import BinderCover from '@/app/components/BinderCover'
 import { supabase } from '@/lib/supabase'
+import { normalizeBinder, type BinderRecord } from '@/lib/binders'
 import { isAdminAccount } from '@/lib/admin'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
@@ -44,12 +46,14 @@ type BoardPost = {
   card_rarity: string | null
   binder_id: string | null
   created_at: string
+  binder?: BinderRecord | null
   binder_group?: Array<{
     id: string
     binder_id: string | null
     title: string
     card_image_url: string | null
     created_at: string
+    binder?: BinderRecord | null
   }>
 }
 
@@ -91,6 +95,7 @@ const groupConsecutiveBinderPosts = (items: BoardPost[]) => {
         title: previous.title,
         card_image_url: previous.card_image_url,
         created_at: previous.created_at,
+        binder: previous.binder,
       }]
       previous.binder_group = [...currentGroup, {
         id: post.id,
@@ -98,6 +103,7 @@ const groupConsecutiveBinderPosts = (items: BoardPost[]) => {
         title: post.title,
         card_image_url: post.card_image_url,
         created_at: post.created_at,
+        binder: post.binder,
       }]
       continue
     }
@@ -327,7 +333,28 @@ export default function BachecaPage() {
         : visibleSet.has(post.user_id) || tier !== 'free'
       return stillVisible && isVisibleToViewer
     })
-    setPosts(groupConsecutiveBinderPosts(visiblePosts).slice(0, BOARD_MAX_POSTS))
+    const binderIds = Array.from(new Set(visiblePosts
+      .filter(post => post.type === 'binder' && post.binder_id)
+      .map(post => post.binder_id as string)))
+    const binderMap = new Map<string, BinderRecord>()
+
+    if (binderIds.length > 0) {
+      const { data: binderRows } = await supabase
+        .from('binders')
+        .select('*')
+        .in('id', binderIds)
+
+      for (const row of binderRows || []) {
+        const binder = normalizeBinder(row)
+        if (binder.id) binderMap.set(binder.id, binder)
+      }
+    }
+
+    const enrichedPosts = visiblePosts.map(post => ({
+      ...post,
+      binder: post.binder_id ? binderMap.get(post.binder_id) || null : null,
+    }))
+    setPosts(groupConsecutiveBinderPosts(enrichedPosts).slice(0, BOARD_MAX_POSTS))
   }
 
   const cleanupOwnPosts = async (uid: string) => {
@@ -751,14 +778,22 @@ export default function BachecaPage() {
                         </div>
                         {post.type === 'binder' ? (
                           <div className="mt-2 space-y-2">
-                            {(post.binder_group || [{ id: post.id, binder_id: post.binder_id, title: post.title, card_image_url: post.card_image_url, created_at: post.created_at }]).map(item => item.binder_id ? (
+                            {(post.binder_group || [{ id: post.id, binder_id: post.binder_id, title: post.title, card_image_url: post.card_image_url, created_at: post.created_at, binder: post.binder }]).map(item => item.binder_id ? (
                               <button
                                 key={item.id}
                                 type="button"
                                 onClick={() => router.push(`/binders/${item.binder_id}`)}
                                 className="flex w-full items-center gap-3 rounded-2xl border border-amber-200/20 bg-amber-300/[0.07] p-3 text-left transition hover:border-amber-200/45 hover:bg-amber-300/[0.11] active:scale-[0.99]"
                               >
-                                <span className="grid h-14 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg">{item.card_image_url ? <img src={item.card_image_url} alt="" className="h-full w-full object-cover" /> : <BookOpen size={18} />}</span>
+                                <span className="grid h-14 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg">
+                                  {item.binder ? (
+                                    <BinderCover binder={item.binder} compact className="h-full w-full border-0 shadow-none" />
+                                  ) : item.card_image_url ? (
+                                    <img src={item.card_image_url} alt="" className="h-full w-full object-cover" />
+                                  ) : (
+                                    <BookOpen size={18} />
+                                  )}
+                                </span>
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-black text-white">{`"${item.title}"`}</span>
                                   <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e lascia un like.</span>
