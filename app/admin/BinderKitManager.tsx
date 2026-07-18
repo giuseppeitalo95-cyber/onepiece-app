@@ -6,11 +6,49 @@ import { supabase } from '@/lib/supabase'
 import type { BinderKit } from '@/lib/binderKits'
 
 const imageFields = [
-  { key: 'closed', label: 'Copertina chiusa', size: '1536 x 2048 px' },
-  { key: 'open', label: 'Raccoglitore aperto', size: '2400 x 1620 px' },
-  { key: 'left', label: 'Mezza pagina sinistra', size: '1440 x 2000 px' },
-  { key: 'right', label: 'Mezza pagina destra', size: '1440 x 2000 px' },
+  { key: 'closed', label: 'Copertina chiusa', hint: 'Immagine verticale' },
+  { key: 'open', label: 'Raccoglitore aperto', hint: 'Immagine orizzontale' },
 ] as const
+
+const CLIENT_IMAGE_TARGETS = {
+  closed: { width: 1536, height: 2048 },
+  open: { width: 2400, height: 1600 },
+} as const
+const CLIENT_MAX_BYTES = 1_500_000
+
+const canvasBlob = (canvas: HTMLCanvasElement, quality: number) => new Promise<Blob>((resolve, reject) => {
+  canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Impossibile ottimizzare questa immagine.')), 'image/webp', quality)
+})
+
+const optimizeForUpload = async (file: File, slot: keyof typeof CLIENT_IMAGE_TARGETS) => {
+  if (!file.type.startsWith('image/')) throw new Error('Seleziona un file immagine.')
+  const image = await createImageBitmap(file)
+  const { width, height } = CLIENT_IMAGE_TARGETS[slot]
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d', { alpha: false })
+  if (!context) {
+    image.close()
+    throw new Error('Il browser non riesce a elaborare questa immagine.')
+  }
+
+  const scale = Math.max(width / image.width, height / image.height)
+  const sourceWidth = width / scale
+  const sourceHeight = height / scale
+  const sourceX = (image.width - sourceWidth) / 2
+  const sourceY = (image.height - sourceHeight) / 2
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height)
+  image.close()
+
+  let quality = 0.92
+  let blob = await canvasBlob(canvas, quality)
+  while (blob.size > CLIENT_MAX_BYTES && quality > 0.72) {
+    quality -= 0.04
+    blob = await canvasBlob(canvas, quality)
+  }
+  return new File([blob], `${slot}.webp`, { type: 'image/webp' })
+}
 
 export default function BinderKitManager() {
   const [kits, setKits] = useState<BinderKit[]>([])
@@ -58,7 +96,12 @@ export default function BinderKitManager() {
       const form = new FormData()
       form.set('title', title.trim())
       if (editing) form.set('id', editing.id)
-      imageFields.forEach(({ key }) => { if (files[key]) form.set(key, files[key]!) })
+      for (const { key, label } of imageFields) {
+        if (!files[key]) continue
+        setMessage(`Ottimizzo ${label.toLocaleLowerCase('it-IT')}...`)
+        form.set(key, await optimizeForUpload(files[key]!, key))
+      }
+      setMessage('Creo il kit e le due metà del raccoglitore...')
       const response = await fetch('/api/binder-kits', {
         method: 'POST',
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
@@ -94,7 +137,7 @@ export default function BinderKitManager() {
     <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.72fr)]">
       <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
-          <div><h2 className="text-xl font-black text-white">{editing ? 'Modifica kit' : 'Crea nuovo kit'}</h2><p className="mt-1 text-xs text-slate-400">PNG, JPG o WebP, massimo 7 MB ciascuna. Le immagini vengono adattate e salvate in WebP su R2.</p></div>
+          <div><h2 className="text-xl font-black text-white">{editing ? 'Modifica kit' : 'Crea nuovo kit'}</h2><p className="mt-1 text-xs text-slate-400">Carica copertina e raccoglitore aperto: proporzioni, compressione e due metà vengono preparate automaticamente.</p></div>
           {editing ? <button type="button" onClick={reset} className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.05]" aria-label="Annulla modifica"><X size={17} /></button> : null}
         </div>
         <input value={title} onChange={event => setTitle(event.target.value)} maxLength={80} placeholder="Titolo del kit" className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-base font-bold text-white outline-none focus:border-cyan-300" />
@@ -105,9 +148,9 @@ export default function BinderKitManager() {
             return (
               <label key={field.key} className="group cursor-pointer rounded-2xl border border-dashed border-slate-600 bg-slate-950/60 p-3 transition hover:border-cyan-300/50">
                 <div className="flex items-center justify-between gap-2"><span className="text-sm font-black text-white">{field.label}</span><ImagePlus size={17} className="text-cyan-200" /></div>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{field.size}</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{field.hint} · qualsiasi dimensione</p>
                 {preview ? <img src={preview} alt="" className={`mt-3 w-full rounded-xl border border-white/10 object-cover ${field.key === 'open' ? 'aspect-[1.48/1]' : 'aspect-[3/4]'}`} /> : <div className={`mt-3 grid place-items-center rounded-xl bg-white/[0.04] text-xs text-slate-500 ${field.key === 'open' ? 'aspect-[1.48/1]' : 'aspect-[3/4]'}`}>Seleziona immagine</div>}
-                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => setFiles(current => ({ ...current, [field.key]: event.target.files?.[0] || null }))} />
+                <input type="file" accept="image/*" className="hidden" onChange={event => setFiles(current => ({ ...current, [field.key]: event.target.files?.[0] || null }))} />
               </label>
             )
           })}

@@ -787,7 +787,7 @@ export default function BachecaPage() {
                               >
                                 <span className="grid h-14 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg">
                                   {item.binder ? (
-                                    <BinderCover binder={item.binder} compact className="h-full w-full border-0 shadow-none" />
+                                    <BinderCover binder={item.binder} compact showDetails={false} className="h-full w-full border-0 shadow-none" />
                                   ) : item.card_image_url ? (
                                     <img src={item.card_image_url} alt="" className="h-full w-full object-cover" />
                                   ) : (
