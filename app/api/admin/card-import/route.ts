@@ -52,6 +52,20 @@ type PriceRow = {
 
 const CATALOG_FIELDS = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,source_image_url,r2_image_url,cardmarket_product_id,cardmarket_url,is_manual'
 
+// Cardmarket uses descriptive slugs in product URLs but short expansion
+// abbreviations in its image archive.
+const CARDMARKET_IMAGE_FOLDER_ALIASES: Record<string, string> = {
+  'unnumbered-promos': 'UP',
+  'judge-promos': 'JDG',
+  'special-tournament-promos': 'STP',
+  'promos': 'P',
+  'reprints': 'R',
+  'one-piece-products': 'OPPR',
+  'premium-bandai-products': 'PB-XX',
+  'mini-promo-cards': 'MINI',
+  'demo-decks': 'DEMO',
+}
+
 const getAdmin = async (request: Request) => {
   const client = requireServiceClient()
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
@@ -203,11 +217,13 @@ const analyze = async (body: Record<string, unknown>) => {
   }
 
   const prefix = parsed.cardCode.split('-')[0]
+  const folderAlias = CARDMARKET_IMAGE_FOLDER_ALIASES[parsed.setFolder.toLowerCase()]
   const folders = [...new Set([
+    folderAlias,
     parsed.setFolder,
     parsed.setFolder.replace(/[^a-z0-9]/gi, ''),
     prefix,
-  ])]
+  ].filter((folder): folder is string => Boolean(folder)))]
   const imageUrls = await Promise.all(priceRows.map(row => probeImage(row, folders)))
   const imageReadyRows = priceRows
     .map((row, index) => ({ row, imageUrl: imageUrls[index] }))
