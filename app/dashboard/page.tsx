@@ -165,7 +165,6 @@ const parseCollectionSet = (cardId: string) => {
 }
 
 export default function Dashboard() {
-  const [addOpen, setAddOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState<UserCard | null>(null)
   const router = useRouter()
 
@@ -184,6 +183,11 @@ export default function Dashboard() {
   const [catalogSelectedCard, setCatalogSelectedCard] = useState<CatalogCard | null>(null)
   const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null)
   const [catalogMessage, setCatalogMessage] = useState('')
+  const [missingReportOpen, setMissingReportOpen] = useState(false)
+  const [missingCardCode, setMissingCardCode] = useState('')
+  const [missingCardVariant, setMissingCardVariant] = useState('')
+  const [missingCardDescription, setMissingCardDescription] = useState('')
+  const [missingReportSubmitting, setMissingReportSubmitting] = useState(false)
   const catalogSearchRunRef = useRef(0)
   const [livePrice, setLivePrice] = useState<number | null>(null)
   const [livePriceLoading, setLivePriceLoading] = useState(false)
@@ -205,14 +209,14 @@ export default function Dashboard() {
   const detailRunRef = useRef(0)
 
  useEffect(() => {
-  if (addOpen || selectedCard || catalogOpen || analyticsOpen || soldOpen || sellingCard) {
+  if (selectedCard || catalogOpen || analyticsOpen || soldOpen || sellingCard) {
     document.body.style.overflow = 'hidden'
     document.documentElement.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = 'auto'
     document.documentElement.style.overflow = 'auto'
   }
-}, [addOpen, selectedCard, catalogOpen, analyticsOpen, soldOpen, sellingCard])
+}, [selectedCard, catalogOpen, analyticsOpen, soldOpen, sellingCard])
 
   useEffect(() => {
     const load = async () => {
@@ -331,9 +335,50 @@ export default function Dashboard() {
     return () => clearTimeout(timeout)
   }, [catalogOpen, catalogQuery])
 
-  const refreshAfterAdd = async () => {
-    setAddOpen(false)
-    if (userId) await loadCards(userId)
+  const closeCatalog = () => {
+    setCatalogOpen(false)
+    setCatalogSelectedCard(null)
+    setLivePrice(null)
+    setMissingReportOpen(false)
+  }
+
+  const submitMissingCardReport = async () => {
+    if (!missingCardCode.trim() || !missingCardVariant.trim()) {
+      setCatalogMessage('Compila codice carta e tipo/variante.')
+      return
+    }
+
+    setMissingReportSubmitting(true)
+    setCatalogMessage('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const response = await fetch('/api/cards/report-missing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          card_code: missingCardCode.trim(),
+          card_variant: missingCardVariant.trim(),
+          description: missingCardDescription.trim(),
+        }),
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || 'Errore invio segnalazione')
+
+      setCatalogMessage('Segnalazione inviata. Grazie!')
+      setMissingCardCode('')
+      setMissingCardVariant('')
+      setMissingCardDescription('')
+      setMissingReportOpen(false)
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : 'Errore durante l\'invio. Riprova tra poco.')
+    } finally {
+      setMissingReportSubmitting(false)
+    }
   }
 
   const formatPrice = (value?: number | null) =>
@@ -1082,17 +1127,6 @@ export default function Dashboard() {
                     <Archive size={17} />
                     <span className="hidden sm:inline">Vendute</span>
                   </button>
-                  <button
-                    onClick={() => {
-                      setCatalogOpen(true)
-                      setCatalogMessage('')
-                    }}
-                    className="flex h-11 items-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 sm:px-4"
-                  >
-                    <Search size={17} />
-                    <span className="hidden sm:inline">Cerca carta non posseduta</span>
-                    <span className="sm:hidden">Catalogo</span>
-                  </button>
                 </div>
               </div>
 
@@ -1268,7 +1302,10 @@ export default function Dashboard() {
       {/* ADD BUTTON */}
       <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 pointer-events-none sm:bottom-28">
         <button
-          onClick={() => setAddOpen(true)}
+          onClick={() => {
+            setCatalogOpen(true)
+            setCatalogMessage('')
+          }}
           className="pointer-events-auto group grid h-16 w-16 place-items-center rounded-full border border-cyan-200/50 bg-gradient-to-r from-cyan-300 to-rose-300 text-slate-950 shadow-[0_18px_44px_rgba(0,0,0,0.45)] transition hover:scale-[1.04] hover:shadow-cyan-950/40 active:scale-95"
           aria-label="Aggiungi carta"
         >
@@ -1280,9 +1317,7 @@ export default function Dashboard() {
     className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4"
     onClick={(event) => {
       if (event.target === event.currentTarget) {
-        setCatalogOpen(false)
-        setCatalogSelectedCard(null)
-        setLivePrice(null)
+        closeCatalog()
       }
     }}
   >
@@ -1290,7 +1325,57 @@ export default function Dashboard() {
       className="flex h-[88dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl shadow-black/50 sm:h-[84vh] sm:w-full"
       onClick={(event) => event.stopPropagation()}
     >
-      <div className="flex items-center gap-2 border-b border-slate-800 p-3">
+      <div className="border-b border-slate-800 p-3">
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-white">Carta mancante?</p>
+            <p className="truncate text-xs text-slate-400">Segnalala e la aggiungeremo al catalogo.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMissingReportOpen(current => !current)
+              setCatalogMessage('')
+            }}
+            className="shrink-0 rounded-xl bg-amber-300 px-3 py-2 text-xs font-black text-slate-950 transition active:scale-95"
+          >
+            {missingReportOpen ? 'Chiudi' : 'Segnalala'}
+          </button>
+        </div>
+
+        {missingReportOpen && (
+          <div className="mb-3 grid gap-2 rounded-2xl border border-amber-300/20 bg-slate-900/90 p-3 sm:grid-cols-2">
+            <input
+              value={missingCardCode}
+              onChange={event => setMissingCardCode(event.target.value.toUpperCase())}
+              placeholder="Codice, es. OP16-056"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300"
+            />
+            <input
+              value={missingCardVariant}
+              onChange={event => setMissingCardVariant(event.target.value)}
+              placeholder="Tipo e variante, es. SR parallel winner"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300"
+            />
+            <textarea
+              value={missingCardDescription}
+              onChange={event => setMissingCardDescription(event.target.value)}
+              placeholder="Descrizione (opzionale)"
+              rows={2}
+              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300 sm:col-span-2"
+            />
+            <button
+              type="button"
+              onClick={submitMissingCardReport}
+              disabled={missingReportSubmitting}
+              className="rounded-xl bg-amber-300 px-3 py-2.5 text-sm font-black text-slate-950 transition active:scale-[0.98] disabled:opacity-60 sm:col-span-2"
+            >
+              {missingReportSubmitting ? 'Invio...' : 'Invia segnalazione'}
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
         <label className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
@@ -1302,16 +1387,13 @@ export default function Dashboard() {
           />
         </label>
         <button
-          onClick={() => {
-            setCatalogOpen(false)
-            setCatalogSelectedCard(null)
-            setLivePrice(null)
-          }}
+          onClick={closeCatalog}
           className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800 text-slate-200"
           aria-label="Chiudi catalogo"
         >
           <X size={18} />
         </button>
+        </div>
       </div>
 
       {catalogMessage && (
@@ -1907,42 +1989,6 @@ export default function Dashboard() {
 
   </div>
 )}
-      {/* MODAL */}
-      
-      {addOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4 overflow-hidden"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              refreshAfterAdd()
-            }
-          }}
-          onTouchMove={(event) => event.preventDefault()}
-        >
-
-          
-<div className="relative w-full max-w-5xl h-[85vh] bg-slate-900 rounded-xl overflow-hidden border border-slate-700 flex flex-col">
-            <button
-              onClick={refreshAfterAdd}
-              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 bg-black/80 hover:bg-black/95 p-2 rounded-full transition flex-shrink-0 text-white"
-            >
-              ✕
-            </button>
-
-            <iframe
-              title="add-card-form"
-              src="/add-card"
-              className="w-full flex-1 min-h-0"
-              style={{
-                display: 'block',
-                border: 'none',
-                overflow: 'hidden'
-              }}
-            />
-          </div>
-        </div>
-      )}
-
     </div>
   )
 }
