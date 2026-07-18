@@ -538,7 +538,7 @@ export default function Dashboard() {
           candidate.id
         ].map(compactCardCode)
         return ids.includes(wanted)
-      }) || candidates[0]
+      })
 
       if (!detail) return null
 
@@ -565,6 +565,7 @@ export default function Dashboard() {
   }
 
   const needsDetailBackfill = (card: UserCard) =>
+    !/^CM-\d+/i.test(card.card_id) && (
     !card.name ||
     card.name === 'Unknown' ||
     !card.image_url ||
@@ -575,7 +576,7 @@ export default function Dashboard() {
     !card.card_type ||
     card.card_type === 'Unknown' ||
     card.card_cost == null ||
-    card.card_power == null
+    card.card_power == null)
 
   const backfillMissingCardDetails = async (uid: string, cardsToBackfill: UserCard[]) => {
     const targets = cardsToBackfill.filter(needsDetailBackfill).slice(0, 120)

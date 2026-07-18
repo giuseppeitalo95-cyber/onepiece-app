@@ -1,4 +1,4 @@
-import { getAllCards, getCatalogCardsByBaseIds, type RawCard } from '@/lib/cardData'
+import { getAllCards, getCatalogCardsByBaseIds, getCatalogCardsByVariantIds, type RawCard } from '@/lib/cardData'
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
@@ -22,6 +22,8 @@ const baseCode = (value: string) => {
 
 const canonicalBaseId = (value: string) => {
   const raw = (value || '').trim().toUpperCase().replace(/\s+/g, '')
+  const manualMatch = raw.match(/^(CM-\d+)(?:_?P\d+)?$/i)
+  if (manualMatch) return manualMatch[1].toUpperCase()
   const match = raw.match(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}|P|DON)-?(\d{3})(?:_?P\d+)?$/i)
   return match ? `${match[1].toUpperCase()}-${match[2]}` : null
 }
@@ -178,8 +180,12 @@ export async function POST(req: Request) {
       : []
     const baseIds = ids.map(canonicalBaseId).filter((value: string | null): value is string => Boolean(value))
 
-    if (baseIds.length === 0) return Response.json([])
-    return Response.json(uniqueCards(await loadCardsByBaseIds(baseIds), 400))
+    if (ids.length === 0) return Response.json([])
+    const [exactCards, familyCards] = await Promise.all([
+      getCatalogCardsByVariantIds(ids),
+      baseIds.length > 0 ? loadCardsByBaseIds(baseIds) : Promise.resolve([]),
+    ])
+    return Response.json(uniqueCards([...exactCards, ...familyCards], 400))
   } catch (error) {
     console.error('Batch card lookup error:', error)
     return Response.json({ error: 'API error' }, { status: 500 })

@@ -284,6 +284,26 @@ export const getCatalogCardsByBaseIds = async (values: string[]) => {
   return rows.map(fromCatalogRow)
 }
 
+export const getCatalogCardsByVariantIds = async (values: string[]) => {
+  const client = requireServiceClient()
+  const variantIds = [...new Set(values
+    .map(value => String(value || '').trim())
+    .filter(Boolean))]
+  const rows: RawCard[] = []
+
+  for (let index = 0; index < variantIds.length; index += 80) {
+    const { data, error } = await client
+      .from('card_catalog')
+      .select(CATALOG_SELECT)
+      .in('variant_id', variantIds.slice(index, index + 80))
+
+    if (error) throw new Error(`Catalogo Supabase non disponibile: ${error.message}`)
+    rows.push(...(data || []))
+  }
+
+  return rows.map(fromCatalogRow)
+}
+
 export const clearCardCache = () => {
   cardCache = null
 }
