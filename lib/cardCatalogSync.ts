@@ -157,8 +157,15 @@ export const syncCardCatalog = async () => {
   }
 
   const catalogRows = [...canonical.values()].map(({ raw, normalized }) => canonicalRow(raw, normalized))
+  const { data: manualRows, error: manualError } = await requireServiceClient()
+    .from('card_catalog')
+    .select('variant_id')
+    .eq('is_manual', true)
+  if (manualError && !/is_manual/i.test(manualError.message)) throw new Error(manualError.message)
+  const protectedVariantIds = new Set((manualRows || []).map(row => String(row.variant_id)))
+  const sourceCatalogRows = catalogRows.filter(row => !protectedVariantIds.has(String(row.variant_id)))
   const sourceRowCount = await upsertBatches('card_catalog_sources', sourceRows, 'source_key')
-  const catalogRowCount = await upsertBatches('card_catalog', catalogRows, 'variant_id')
+  const catalogRowCount = await upsertBatches('card_catalog', sourceCatalogRows, 'variant_id')
   clearCardCache()
 
   const state = await refreshCatalogSyncState({

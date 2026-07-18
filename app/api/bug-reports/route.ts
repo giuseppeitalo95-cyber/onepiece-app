@@ -1,27 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
-import webPush from 'web-push'
-import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
+import { isAdminAccount } from '@/lib/admin'
+import { notifyAdmins } from '@/lib/adminPush'
 import { validateUserText } from '@/lib/textModeration'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:giuseppeitalo95@gmail.com'
-
-type PushSubscriptionRow = {
-  id: string
-  subscription: webPush.PushSubscription
-}
-
-type PushNotifyResult = {
-  configured: boolean
-  adminIds: string[]
-  subscriptions: number
-  sent: number
-  failures: string[]
-}
-
 const db = () => {
   if (!SERVICE_ROLE_KEY) return null
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -45,70 +28,6 @@ const getUser = async (request: Request) => {
     : { data: null }
 
   return { user, profile, error: null }
-}
-
-const configureWebPush = () => {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return false
-  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-  return true
-}
-
-const notifyAdmins = async (title: string, body: string): Promise<PushNotifyResult> => {
-  const client = db()
-  const empty = { configured: false, adminIds: [], subscriptions: 0, sent: 0, failures: [] }
-  if (!client || !configureWebPush()) return empty
-
-  const adminIds = new Set<string>([ADMIN_ACCOUNT.id])
-
-  try {
-    const { data: usersData } = await client.auth.admin.listUsers()
-    usersData?.users?.forEach(user => {
-      if ((user.email || '').toLowerCase() === ADMIN_ACCOUNT.email) adminIds.add(user.id)
-    })
-  } catch {
-    // Keep bug reports working even if auth admin lookup is temporarily unavailable.
-  }
-
-  try {
-    const { data: profileAdmins } = await client
-      .from('profiles')
-      .select('id, username')
-      .or(`id.eq.${ADMIN_ACCOUNT.id},username.ilike.${ADMIN_ACCOUNT.username}`)
-    ;(profileAdmins || []).forEach(profile => {
-      if (profile.id) adminIds.add(profile.id)
-    })
-  } catch {
-    // The fixed admin id above is still enough when profiles cannot be read.
-  }
-
-  const { data: subscriptions } = await client
-    .from('push_subscriptions')
-    .select('id, subscription')
-    .in('user_id', [...adminIds])
-
-  const payload = JSON.stringify({ title, body, url: '/admin' })
-  let sent = 0
-  const failures: string[] = []
-  await Promise.all(((subscriptions || []) as PushSubscriptionRow[]).map(async item => {
-    try {
-      await webPush.sendNotification(item.subscription, payload)
-      sent += 1
-    } catch (error: any) {
-      const statusCode = Number(error?.statusCode || 0)
-      failures.push(String(statusCode || error?.message || 'send_failed'))
-      if (statusCode === 404 || statusCode === 410) {
-        await client.from('push_subscriptions').delete().eq('id', item.id)
-      }
-    }
-  }))
-
-  return {
-    configured: true,
-    adminIds: [...adminIds],
-    subscriptions: subscriptions?.length || 0,
-    sent,
-    failures
-  }
 }
 
 export async function GET(request: Request) {

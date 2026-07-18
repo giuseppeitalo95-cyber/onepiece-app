@@ -6,6 +6,7 @@ import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
+import CardmarketCardImporter from './CardmarketCardImporter'
 
 type ProfileItem = {
   id: string
@@ -23,6 +24,9 @@ type MissingCardRequest = {
   card_name: string
   card_op: string
   card_number: string
+  card_code?: string | null
+  card_variant?: string | null
+  description?: string | null
   status?: string
   reported_by?: string
   reporter_username?: string | null
@@ -188,7 +192,7 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'announcements' | 'reports' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
 
 const formatBytes = (bytes?: number | null) => {
   const value = Number(bytes || 0)
@@ -658,6 +662,9 @@ export default function AdminPage() {
         card_name,
         card_op,
         card_number,
+        card_code,
+        card_variant,
+        description,
         status,
         reported_by,
         created_at,
@@ -967,6 +974,7 @@ export default function AdminPage() {
     home: 'Impostazioni Admin',
     announcements: 'Popup e annunci',
     reports: 'Segnalazioni',
+    catalog: 'Catalogo carte',
     analytics: 'Statistiche',
     services: 'Servizi',
     status: 'Status',
@@ -978,6 +986,7 @@ export default function AdminPage() {
   const adminSections = [
     { key: 'announcements' as const, title: 'Popup e annunci', description: 'Pubblica aggiornamenti visibili una sola volta', icon: Megaphone, count: announcements.filter(item => item.is_active).length, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
+    { key: 'catalog' as const, title: 'Catalogo carte', description: 'Importa varianti tramite link Cardmarket', icon: Database, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'status' as const, title: 'Status', description: 'Stato API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
@@ -1179,6 +1188,12 @@ export default function AdminPage() {
           </div>
         ) : null}
 
+        {activeSection === 'catalog' ? (
+          <div className="mt-6">
+            <CardmarketCardImporter />
+          </div>
+        ) : null}
+
         <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-3">
@@ -1261,8 +1276,9 @@ export default function AdminPage() {
                 <div key={request.id} className="rounded-3xl border border-slate-800/70 bg-slate-950/80 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{request.card_name}</p>
-                      <p className="text-xs text-slate-400">OP: {request.card_op} • Numero: {request.card_number}</p>
+                      <p className="text-sm font-semibold text-white">{request.card_code || `${request.card_op}-${request.card_number}`}</p>
+                      <p className="mt-1 text-xs text-slate-300">{request.card_variant || request.card_name}</p>
+                      {request.description ? <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-400">{request.description}</p> : null}
                     </div>
                     <span className="rounded-full bg-amber-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-amber-200">
                       {request.status === 'resolved' ? 'Risolto' : 'Nuova'}

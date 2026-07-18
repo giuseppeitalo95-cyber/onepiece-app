@@ -15,6 +15,32 @@ import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { validateUserText } from '@/lib/textModeration'
 
+type AdminNotice = {
+  status?: string
+  created_at?: string
+  reporter_username?: string
+  reporter_email?: string
+  title?: string
+  message?: string
+  card_code?: string
+  card_op?: string
+  card_variant?: string
+  card_name?: string
+  kind: 'bug' | 'card'
+}
+
+const readAdminNotices = (payload: unknown, kind: AdminNotice['kind']) => {
+  if (!payload || typeof payload !== 'object') return []
+  const reports = (payload as { reports?: unknown }).reports
+  if (!Array.isArray(reports)) return []
+
+  return reports.flatMap((item): AdminNotice[] => {
+    if (!item || typeof item !== 'object') return []
+    const report = item as Omit<AdminNotice, 'kind'>
+    return report.status === 'resolved' ? [] : [{ ...report, kind }]
+  })
+}
+
 export default function Topbar() {
   const router = useRouter()
   const pathname = usePathname()
@@ -161,12 +187,22 @@ export default function Topbar() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) return
 
-      const res = await fetch('/api/bug-reports', {
-        headers: { Authorization: `Bearer ${session.access_token}` }
-      }).catch(() => null)
-      const data = await res?.json().catch(() => null)
-      if (!cancelled && data?.ok && Array.isArray(data.reports)) {
-        const unresolvedReports = data.reports.filter((report: any) => report.status !== 'resolved')
+      const headers = { Authorization: `Bearer ${session.access_token}` }
+      const [bugResponse, cardResponse] = await Promise.all([
+        fetch('/api/bug-reports', { headers }).catch(() => null),
+        fetch('/api/cards/report-missing', { headers }).catch(() => null),
+      ])
+      const [bugData, cardData] = await Promise.all([
+        bugResponse?.json().catch(() => null),
+        cardResponse?.json().catch(() => null),
+      ])
+      const bugPayload = bugData as { ok?: boolean } | null | undefined
+      const cardPayload = cardData as { ok?: boolean } | null | undefined
+      if (!cancelled && (bugPayload?.ok || cardPayload?.ok)) {
+        const unresolvedBugs = readAdminNotices(bugData, 'bug')
+        const unresolvedCards = readAdminNotices(cardData, 'card')
+        const unresolvedReports = [...unresolvedBugs, ...unresolvedCards]
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
         const nextCount = unresolvedReports.length
         const previousCount = bugUnreadRef.current
         setBugUnread(nextCount)
@@ -175,8 +211,10 @@ export default function Topbar() {
         if (previousCount !== null && nextCount > previousCount) {
           const latest = unresolvedReports[0]
           void showBrowserNotification(
-            'Nuova segnalazione bug',
-            `${latest?.reporter_username || latest?.reporter_email || 'Utente'}: ${latest?.title || latest?.message || 'Nuovo bug'}`,
+            latest?.kind === 'card' ? 'Nuova carta assente' : 'Nuova segnalazione bug',
+            latest?.kind === 'card'
+              ? `${latest?.card_code || latest?.card_op || 'Carta'} · ${latest?.card_variant || latest?.card_name || 'Variante non indicata'}`
+              : `${latest?.reporter_username || latest?.reporter_email || 'Utente'}: ${latest?.title || latest?.message || 'Nuovo bug'}`,
             '/admin'
           )
         }

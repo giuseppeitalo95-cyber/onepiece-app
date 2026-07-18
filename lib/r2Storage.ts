@@ -129,6 +129,7 @@ export const assertSafeRemoteImageUrl = (value: string) => {
     || hostname.endsWith('.onepiece-cardgame.com')
     || hostname === 'optcgapi.com'
     || hostname.endsWith('.optcgapi.com')
+    || hostname === 'product-images.s3.cardmarket.com'
     || hostname.endsWith('.supabase.co')
     || hostname.endsWith('.r2.dev')
   if (!allowed) throw new Error('Sorgente immagine non autorizzata')
@@ -178,8 +179,14 @@ const downloadAndCompressImage = async (sourceUrl: string) => {
   const timeout = setTimeout(() => controller.abort(), 10_000)
 
   try {
+    const hostname = new URL(sourceUrl).hostname.toLowerCase()
     const response = await fetch(sourceUrl, {
-      headers: { 'User-Agent': 'OnePieceVault/1.0' },
+      headers: {
+        'User-Agent': 'OnePieceVault/1.0',
+        ...(hostname === 'product-images.s3.cardmarket.com'
+          ? { Referer: 'https://www.cardmarket.com/' }
+          : {}),
+      },
       signal: controller.signal,
       cache: 'no-store',
     })

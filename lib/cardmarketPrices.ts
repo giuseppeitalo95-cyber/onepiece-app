@@ -37,6 +37,7 @@ type OptcgCard = {
   rarity?: string | null
   market_price?: number | string | null
   inventory_price?: number | string | null
+  source?: string | null
 }
 
 type VariantReference = {
@@ -203,7 +204,25 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   if (!wantedCardId && !wantedName) return null
 
   let rows: PriceRow[] = []
-  if (wantedCardId) {
+  const exactVariantId = String(input.cardId || '').trim()
+  if (exactVariantId) {
+    const { data: mappedCard } = await supabase
+      .from('card_catalog')
+      .select('cardmarket_product_id')
+      .eq('variant_id', exactVariantId)
+      .maybeSingle()
+    const mappedProductId = Number(mappedCard?.cardmarket_product_id || 0)
+    if (mappedProductId > 0) {
+      const { data: exactPrice } = await supabase
+        .from('cardmarket_prices')
+        .select('*')
+        .eq('product_id', mappedProductId)
+        .maybeSingle()
+      if (exactPrice) rows = [exactPrice as PriceRow]
+    }
+  }
+
+  if (rows.length === 0 && wantedCardId) {
     const { data, error } = await supabase
       .from('cardmarket_prices')
       .select('*')
@@ -285,6 +304,7 @@ const getVariantReferences = async () => {
   const staged = new Map<string, VariantReference[]>()
 
   for (const card of cards) {
+    if (card.source === 'manual_admin') continue
     const imageId = card.card_image_id || card.card_id || card.card_set_id || card.base_card_id || ''
     const cardId = baseCardId(imageId)
     const price = toNumber(card.market_price) ?? toNumber(card.inventory_price)

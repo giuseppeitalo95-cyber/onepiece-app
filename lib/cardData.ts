@@ -6,7 +6,7 @@ export type RawCard = Record<string, any>
 
 const CACHE_DURATION_MS = 15 * 60 * 1000
 const PAGE_SIZE = 1000
-const CATALOG_SELECT = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,market_price,inventory_price,source,source_image_url,r2_image_url,image_status'
+const CATALOG_SELECT = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,market_price,inventory_price,source,source_image_url,r2_image_url,image_status,cardmarket_product_id,cardmarket_url,is_manual'
 
 let cardCache: {
   expiresAt: number
@@ -234,6 +234,9 @@ const fromCatalogRow = (row: RawCard) => {
     sub_types: row.sub_types || '',
     source: row.source || 'catalog',
     image_status: row.image_status || 'pending',
+    cardmarket_product_id: row.cardmarket_product_id == null ? null : Number(row.cardmarket_product_id),
+    cardmarket_url: row.cardmarket_url || null,
+    is_manual: Boolean(row.is_manual),
   }
 }
 

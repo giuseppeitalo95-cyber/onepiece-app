@@ -48,9 +48,9 @@ export default function AddCard() {
   const [loading, setLoading] = useState(false)
   const [addingId, setAddingId] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
-  const [reportCardName, setReportCardName] = useState('')
-  const [reportCardOp, setReportCardOp] = useState('')
-  const [reportCardNumber, setReportCardNumber] = useState('')
+  const [reportCardCode, setReportCardCode] = useState('')
+  const [reportCardVariant, setReportCardVariant] = useState('')
+  const [reportDescription, setReportDescription] = useState('')
   const [reportStatus, setReportStatus] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [selectedCard, setSelectedCard] = useState<Card | null>(null)
@@ -198,8 +198,8 @@ useEffect(() => {
   }
 
   const submitMissingCardReport = async () => {
-    if (!reportCardName.trim() || !reportCardOp.trim() || !reportCardNumber.trim()) {
-      setReportStatus('Compila tutti i campi per inviare la segnalazione.')
+    if (!reportCardCode.trim() || !reportCardVariant.trim()) {
+      setReportStatus('Compila codice carta e tipo/variante.')
       return
     }
 
@@ -207,29 +207,33 @@ useEffect(() => {
     setReportStatus('')
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
       const response = await fetch('/api/cards/report-missing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
-          card_name: reportCardName.trim(),
-          card_op: reportCardOp.trim(),
-          card_number: reportCardNumber.trim(),
-          user_id: userId,
+          card_code: reportCardCode.trim(),
+          card_variant: reportCardVariant.trim(),
+          description: reportDescription.trim(),
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Errore invio segnalazione')
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || 'Errore invio segnalazione')
       }
 
       setReportStatus('Segnalazione inviata! Grazie per aver aiutato a migliorare il database.')
       setShowReportForm(false)
-      setReportCardName('')
-      setReportCardOp('')
-      setReportCardNumber('')
+      setReportCardCode('')
+      setReportCardVariant('')
+      setReportDescription('')
     } catch (error) {
       console.error('Report error', error)
-      setReportStatus('Errore durante l\'invio. Riprova tra poco.')
+      setReportStatus(error instanceof Error ? error.message : 'Errore durante l\'invio. Riprova tra poco.')
     }
 
     setReportSubmitting(false)
@@ -267,24 +271,25 @@ useEffect(() => {
 
         {showReportForm && (
           <div className="mt-4 space-y-3 rounded-3xl border border-amber-300/20 bg-slate-950/90 p-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3">
               <input
-                value={reportCardName}
-                onChange={(e) => setReportCardName(e.target.value)}
-                placeholder="Nome carta"
+                value={reportCardCode}
+                onChange={(e) => setReportCardCode(e.target.value.toUpperCase())}
+                placeholder="Codice carta, es. OP16-056"
                 className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
               />
               <input
-                value={reportCardOp}
-                onChange={(e) => setReportCardOp(e.target.value)}
-                placeholder="OP della carta"
+                value={reportCardVariant}
+                onChange={(e) => setReportCardVariant(e.target.value)}
+                placeholder="Tipo carta e variante, es. SR parallel winner"
                 className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
               />
-              <input
-                value={reportCardNumber}
-                onChange={(e) => setReportCardNumber(e.target.value)}
-                placeholder="Numero carta"
-                className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
+              <textarea
+                value={reportDescription}
+                onChange={(e) => setReportDescription(e.target.value)}
+                placeholder="Descrizione (opzionale)"
+                rows={3}
+                className="w-full resize-y rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-white outline-none"
               />
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
