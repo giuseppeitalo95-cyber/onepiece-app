@@ -24,10 +24,18 @@ type CatalogRow = {
   card_text: string | null
   set_name: string | null
   sub_types: string | null
+  market_price: number | null
+  inventory_price: number | null
+  source: string | null
+  raw_data: Record<string, unknown> | null
   source_image_url: string | null
   r2_image_url: string | null
+  r2_storage_key: string | null
+  image_bytes: number | null
   cardmarket_product_id: number | null
   cardmarket_url: string | null
+  manual_price_override: number | null
+  manual_price_updated_at: string | null
   is_manual: boolean | null
 }
 
@@ -50,7 +58,7 @@ type PriceRow = {
   synced_at: string
 }
 
-const CATALOG_FIELDS = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,source_image_url,r2_image_url,cardmarket_product_id,cardmarket_url,is_manual'
+const CATALOG_FIELDS = 'variant_id,card_id,base_card_id,name,rarity,card_color,card_type,card_cost,card_power,card_counter,life,attribute,card_text,set_name,sub_types,market_price,inventory_price,source,raw_data,source_image_url,r2_image_url,r2_storage_key,image_bytes,cardmarket_product_id,cardmarket_url,manual_price_override,manual_price_updated_at,is_manual'
 
 // Cardmarket uses descriptive slugs in product URLs but short expansion
 // abbreviations in its image archive.
@@ -306,6 +314,9 @@ const analyze = async (body: Record<string, unknown>) => {
       cardmarket_product_id: selected.product_id,
       cardmarket_url: parsed.normalizedUrl,
       market_price: selected.price,
+      manual_price_enabled: false,
+      manual_price_override: '',
+      preview_image_url: selected.image_url || reference?.r2_image_url || reference?.source_image_url || '',
     },
   }
 }
@@ -319,6 +330,8 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
   const requestedVariantId = String(input.variant_id || '').trim()
   const productId = Number(input.cardmarket_product_id)
   const force = body?.force === true
+  const manualPriceEnabled = input.manual_price_enabled === true
+  const manualPrice = manualPriceEnabled ? nullableNumber(input.manual_price_override) : null
 
   if (!baseCode || !requestedVariantId || !/^[A-Z0-9_-]{5,40}$/i.test(requestedVariantId)) {
     throw new Error('Codice carta o ID variante non valido.')
@@ -326,6 +339,7 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
   if (!Number.isInteger(productId) || productId <= 0) throw new Error('Seleziona il prodotto Cardmarket esatto.')
   if (!nullableText(input.name, 180)) throw new Error('Il nome della carta e obbligatorio.')
   if (!nullableText(input.source_image_url, 2000)) throw new Error('Inserisci o seleziona l immagine della carta.')
+  if (manualPriceEnabled && (manualPrice == null || manualPrice < 0)) throw new Error('Inserisci un prezzo manuale valido.')
 
   const [productResult, duplicateResult] = await Promise.all([
     client.from('cardmarket_prices').select('*').eq('product_id', productId).maybeSingle(),
@@ -370,7 +384,7 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
     card_text: nullableText(input.card_text, 5000) || '',
     set_name: nullableText(input.set_name, 240) || '',
     sub_types: nullableText(input.sub_types, 500) || '',
-    market_price: priceValue(product),
+    market_price: manualPrice ?? priceValue(product),
     inventory_price: null,
     source: 'manual_admin',
     source_endpoint: nullableText(input.cardmarket_url, 2000),
@@ -383,6 +397,8 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
     image_synced_at: now,
     cardmarket_product_id: productId,
     cardmarket_url: nullableText(input.cardmarket_url, 2000),
+    manual_price_override: manualPrice,
+    manual_price_updated_at: manualPrice != null ? now : null,
     is_manual: true,
     manual_created_by: adminId,
     raw_data: {
@@ -427,6 +443,175 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
   })
 }
 
+const loadCard = async (body: Record<string, unknown>) => {
+  const client = requireServiceClient()
+  const variantId = String(body.variant_id || '').trim()
+  if (!variantId) throw new Error('Seleziona una carta da modificare.')
+
+  const { data, error } = await client
+    .from('card_catalog')
+    .select(CATALOG_FIELDS)
+    .eq('variant_id', variantId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('Carta non trovata nel catalogo OPV.')
+
+  const row = data as CatalogRow
+  let automaticPrice = row.market_price
+  if (row.cardmarket_product_id) {
+    const { data: price } = await client
+      .from('cardmarket_prices')
+      .select('*')
+      .eq('product_id', row.cardmarket_product_id)
+      .maybeSingle()
+    if (price) automaticPrice = priceValue(price as PriceRow)
+  }
+
+  return {
+    ok: true,
+    card: {
+      variant_id: row.variant_id,
+      base_card_id: row.base_card_id,
+      name: row.name,
+      rarity: row.rarity || '',
+      card_color: row.card_color || '',
+      card_type: row.card_type || '',
+      card_cost: row.card_cost ?? '',
+      card_power: row.card_power ?? '',
+      card_counter: row.card_counter ?? '',
+      life: row.life ?? '',
+      attribute: row.attribute || '',
+      card_text: row.card_text || '',
+      set_name: row.set_name || '',
+      sub_types: row.sub_types || '',
+      source_image_url: row.source_image_url || row.r2_image_url || '',
+      preview_image_url: row.r2_image_url || row.source_image_url || '',
+      variant_label: String(row.raw_data?.variant_label || ''),
+      cardmarket_product_id: row.cardmarket_product_id || '',
+      cardmarket_url: row.cardmarket_url || '',
+      market_price: automaticPrice,
+      manual_price_enabled: row.manual_price_override != null,
+      manual_price_override: row.manual_price_override ?? '',
+    },
+  }
+}
+
+const updateCard = async (body: Record<string, unknown>, adminId: string) => {
+  const client = requireServiceClient()
+  const input = body.card && typeof body.card === 'object'
+    ? body.card as Record<string, unknown>
+    : {}
+  const variantId = String(input.variant_id || '').trim()
+  const baseCode = normalizeBaseCode(input.base_card_id || variantId)
+  if (!variantId || !baseCode) throw new Error('Carta o codice non valido.')
+  if (!nullableText(input.name, 180)) throw new Error('Il nome della carta e obbligatorio.')
+  if (!nullableText(input.source_image_url, 2000)) throw new Error('Inserisci l immagine della carta.')
+
+  const { data, error } = await client
+    .from('card_catalog')
+    .select(CATALOG_FIELDS)
+    .eq('variant_id', variantId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('Carta non trovata nel catalogo OPV.')
+  const existing = data as CatalogRow
+
+  const manualPriceEnabled = input.manual_price_enabled === true
+  const manualPrice = manualPriceEnabled ? nullableNumber(input.manual_price_override) : null
+  if (manualPriceEnabled && (manualPrice == null || manualPrice < 0)) {
+    throw new Error('Inserisci un prezzo manuale valido.')
+  }
+
+  const productId = nullableNumber(input.cardmarket_product_id)
+  let automaticPrice = existing.market_price
+  if (productId && Number.isInteger(productId)) {
+    const { data: price } = await client
+      .from('cardmarket_prices')
+      .select('*')
+      .eq('product_id', productId)
+      .maybeSingle()
+    if (price) automaticPrice = priceValue(price as PriceRow)
+  }
+
+  const sourceImageUrl = String(input.source_image_url).trim()
+  const imageChanged = sourceImageUrl !== existing.source_image_url && sourceImageUrl !== existing.r2_image_url
+  const mirrored = imageChanged
+    ? await mirrorCardImage({ sourceUrl: sourceImageUrl, variantId })
+    : {
+        publicUrl: existing.r2_image_url || sourceImageUrl,
+        key: existing.r2_storage_key,
+        bytes: existing.image_bytes,
+      }
+  const now = new Date().toISOString()
+  const update = {
+    base_card_id: baseCode,
+    name: String(input.name).trim().slice(0, 180),
+    rarity: nullableText(input.rarity, 80),
+    card_color: nullableText(input.card_color, 80),
+    card_type: nullableText(input.card_type, 80),
+    card_cost: nullableNumber(input.card_cost),
+    card_power: nullableNumber(input.card_power),
+    card_counter: nullableNumber(input.card_counter),
+    life: nullableNumber(input.life),
+    attribute: nullableText(input.attribute, 200),
+    card_text: nullableText(input.card_text, 5000) || '',
+    set_name: nullableText(input.set_name, 240) || '',
+    sub_types: nullableText(input.sub_types, 500) || '',
+    market_price: manualPrice ?? automaticPrice,
+    source_image_url: sourceImageUrl,
+    r2_image_url: mirrored.publicUrl,
+    r2_storage_key: mirrored.key,
+    image_status: 'ready',
+    image_bytes: mirrored.bytes,
+    image_error: null,
+    image_synced_at: imageChanged ? now : undefined,
+    cardmarket_product_id: productId && Number.isInteger(productId) ? productId : null,
+    cardmarket_url: nullableText(input.cardmarket_url, 2000),
+    manual_price_override: manualPrice,
+    manual_price_updated_at: manualPrice != null ? now : null,
+    is_manual: true,
+    manual_created_by: adminId,
+    raw_data: {
+      ...(existing.raw_data || {}),
+      variant_label: nullableText(input.variant_label, 120),
+      last_admin_edit_by: adminId,
+      last_admin_edit_at: now,
+    },
+    updated_at: now,
+  }
+
+  const { error: updateError } = await client
+    .from('card_catalog')
+    .update(update)
+    .eq('variant_id', variantId)
+  if (updateError) throw new Error(updateError.message)
+
+  // Le copie gia presenti nelle collezioni ricevono subito i dati corretti.
+  await client.from('user_cards').update({
+    name: update.name,
+    image_url: mirrored.publicUrl,
+    rarity: update.rarity,
+    card_color: update.card_color,
+    card_type: update.card_type,
+    card_cost: update.card_cost,
+    card_power: update.card_power,
+  }).eq('card_id', variantId)
+
+  clearCardCache()
+  await refreshCatalogSyncState({ last_error: null })
+
+  return Response.json({
+    ok: true,
+    card: {
+      variant_id: variantId,
+      name: update.name,
+      image_url: mirrored.publicUrl,
+      market_price: update.market_price,
+      manual_price_override: manualPrice,
+    },
+  })
+}
+
 export async function POST(request: Request) {
   try {
     const admin = await getAdmin(request)
@@ -435,6 +620,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (body?.action === 'analyze') return Response.json(await analyze(body))
     if (body?.action === 'save') return save(body, admin.id)
+    if (body?.action === 'load') return Response.json(await loadCard(body))
+    if (body?.action === 'update') return updateCard(body, admin.id)
     return Response.json({ ok: false, error: 'Azione non valida.' }, { status: 400 })
   } catch (error) {
     console.error('Manual Cardmarket import error:', error)

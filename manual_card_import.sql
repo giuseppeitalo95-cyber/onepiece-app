@@ -4,6 +4,8 @@
 alter table public.card_catalog
   add column if not exists cardmarket_product_id bigint,
   add column if not exists cardmarket_url text,
+  add column if not exists manual_price_override numeric,
+  add column if not exists manual_price_updated_at timestamptz,
   add column if not exists is_manual boolean not null default false,
   add column if not exists manual_created_by uuid;
 
@@ -34,4 +36,5 @@ set
 where card_code is null or card_variant is null;
 
 comment on column public.card_catalog.cardmarket_product_id is 'Prodotto Cardmarket esatto usato per il prezzo aggiornato della variante.';
+comment on column public.card_catalog.manual_price_override is 'Prezzo deciso dall Admin; se presente ha priorita sul prezzo Cardmarket.';
 comment on column public.card_catalog.is_manual is 'Protegge le carte inserite dall Admin dalle sincronizzazioni delle fonti.';

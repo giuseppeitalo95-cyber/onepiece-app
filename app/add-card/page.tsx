@@ -39,12 +39,15 @@ type ApiCard = {
   inventory_price?: string | number | null
 }
 
+const quantityKey = (value?: string | null) => String(value || '').trim().toLowerCase()
+
 export default function AddCard() {
   const router = useRouter()
 
   const [query, setQuery] = useState('')
   const [cards, setCards] = useState<Card[]>([])
   const [userId, setUserId] = useState<string | null>(null)
+  const [ownedQuantities, setOwnedQuantities] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
   const [addingId, setAddingId] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -72,7 +75,21 @@ export default function AddCard() {
         return
       }
 
-      setUserId(data.session.user.id)
+      const uid = data.session.user.id
+      setUserId(uid)
+
+      const { data: ownedCards } = await supabase
+        .from('user_cards')
+        .select('card_id, quantity')
+        .eq('user_id', uid)
+
+      const quantities = (ownedCards || []).reduce<Record<string, number>>((accumulator, item) => {
+        const key = quantityKey(item.card_id)
+        if (!key) return accumulator
+        accumulator[key] = (accumulator[key] || 0) + Math.max(0, Number(item.quantity) || 0)
+        return accumulator
+      }, {})
+      setOwnedQuantities(quantities)
     }
 
     loadUser()
@@ -174,24 +191,35 @@ useEffect(() => {
       inventory_price: null,
     }
 
+    let saveError: { message?: string } | null = null
     if (existing) {
       const shouldBackfillPrice = existing.market_price == null && existing.inventory_price == null && livePriceForSave != null
-      await supabase
+      const { error } = await supabase
         .from('user_cards')
         .update({
-          quantity: existing.quantity + 1,
+          quantity: Number(existing.quantity || 0) + 1,
           ...payload,
           market_price: shouldBackfillPrice ? livePriceForSave : existing.market_price ?? null,
           inventory_price: shouldBackfillPrice ? null : existing.inventory_price ?? null,
         })
         .eq('id', existing.id)
+      saveError = error
     } else {
-      await supabase
+      const { error } = await supabase
         .from('user_cards')
         .insert({
           ...payload,
           quantity: 1
         })
+      saveError = error
+    }
+
+    if (!saveError) {
+      const key = quantityKey(card.id)
+      setOwnedQuantities(current => ({
+        ...current,
+        [key]: (current[key] || 0) + 1,
+      }))
     }
 
     setAddingId(null)
@@ -318,7 +346,7 @@ useEffect(() => {
             className="flex items-center gap-3 bg-slate-900 rounded-xl p-3"
           >
 
-            <button onClick={() => setSelectedCard(card)} className="shrink-0">
+            <button onClick={() => setSelectedCard(card)} className="relative shrink-0">
               <CardImage
                 src={card.image_url}
                 cardId={card.id}
@@ -327,6 +355,11 @@ useEffect(() => {
                 imgClassName="h-full w-full object-cover"
                 fallbackClassName="flex h-full w-full items-center justify-center text-xs"
               />
+              {(ownedQuantities[quantityKey(card.id)] || 0) > 0 ? (
+                <span className="absolute -right-2 -top-2 grid min-w-7 place-items-center rounded-full border border-cyan-100/70 bg-cyan-300 px-1.5 py-1 text-[10px] font-black leading-none text-slate-950 shadow-lg shadow-cyan-950/40">
+                  x{ownedQuantities[quantityKey(card.id)]}
+                </span>
+              ) : null}
             </button>
 
             <div className="flex-1">

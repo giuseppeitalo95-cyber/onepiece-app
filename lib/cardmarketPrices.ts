@@ -208,10 +208,39 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   if (exactVariantId) {
     const { data: mappedCard } = await supabase
       .from('card_catalog')
-      .select('cardmarket_product_id')
+      .select('cardmarket_product_id,manual_price_override,manual_price_updated_at')
       .eq('variant_id', exactVariantId)
       .maybeSingle()
     const mappedProductId = Number(mappedCard?.cardmarket_product_id || 0)
+    const manualPrice = toNumber(mappedCard?.manual_price_override)
+    if (manualPrice != null) {
+      return {
+        source: 'OPV',
+        provider: 'Prezzo manuale OPV',
+        currency: 'EUR',
+        originalCurrency: 'EUR',
+        exchangeRate: 1,
+        productId: mappedProductId || null,
+        productUrl: mappedProductId > 0
+          ? `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${mappedProductId}`
+          : null,
+        productImageUrl: null,
+        productName: input.name || exactVariantId,
+        groupName: input.setName || null,
+        marketPrice: manualPrice,
+        lowPrice: manualPrice,
+        midPrice: manualPrice,
+        highPrice: null,
+        directLowPrice: manualPrice,
+        originalMarketPrice: manualPrice,
+        originalLowPrice: manualPrice,
+        originalMidPrice: manualPrice,
+        originalHighPrice: null,
+        originalDirectLowPrice: manualPrice,
+        priceType: 'Manuale',
+        modifiedOn: mappedCard?.manual_price_updated_at || new Date().toISOString(),
+      }
+    }
     if (mappedProductId > 0) {
       const { data: exactPrice } = await supabase
         .from('cardmarket_prices')

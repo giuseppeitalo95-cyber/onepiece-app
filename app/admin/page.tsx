@@ -6,7 +6,7 @@ import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
-import CardmarketCardImporter from './CardmarketCardImporter'
+import CatalogCardManager from './CatalogCardManager'
 
 type ProfileItem = {
   id: string
@@ -1190,7 +1190,7 @@ export default function AdminPage() {
 
         {activeSection === 'catalog' ? (
           <div className="mt-6">
-            <CardmarketCardImporter />
+            <CatalogCardManager />
           </div>
         ) : null}
 
