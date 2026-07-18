@@ -149,7 +149,8 @@ export default function CardmarketCardImporter() {
         },
         body: JSON.stringify({ action: 'save', card, force }),
       })
-      const data = await response.json()
+      const responseText = await response.text()
+      const data = responseText ? JSON.parse(responseText) : null
       if (!response.ok || !data?.ok) throw new Error(data?.error || 'Salvataggio non riuscito.')
       setSaved(data.card)
       setMessage(`Carta salvata come ${data.card.variant_id}. Il prezzo seguira gli aggiornamenti Cardmarket.`)

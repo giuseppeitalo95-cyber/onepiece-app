@@ -286,7 +286,7 @@ const analyze = async (body: Record<string, unknown>) => {
     client
       .from('card_catalog')
       .select(CATALOG_FIELDS)
-      .eq('base_card_id', resolvedCardCode)
+      .or(`base_card_id.eq.${resolvedCardCode},variant_id.eq.${resolvedCardCode},variant_id.like.${resolvedCardCode}_%`)
       .order('variant_id', { ascending: true }),
     client
       .from('cardmarket_prices')
@@ -393,7 +393,11 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
 
   const [productResult, duplicateResult] = await Promise.all([
     client.from('cardmarket_prices').select('*').eq('product_id', productId).maybeSingle(),
-    client.from('card_catalog').select(CATALOG_FIELDS).eq('base_card_id', baseCode).order('variant_id'),
+    client
+      .from('card_catalog')
+      .select(CATALOG_FIELDS)
+      .or(`base_card_id.eq.${baseCode},variant_id.eq.${baseCode},variant_id.like.${baseCode}_%`)
+      .order('variant_id'),
   ])
   if (productResult.error || !productResult.data) throw new Error('Prodotto Cardmarket non trovato nel database prezzi.')
   if (duplicateResult.error) throw new Error(duplicateResult.error.message)
@@ -693,9 +697,9 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (body?.action === 'analyze') return Response.json(await analyze(body))
-    if (body?.action === 'save') return save(body, admin.id)
+    if (body?.action === 'save') return await save(body, admin.id)
     if (body?.action === 'load') return Response.json(await loadCard(body))
-    if (body?.action === 'update') return updateCard(body, admin.id)
+    if (body?.action === 'update') return await updateCard(body, admin.id)
     return Response.json({ ok: false, error: 'Azione non valida.' }, { status: 400 })
   } catch (error) {
     console.error('Manual Cardmarket import error:', error)
