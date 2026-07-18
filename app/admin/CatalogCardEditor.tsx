@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, LoaderCircle, Pencil, Save, Search } from 'lucide-react'
+import { CheckCircle2, ExternalLink, LoaderCircle, Pencil, Save, Search } from 'lucide-react'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 
@@ -11,6 +11,23 @@ type SearchCard = {
   image_url: string | null
   rarity: string | null
   card_color: string | null
+}
+
+type Candidate = {
+  product_id: number
+  product_name: string
+  expansion_id: number | null
+  variant_rank: number
+  url_version: number | null
+  price: number | null
+  price_low: number | null
+  price_trend: number | null
+  price_avg_1: number | null
+  price_avg_7: number | null
+  price_avg_30: number | null
+  synced_at: string
+  image_url: string | null
+  product_url: string
 }
 
 type CardDraft = {
@@ -47,6 +64,7 @@ export default function CatalogCardEditor() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchCard[]>([])
   const [card, setCard] = useState<CardDraft | null>(null)
+  const [candidates, setCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState<'search' | 'load' | 'save' | ''>('')
   const [message, setMessage] = useState('')
   const searchRun = useRef(0)
@@ -100,6 +118,7 @@ export default function CatalogCardEditor() {
       const data = await response.json()
       if (!response.ok || !data?.ok) throw new Error(data?.error || 'Carta non caricata.')
       setCard(data.card)
+      setCandidates(Array.isArray(data.candidates) ? data.candidates : [])
       setResults([])
       setQuery('')
       setMessage('Modifica i dati e salva. Le correzioni saranno applicate anche alle copie gia in collezione.')
@@ -111,6 +130,18 @@ export default function CatalogCardEditor() {
 
   const update = (key: keyof CardDraft, value: string | number | boolean) => {
     setCard(current => current ? { ...current, [key]: value } : current)
+  }
+
+  const chooseCandidate = (candidate: Candidate) => {
+    setCard(current => current ? {
+      ...current,
+      cardmarket_product_id: candidate.product_id,
+      cardmarket_url: candidate.product_url,
+      market_price: candidate.price,
+      manual_price_enabled: false,
+      manual_price_override: '',
+    } : current)
+    setMessage(`Prodotto Cardmarket ${candidate.product_id} selezionato. Salva per collegarlo alla carta.`)
   }
 
   const save = async () => {
@@ -183,6 +214,45 @@ export default function CatalogCardEditor() {
       </section>
 
       {card ? (
+        <div className="space-y-5">
+          <section className="rounded-[1.75rem] border border-violet-200/20 bg-slate-900/90 p-5">
+            <div>
+              <h3 className="text-lg font-black text-white">Seleziona variante e prezzo</h3>
+              <p className="mt-1 text-xs text-slate-400">Tutti i prodotti Cardmarket con codice {card.base_card_id}. Seleziona la variante corretta guardando immagine e prezzo.</p>
+            </div>
+            {candidates.length > 0 ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {candidates.map(candidate => {
+                  const selected = Number(candidate.product_id) === Number(card.cardmarket_product_id)
+                  return (
+                    <button
+                      key={candidate.product_id}
+                      type="button"
+                      onClick={() => chooseCandidate(candidate)}
+                      className={`flex min-h-28 items-center gap-3 rounded-2xl border p-3 text-left transition active:scale-[0.985] ${selected ? 'border-cyan-200 bg-cyan-300/10' : 'border-slate-700 bg-slate-950/70 hover:border-slate-500'}`}
+                    >
+                      <CardImage src={candidate.image_url} cardId={card.base_card_id} alt={candidate.product_name} className="h-24 w-17 shrink-0 overflow-hidden rounded-xl bg-slate-900" imgClassName="h-full w-full object-cover" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-black text-white">{candidate.product_name}</span>
+                        <span className="mt-1 block text-xs text-slate-400">Prodotto {candidate.product_id}{candidate.url_version ? ` · V.${candidate.url_version}` : ''}</span>
+                        <span className="mt-2 block text-lg font-black text-cyan-100">{formatPrice(candidate.price)}</span>
+                        <span className="block text-[10px] text-slate-500">Media 7g {formatPrice(candidate.price_avg_7)} · minimo {formatPrice(candidate.price_low)}</span>
+                      </span>
+                      {selected ? <CheckCircle2 size={19} className="shrink-0 text-cyan-100" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-3 text-sm text-amber-100">Nessuna variante di prezzo trovata per questo codice.</p>
+            )}
+            {card.cardmarket_product_id ? (
+              <a href={candidates.find(candidate => candidate.product_id === Number(card.cardmarket_product_id))?.product_url || card.cardmarket_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-100 hover:text-white">
+                Apri prodotto selezionato <ExternalLink size={13} />
+              </a>
+            ) : null}
+          </section>
+
         <section className="rounded-[1.75rem] border border-white/10 bg-slate-900/90 p-5">
           <div className="grid gap-5 lg:grid-cols-[230px_1fr]">
             <div>
@@ -225,6 +295,7 @@ export default function CatalogCardEditor() {
             {loading === 'save' ? 'Salvo...' : 'Salva modifiche'}
           </button>
         </section>
+        </div>
       ) : null}
     </div>
   )

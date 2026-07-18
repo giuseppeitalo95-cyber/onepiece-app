@@ -108,6 +108,50 @@ const nullableNumber = (value: unknown) => {
 const priceValue = (row: PriceRow) =>
   row.price_trend ?? row.price_avg_7 ?? row.price_avg_30 ?? row.price_avg ?? row.price_low ?? null
 
+const buildPriceCandidates = async (priceRows: PriceRow[], folders: string[], preferredVersion?: number) => {
+  const imageUrls = await Promise.all(priceRows.map(row => probeImage(row, folders)))
+  const imageReadyRows = priceRows
+    .map((row, index) => ({ row, imageUrl: imageUrls[index] }))
+    .filter(item => item.imageUrl)
+    .sort((left, right) => {
+      const leftDate = new Date(left.row.product_date_added || 0).getTime()
+      const rightDate = new Date(right.row.product_date_added || 0).getTime()
+      return leftDate - rightDate || left.row.product_id - right.row.product_id
+    })
+
+  const urlVersionByProduct = new Map<number, number>()
+  imageReadyRows.forEach((item, index) => urlVersionByProduct.set(item.row.product_id, index + 1))
+
+  return priceRows.map((row, index) => ({
+    product_id: row.product_id,
+    product_name: row.product_name,
+    clean_name: row.clean_name,
+    expansion_id: row.expansion_id,
+    metacard_id: row.metacard_id,
+    variant_rank: row.variant_rank,
+    url_version: urlVersionByProduct.get(row.product_id) || null,
+    price: priceValue(row),
+    price_low: row.price_low,
+    price_trend: row.price_trend,
+    price_avg_1: row.price_avg_1,
+    price_avg_7: row.price_avg_7,
+    price_avg_30: row.price_avg_30,
+    synced_at: row.synced_at,
+    image_url: imageUrls[index],
+    product_url: `https://www.cardmarket.com/en/OnePiece/Products?idProduct=${row.product_id}`,
+  })).sort((left, right) => {
+    if (preferredVersion != null) {
+      const leftExact = left.url_version === preferredVersion ? 1 : 0
+      const rightExact = right.url_version === preferredVersion ? 1 : 0
+      if (rightExact !== leftExact) return rightExact - leftExact
+      const leftRank = left.variant_rank === preferredVersion - 1 ? 1 : 0
+      const rightRank = right.variant_rank === preferredVersion - 1 ? 1 : 0
+      if (rightRank !== leftRank) return rightRank - leftRank
+    }
+    return Number(Boolean(right.image_url)) - Number(Boolean(left.image_url)) || left.product_id - right.product_id
+  })
+}
+
 const parseCardmarketUrl = (value: unknown) => {
   let url: URL
   try {
@@ -232,44 +276,7 @@ const analyze = async (body: Record<string, unknown>) => {
     parsed.setFolder.replace(/[^a-z0-9]/gi, ''),
     prefix,
   ].filter((folder): folder is string => Boolean(folder)))]
-  const imageUrls = await Promise.all(priceRows.map(row => probeImage(row, folders)))
-  const imageReadyRows = priceRows
-    .map((row, index) => ({ row, imageUrl: imageUrls[index] }))
-    .filter(item => item.imageUrl)
-    .sort((left, right) => {
-      const leftDate = new Date(left.row.product_date_added || 0).getTime()
-      const rightDate = new Date(right.row.product_date_added || 0).getTime()
-      return leftDate - rightDate || left.row.product_id - right.row.product_id
-    })
-
-  const urlVersionByProduct = new Map<number, number>()
-  imageReadyRows.forEach((item, index) => urlVersionByProduct.set(item.row.product_id, index + 1))
-
-  const candidates = priceRows.map((row, index) => ({
-    product_id: row.product_id,
-    product_name: row.product_name,
-    clean_name: row.clean_name,
-    expansion_id: row.expansion_id,
-    metacard_id: row.metacard_id,
-    variant_rank: row.variant_rank,
-    url_version: urlVersionByProduct.get(row.product_id) || null,
-    price: priceValue(row),
-    price_low: row.price_low,
-    price_trend: row.price_trend,
-    price_avg_1: row.price_avg_1,
-    price_avg_7: row.price_avg_7,
-    price_avg_30: row.price_avg_30,
-    synced_at: row.synced_at,
-    image_url: imageUrls[index],
-    product_url: `https://www.cardmarket.com/en/OnePiece/Products?idProduct=${row.product_id}`,
-  })).sort((left, right) => {
-    const leftExact = left.url_version === parsed.version ? 1 : 0
-    const rightExact = right.url_version === parsed.version ? 1 : 0
-    if (rightExact !== leftExact) return rightExact - leftExact
-    const leftRank = left.variant_rank === parsed.version - 1 ? 1 : 0
-    const rightRank = right.variant_rank === parsed.version - 1 ? 1 : 0
-    return rightRank - leftRank || Number(Boolean(right.image_url)) - Number(Boolean(left.image_url)) || left.product_id - right.product_id
-  })
+  const candidates = await buildPriceCandidates(priceRows, folders, parsed.version)
 
   const selected = candidates[0]
   const orderedExisting = [...existing].sort((a, b) => variantIndex(a.variant_id) - variantIndex(b.variant_id))
@@ -457,6 +464,29 @@ const loadCard = async (body: Record<string, unknown>) => {
   if (!data) throw new Error('Carta non trovata nel catalogo OPV.')
 
   const row = data as CatalogRow
+  const { data: priceRowsData, error: priceRowsError } = await client
+    .from('cardmarket_prices')
+    .select('*')
+    .eq('card_id', row.base_card_id)
+    .order('product_date_added', { ascending: true, nullsFirst: false })
+    .order('product_id', { ascending: true })
+    .limit(40)
+  if (priceRowsError) throw new Error(priceRowsError.message)
+
+  const prefix = row.base_card_id.split('-')[0]
+  let cardmarketFolder = ''
+  try {
+    cardmarketFolder = row.cardmarket_url ? parseCardmarketUrl(row.cardmarket_url).setFolder : ''
+  } catch {
+    cardmarketFolder = ''
+  }
+  const folders = [...new Set([
+    CARDMARKET_IMAGE_FOLDER_ALIASES[cardmarketFolder.toLowerCase()],
+    cardmarketFolder,
+    cardmarketFolder.replace(/[^a-z0-9]/gi, ''),
+    prefix,
+  ].filter((folder): folder is string => Boolean(folder)))]
+  const candidates = await buildPriceCandidates((priceRowsData || []) as PriceRow[], folders)
   let automaticPrice = row.market_price
   if (row.cardmarket_product_id) {
     const { data: price } = await client
@@ -469,6 +499,7 @@ const loadCard = async (body: Record<string, unknown>) => {
 
   return {
     ok: true,
+    candidates,
     card: {
       variant_id: row.variant_id,
       base_card_id: row.base_card_id,
