@@ -1,4 +1,5 @@
 import { binderSpreadIndexes, type BinderCard, type BinderRecord } from '@/lib/binders'
+import { binderOpenImage, decodeBinderKit } from '@/lib/binderKits'
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const image = new Image()
@@ -85,13 +86,14 @@ export const createBinderShareImage = async (binder: BinderRecord, spreadIndex: 
   ctx.fill()
   ctx.restore()
 
-  if (binder.cover_image_url) {
+  const openImageUrl = binderOpenImage(binder.cover_image_url)
+  if (openImageUrl) {
     try {
-      const cover = await loadImage(binder.cover_image_url)
+      const cover = await loadImage(openImageUrl)
       ctx.save()
       roundedRect(ctx, shell.x, shell.y, shell.width, shell.height, 70)
       ctx.clip()
-      ctx.globalAlpha = 0.25
+      ctx.globalAlpha = decodeBinderKit(binder.cover_image_url) ? 1 : 0.25
       drawCoverImage(ctx, cover, shell.x, shell.y, shell.width, shell.height)
       ctx.restore()
     } catch {

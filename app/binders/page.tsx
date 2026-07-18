@@ -12,6 +12,7 @@ import BinderCardDetail from '@/app/components/BinderCardDetail'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
 import { BINDER_COLORS, binderSpreadIndexes, normalizeBinder, normalizeBinderPages, type BinderCard, type BinderRecord } from '@/lib/binders'
+import { binderClosedImage, decodeBinderKit, encodeBinderKit, loadBinderKits, type BinderKit } from '@/lib/binderKits'
 import { shareBinder } from '@/lib/binderShare'
 import { validateUserText } from '@/lib/textModeration'
 
@@ -100,7 +101,9 @@ export default function BindersPage() {
   const [introOpen, setIntroOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('Il mio raccoglitore')
-  const [newColor, setNewColor] = useState(BINDER_COLORS[0])
+  const newColor = BINDER_COLORS[0]
+  const [binderKits, setBinderKits] = useState<BinderKit[]>([])
+  const [newKitId, setNewKitId] = useState('')
   const [newLayout, setNewLayout] = useState(layouts[1])
   const [creating, setCreating] = useState(false)
   const [collectionCards, setCollectionCards] = useState<BinderCard[]>([])
@@ -119,6 +122,13 @@ export default function BindersPage() {
   const pickerCards = pickerSource === 'catalog' ? catalogCards : collectionCards
   const availableRarities = useMemo(() => Array.from(new Set(pickerCards.map(card => card.rarity?.trim()).filter((value): value is string => Boolean(value)))).sort(), [pickerCards])
   const activeFilterCount = [filterColor, filterRarity, filterCost, filterPower].filter(value => value !== 'all').length
+
+  useEffect(() => {
+    void loadBinderKits().then(kits => {
+      setBinderKits(kits)
+      setNewKitId(current => current || kits[0]?.id || '')
+    })
+  }, [])
 
   const displayedCards = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -239,12 +249,13 @@ export default function BindersPage() {
     setStatus('')
     try {
       const id = crypto.randomUUID()
+      const selectedKit = binderKits.find(kit => kit.id === newKitId)
       const record: BinderRecord = {
         id,
         user_id: userId,
         title,
         cover_color: newColor,
-        cover_image_url: null,
+        cover_image_url: selectedKit ? encodeBinderKit(selectedKit) : null,
         columns_count: newLayout.columns,
         rows_count: newLayout.rows,
         pages: normalizeBinderPages([], newLayout.columns, newLayout.rows),
@@ -333,7 +344,7 @@ export default function BindersPage() {
       const postData = {
         title,
         message: 'Ha creato un raccoglitore personalizzato',
-        card_image_url: saved.cover_image_url,
+        card_image_url: binderClosedImage(saved.cover_image_url),
       }
       let postFailed = false
       if (shouldPublish) {
@@ -453,7 +464,7 @@ export default function BindersPage() {
             {editing ? (
               <div className="mx-auto mt-3 flex max-w-3xl flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/55 p-3">
                 <input value={activeBinder.title} onChange={event => updateActive(binder => ({ ...binder, title: event.target.value }))} maxLength={60} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-base font-bold text-white outline-none focus:border-cyan-300" aria-label="Nome raccoglitore" />
-                <div className="flex flex-wrap gap-2">{BINDER_COLORS.map(color => <button key={color} type="button" onClick={() => updateActive(binder => ({ ...binder, cover_color: color }))} className={`h-8 w-8 rounded-full border-2 transition active:scale-90 ${activeBinder.cover_color === color ? 'scale-110 border-white' : 'border-transparent'}`} style={{ backgroundColor: color }} aria-label={`Copertina ${color}`} />)}</div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{binderKits.map(kit => <button key={kit.id} type="button" onClick={() => updateActive(binder => ({ ...binder, cover_image_url: encodeBinderKit(kit) }))} className={`overflow-hidden rounded-xl border-2 p-1 text-left transition active:scale-95 ${decodeBinderKit(activeBinder.cover_image_url)?.id === kit.id ? 'border-cyan-200 bg-cyan-300/10' : 'border-white/10'}`} aria-label={`Copertina ${kit.title}`}><img src={kit.closed_url} alt="" className="aspect-[3/4] w-full rounded-lg object-cover" /><span className="mt-1 block truncate text-[9px] font-black text-white">{kit.title}</span></button>)}</div>
                 <div className="flex w-fit rounded-xl border border-white/10 bg-slate-900 p-1">{layouts.map(layout => <button key={layout.label} type="button" onClick={() => changeLayout(layout.columns, layout.rows)} className={`rounded-lg px-3 py-1.5 text-xs font-black transition ${activeBinder.columns_count === layout.columns && activeBinder.rows_count === layout.rows ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>{layout.label}</button>)}</div>
               </div>
             ) : null}
@@ -481,7 +492,7 @@ export default function BindersPage() {
             <div className="flex items-center justify-between"><h2 className="text-xl font-black">Nuovo raccoglitore</h2><button onClick={() => setCreateOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.06]" aria-label="Chiudi"><X size={17} /></button></div>
             <input value={newTitle} onChange={event => setNewTitle(event.target.value)} maxLength={60} className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-base font-bold outline-none focus:border-cyan-300" placeholder="Nome raccoglitore" />
             <p className="mt-4 text-xs font-black uppercase tracking-[0.15em] text-slate-400">Copertina</p>
-            <div className="mt-2 flex flex-wrap gap-2">{BINDER_COLORS.map(color => <button key={color} type="button" onClick={() => setNewColor(color)} className={`h-10 w-10 rounded-full border-2 transition active:scale-90 ${newColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} aria-label={`Colore ${color}`} />)}</div>
+            <div className="mt-2 grid max-h-56 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">{binderKits.map(kit => <button key={kit.id} type="button" onClick={() => setNewKitId(kit.id)} className={`overflow-hidden rounded-xl border-2 p-1 text-left transition active:scale-95 ${newKitId === kit.id ? 'border-cyan-200 bg-cyan-300/10' : 'border-white/10'}`}><img src={kit.closed_url} alt="" className="aspect-[3/4] w-full rounded-lg object-cover" /><span className="mt-1 block truncate text-[9px] font-black text-white">{kit.title}</span></button>)}{binderKits.length === 0 ? <p className="col-span-full rounded-xl border border-dashed border-slate-700 p-3 text-xs text-slate-400">Nessun kit disponibile: verrà usata la copertina classica.</p> : null}</div>
             <p className="mt-4 text-xs font-black uppercase tracking-[0.15em] text-slate-400">Tasche per pagina</p>
             <div className="mt-2 grid grid-cols-4 gap-2">{layouts.map(layout => <button key={layout.label} type="button" onClick={() => setNewLayout(layout)} className={`rounded-xl border px-2 py-3 text-sm font-black transition active:scale-95 ${newLayout.label === layout.label ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.05] text-slate-200'}`}>{layout.label}</button>)}</div>
             {status ? <p className="mt-3 text-center text-xs font-bold text-rose-100">{status}</p> : null}

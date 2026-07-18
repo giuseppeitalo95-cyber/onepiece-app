@@ -48,6 +48,7 @@ type BoardPost = {
     id: string
     binder_id: string | null
     title: string
+    card_image_url: string | null
     created_at: string
   }>
 }
@@ -88,12 +89,14 @@ const groupConsecutiveBinderPosts = (items: BoardPost[]) => {
         id: previous.id,
         binder_id: previous.binder_id,
         title: previous.title,
+        card_image_url: previous.card_image_url,
         created_at: previous.created_at,
       }]
       previous.binder_group = [...currentGroup, {
         id: post.id,
         binder_id: post.binder_id,
         title: post.title,
+        card_image_url: post.card_image_url,
         created_at: post.created_at,
       }]
       continue
@@ -748,14 +751,14 @@ export default function BachecaPage() {
                         </div>
                         {post.type === 'binder' ? (
                           <div className="mt-2 space-y-2">
-                            {(post.binder_group || [{ id: post.id, binder_id: post.binder_id, title: post.title, created_at: post.created_at }]).map(item => item.binder_id ? (
+                            {(post.binder_group || [{ id: post.id, binder_id: post.binder_id, title: post.title, card_image_url: post.card_image_url, created_at: post.created_at }]).map(item => item.binder_id ? (
                               <button
                                 key={item.id}
                                 type="button"
                                 onClick={() => router.push(`/binders/${item.binder_id}`)}
                                 className="flex w-full items-center gap-3 rounded-2xl border border-amber-200/20 bg-amber-300/[0.07] p-3 text-left transition hover:border-amber-200/45 hover:bg-amber-300/[0.11] active:scale-[0.99]"
                               >
-                                <span className="grid h-12 w-10 shrink-0 place-items-center rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg"><BookOpen size={18} /></span>
+                                <span className="grid h-14 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-amber-100/20 bg-gradient-to-br from-cyan-900 to-slate-950 text-amber-100 shadow-lg">{item.card_image_url ? <img src={item.card_image_url} alt="" className="h-full w-full object-cover" /> : <BookOpen size={18} />}</span>
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-black text-white">{`"${item.title}"`}</span>
                                   <span className="mt-1 block text-xs leading-5 text-slate-300">Vai a vederlo e lascia un like.</span>

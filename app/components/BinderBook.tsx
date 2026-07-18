@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import CardImage from './CardImage'
 import { binderMaxSpread, binderSpreadIndexes, type BinderCard, type BinderPage, type BinderRecord } from '@/lib/binders'
+import { binderHalfImage, binderOpenImage } from '@/lib/binderKits'
 
 type Props = {
   binder: BinderRecord
@@ -81,10 +82,11 @@ function BinderPagePanel({ binder, page, pageIndex, editable, onSelectSlot, onRe
   )
 }
 
-function BinderInsideCover({ binder }: { binder: BinderRecord }) {
+function BinderInsideCover({ binder, side = 'right' }: { binder: BinderRecord; side?: 'left' | 'right' }) {
+  const image = binderHalfImage(binder.cover_image_url, side)
   return (
     <div className="relative h-full overflow-hidden rounded-[6px] border border-black/20 shadow-inner shadow-black/30" style={{ backgroundColor: binder.cover_color }}>
-      {binder.cover_image_url ? <img src={binder.cover_image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" /> : null}
+      {image ? <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null}
       <div className="absolute inset-[5%] rounded-[5px] border border-white/10" />
       <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.08),transparent_38%,rgba(0,0,0,0.12))]" />
     </div>
@@ -105,6 +107,9 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
   const baseLeft = turning === 'prev' ? target.left : current.left
   const baseRight = turning === 'next' ? target.right : current.right
   const safeSinglePage = Math.min(Math.max(0, singlePageIndex), Math.max(0, binder.pages.length - 1))
+  const openImage = binderOpenImage(binder.cover_image_url)
+  const singleSide = safeSinglePage % 2 === 0 ? 'right' : 'left'
+  const singleImage = binderHalfImage(binder.cover_image_url, singleSide)
 
   useEffect(() => {
     if (spreadIndex > maxSpread) onSpreadChange(maxSpread)
@@ -151,9 +156,9 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
     }, PAGE_TURN_MS)
   }
 
-  const surface = (pageIndex: number | null, canEdit: boolean) => {
+  const surface = (pageIndex: number | null, canEdit: boolean, side: 'left' | 'right' = 'right') => {
     const page = pageIndex == null ? null : binder.pages[pageIndex]
-    return page ? <BinderPagePanel binder={binder} page={page} pageIndex={pageIndex as number} editable={canEdit} onSelectSlot={onSelectSlot} onRemoveCard={onRemoveCard} onOpenCard={onOpenCard} /> : <BinderInsideCover binder={binder} />
+    return page ? <BinderPagePanel binder={binder} page={page} pageIndex={pageIndex as number} editable={canEdit} onSelectSlot={onSelectSlot} onRemoveCard={onRemoveCard} onOpenCard={onOpenCard} /> : <BinderInsideCover binder={binder} side={side} />
   }
 
   const pageLabelIndexes = [current.left, current.right].filter((index): index is number => index != null && Boolean(binder.pages[index]))
@@ -177,7 +182,7 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
           if (Math.abs(distance) >= 45) changeSinglePage(distance < 0 ? 1 : -1)
         }} onPointerCancel={() => { pointerStart.current = null }}>
           <div className="binder-open-shell relative mx-auto aspect-[0.72/1] w-[min(94vw,42rem)] overflow-visible rounded-[5%] border border-black/35 p-[5%] shadow-[0_34px_70px_rgba(0,0,0,0.48)]" style={{ backgroundColor: binder.cover_color }}>
-            {binder.cover_image_url ? <img src={binder.cover_image_url} alt="" className="absolute inset-0 h-full w-full rounded-[5%] object-cover opacity-28" /> : null}
+            {singleImage ? <img src={singleImage} alt="" className="absolute inset-0 h-full w-full rounded-[5%] object-cover" /> : null}
             <div className="pointer-events-none absolute inset-[2%] rounded-[4%] border border-white/12 shadow-inner shadow-black/45" />
             <div className="relative z-10 h-full">{surface(safeSinglePage, editable)}</div>
           </div>
@@ -198,22 +203,22 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
         if (Math.abs(distance) >= 45) turn(distance < 0 ? 'next' : 'prev')
       }} onPointerCancel={() => { pointerStart.current = null }}>
         <div className="binder-open-shell relative mx-auto aspect-[1.48/1] w-full overflow-visible rounded-[4%] border border-black/35 p-[4.2%] shadow-[0_34px_70px_rgba(0,0,0,0.48)]" style={{ backgroundColor: binder.cover_color }}>
-          {binder.cover_image_url ? <img src={binder.cover_image_url} alt="" className="absolute inset-0 h-full w-full rounded-[4%] object-cover opacity-30" /> : null}
+          {openImage ? <img src={openImage} alt="" className="absolute inset-0 h-full w-full rounded-[4%] object-cover" /> : null}
           <div className="pointer-events-none absolute inset-[2%] rounded-[3%] border border-white/12 shadow-inner shadow-black/45" />
           <div className="absolute inset-y-[4%] left-1/2 z-0 w-[3.2%] -translate-x-1/2 rounded-full border-x border-black/28 bg-black/32 shadow-[0_0_20px_rgba(0,0,0,0.48)]" />
           <div className="binder-spread-pages relative z-10 grid h-full grid-cols-2 gap-0 [perspective:1600px]">
-            {surface(baseLeft, editable && !turning)}
-            {surface(baseRight, editable && !turning)}
+            {surface(baseLeft, editable && !turning, 'left')}
+            {surface(baseRight, editable && !turning, 'right')}
             {turning === 'next' && current.right != null ? (
               <div className="binder-turn-page binder-turn-next absolute inset-y-0 right-0 z-30 w-1/2 origin-left">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.right, false)}</div>
-                <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} />}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.left != null && binder.pages[target.left] ? <BinderPageBack binder={binder} pageIndex={target.left} /> : <BinderInsideCover binder={binder} side="left" />}</div>
               </div>
             ) : null}
             {turning === 'prev' && current.left != null ? (
               <div className="binder-turn-page binder-turn-prev absolute inset-y-0 left-0 z-30 w-1/2 origin-right">
                 <div className="binder-page-face binder-page-front absolute inset-0">{surface(current.left, false)}</div>
-                <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} />}</div>
+                <div className="binder-page-face binder-page-back absolute inset-0">{target.right != null && binder.pages[target.right] ? <BinderPageBack binder={binder} pageIndex={target.right} /> : <BinderInsideCover binder={binder} side="right" />}</div>
               </div>
             ) : null}
           </div>

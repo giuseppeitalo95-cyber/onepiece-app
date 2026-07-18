@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Search, Send, Settings, Users, Wrench } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Search, Send, Settings, Users, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
 import CatalogCardManager from './CatalogCardManager'
+import BinderKitManager from './BinderKitManager'
 
 type ProfileItem = {
   id: string
@@ -192,7 +193,7 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'binderKits' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
 
 const formatBytes = (bytes?: number | null) => {
   const value = Number(bytes || 0)
@@ -975,6 +976,7 @@ export default function AdminPage() {
     announcements: 'Popup e annunci',
     reports: 'Segnalazioni',
     catalog: 'Catalogo carte',
+    binderKits: 'Kit raccoglitori',
     analytics: 'Statistiche',
     services: 'Servizi',
     status: 'Status',
@@ -987,6 +989,7 @@ export default function AdminPage() {
     { key: 'announcements' as const, title: 'Popup e annunci', description: 'Pubblica aggiornamenti visibili una sola volta', icon: Megaphone, count: announcements.filter(item => item.is_active).length, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
     { key: 'catalog' as const, title: 'Catalogo carte', description: 'Importa varianti tramite link Cardmarket', icon: Database, tone: 'text-cyan-100 bg-cyan-300/10' },
+    { key: 'binderKits' as const, title: 'Kit raccoglitori', description: 'Crea, modifica ed elimina copertine', icon: BookOpen, tone: 'text-violet-100 bg-violet-300/10' },
     { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'status' as const, title: 'Status', description: 'Stato API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
@@ -1193,6 +1196,8 @@ export default function AdminPage() {
             <CatalogCardManager />
           </div>
         ) : null}
+
+        {activeSection === 'binderKits' ? <BinderKitManager /> : null}
 
         <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
