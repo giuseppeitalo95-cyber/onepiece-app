@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database, ChevronRight, Eraser, Info, MessageCircle, Search, Settings, Users, Wrench } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Search, Send, Settings, Users, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
@@ -58,6 +58,17 @@ type BugReport = {
   resolved_at?: string | null
   created_at: string
   updated_at?: string | null
+}
+
+type AnnouncementItem = {
+  id: string
+  title: string
+  message: string
+  is_active: boolean
+  published_at: string
+  created_at: string
+  updated_at?: string | null
+  read_count: number
 }
 
 type CatalogSyncResult = {
@@ -177,7 +188,7 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'reports' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'announcements' | 'reports' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
 
 const formatBytes = (bytes?: number | null) => {
   const value = Number(bytes || 0)
@@ -230,6 +241,11 @@ export default function AdminPage() {
   const [cleanupUserId, setCleanupUserId] = useState('')
   const [cleanupBusyKey, setCleanupBusyKey] = useState('')
   const [userSearch, setUserSearch] = useState('')
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([])
+  const [announcementTitle, setAnnouncementTitle] = useState('')
+  const [announcementMessage, setAnnouncementMessage] = useState('')
+  const [announcementLoading, setAnnouncementLoading] = useState(false)
+  const [announcementBusyId, setAnnouncementBusyId] = useState('')
 
   const filteredProfiles = useMemo(() => {
     const query = userSearch.trim().toLocaleLowerCase('it-IT')
@@ -241,7 +257,7 @@ export default function AdminPage() {
 
 
   const refreshData = async () => {
-    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports()])
+    await Promise.all([fetchProfiles(), fetchRequests(), fetchScanUsage(), fetchBugReports(), fetchAnnouncements()])
   }
 
   const openSection = (section: AdminSection) => {
@@ -252,6 +268,7 @@ export default function AdminPage() {
     }
     if (section === 'services') void fetchScanUsage()
     if (section === 'reports') void Promise.all([fetchRequests(), fetchBugReports()])
+    if (section === 'announcements') void fetchAnnouncements()
     if (section === 'users' || section === 'cleanup') void fetchProfiles()
   }
 
@@ -365,6 +382,86 @@ export default function AdminPage() {
   const getAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token || ''
+  }
+
+  const fetchAnnouncements = async () => {
+    const token = await getAccessToken()
+    if (!token) return
+    setAnnouncementLoading(true)
+    const response = await fetch('/api/announcements?admin=1', {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => null)
+    const data = await response?.json().catch(() => null)
+    if (response?.ok && data?.ok) {
+      setAnnouncements(data.announcements || [])
+    } else if (data?.error) {
+      setActionMessage(data.error)
+    }
+    setAnnouncementLoading(false)
+  }
+
+  const publishAnnouncement = async () => {
+    const title = announcementTitle.trim()
+    const message = announcementMessage.trim()
+    if (title.length < 3 || message.length < 5 || announcementLoading) return
+
+    const token = await getAccessToken()
+    if (!token) return
+    setAnnouncementLoading(true)
+    setActionMessage('')
+    const response = await fetch('/api/announcements', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ title, message })
+    }).catch(() => null)
+    const data = await response?.json().catch(() => null)
+
+    if (response?.ok && data?.ok) {
+      setAnnouncementTitle('')
+      setAnnouncementMessage('')
+      setActionMessage('Annuncio pubblicato. Gli utenti lo vedranno al prossimo accesso.')
+      await fetchAnnouncements()
+    } else {
+      setActionMessage(data?.error || 'Non sono riuscito a pubblicare l annuncio.')
+      setAnnouncementLoading(false)
+    }
+  }
+
+  const withdrawAnnouncement = async (announcementId: string) => {
+    const token = await getAccessToken()
+    if (!token) return
+    setAnnouncementBusyId(announcementId)
+    const response = await fetch('/api/announcements', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ announcementId, action: 'withdraw' })
+    }).catch(() => null)
+    const data = await response?.json().catch(() => null)
+    setActionMessage(response?.ok ? 'Annuncio ritirato: non verra mostrato ad altri utenti.' : data?.error || 'Ritiro non riuscito.')
+    setAnnouncementBusyId('')
+    if (response?.ok) await fetchAnnouncements()
+  }
+
+  const deleteAnnouncement = async (announcementId: string) => {
+    if (!window.confirm('Eliminare definitivamente questo annuncio e le relative conferme di lettura?')) return
+    const token = await getAccessToken()
+    if (!token) return
+    setAnnouncementBusyId(announcementId)
+    const response = await fetch(`/api/announcements?id=${encodeURIComponent(announcementId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => null)
+    const data = await response?.json().catch(() => null)
+    setActionMessage(response?.ok ? 'Annuncio eliminato.' : data?.error || 'Eliminazione non riuscita.')
+    setAnnouncementBusyId('')
+    if (response?.ok) await fetchAnnouncements()
   }
 
   const fetchSystemHealth = async () => {
@@ -868,6 +965,7 @@ export default function AdminPage() {
 
   const sectionTitle: Record<AdminSection, string> = {
     home: 'Impostazioni Admin',
+    announcements: 'Popup e annunci',
     reports: 'Segnalazioni',
     analytics: 'Statistiche',
     services: 'Servizi',
@@ -878,6 +976,7 @@ export default function AdminPage() {
   }
 
   const adminSections = [
+    { key: 'announcements' as const, title: 'Popup e annunci', description: 'Pubblica aggiornamenti visibili una sola volta', icon: Megaphone, count: announcements.filter(item => item.is_active).length, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
     { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
@@ -959,6 +1058,124 @@ export default function AdminPage() {
                 )
               })}
             </div>
+          </div>
+        ) : null}
+
+        {activeSection === 'announcements' ? (
+          <div className="mt-6 space-y-4">
+            <section className="rounded-[1.75rem] border border-amber-200/20 bg-slate-900/90 p-5">
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-300/10 text-amber-100">
+                  <Megaphone size={20} />
+                </span>
+                <div>
+                  <h2 className="text-xl font-black text-white">Nuovo popup</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    Il nuovo annuncio sostituisce quello attivo e viene mostrato una sola volta a ogni account.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <label className="block">
+                  <span className="mb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    <span>Titolo</span>
+                    <span>{announcementTitle.length}/100</span>
+                  </span>
+                  <input
+                    value={announcementTitle}
+                    onChange={event => setAnnouncementTitle(event.target.value.slice(0, 100))}
+                    placeholder="Esempio: Nuovo aggiornamento disponibile"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base font-bold text-white outline-none transition focus:border-amber-200"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    <span>Descrizione</span>
+                    <span>{announcementMessage.length}/2000</span>
+                  </span>
+                  <textarea
+                    value={announcementMessage}
+                    onChange={event => setAnnouncementMessage(event.target.value.slice(0, 2000))}
+                    placeholder={'Scrivi le novita, le modifiche oppure le informazioni sull evento.\nPuoi andare a capo per creare una lista ordinata.'}
+                    rows={8}
+                    className="w-full resize-y rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base leading-7 text-white outline-none transition focus:border-amber-200"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void publishAnnouncement()}
+                disabled={announcementLoading || announcementTitle.trim().length < 3 || announcementMessage.trim().length < 5}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-100/30 bg-amber-300 px-4 py-3.5 text-sm font-black text-slate-950 shadow-lg shadow-amber-950/20 transition hover:bg-amber-200 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+              >
+                <Send size={17} />
+                {announcementLoading ? 'Pubblico...' : 'Pubblica popup'}
+              </button>
+            </section>
+
+            <section className="rounded-[1.75rem] border border-white/10 bg-slate-900/90 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black text-white">Ultimi annunci</h2>
+                <button
+                  type="button"
+                  onClick={() => void fetchAnnouncements()}
+                  disabled={announcementLoading}
+                  className="grid h-10 w-10 place-items-center rounded-2xl border border-slate-700 bg-slate-950/70 text-slate-300 transition active:scale-90 disabled:opacity-50"
+                  aria-label="Aggiorna annunci"
+                >
+                  <RotateCcw size={16} />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {announcementLoading && announcements.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Carico gli annunci...</p>
+                ) : announcements.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400">Non hai ancora pubblicato popup.</p>
+                ) : announcements.map(item => (
+                  <article key={item.id} className={`rounded-3xl border p-4 ${item.is_active ? 'border-emerald-300/25 bg-emerald-300/[0.055]' : 'border-slate-800 bg-slate-950/70'}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="break-words font-black text-white">{item.title}</h3>
+                          <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${item.is_active ? 'bg-emerald-300/15 text-emerald-100' : 'bg-slate-800 text-slate-400'}`}>
+                            {item.is_active ? 'Attivo' : 'Ritirato'}
+                          </span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">{item.message}</p>
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-bold text-slate-500">
+                          <span>{new Date(item.published_at).toLocaleString('it-IT')}</span>
+                          <span>Letto da {item.read_count} utenti</span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        {item.is_active ? (
+                          <button
+                            type="button"
+                            onClick={() => void withdrawAnnouncement(item.id)}
+                            disabled={Boolean(announcementBusyId)}
+                            className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-black text-amber-100 transition active:scale-95 disabled:opacity-40"
+                          >
+                            {announcementBusyId === item.id ? 'Attendi...' : 'Ritira'}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void deleteAnnouncement(item.id)}
+                          disabled={Boolean(announcementBusyId)}
+                          className="grid h-9 w-9 place-items-center rounded-2xl border border-rose-300/20 bg-rose-400/10 text-rose-100 transition active:scale-90 disabled:opacity-40"
+                          aria-label={`Elimina ${item.title}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
           </div>
         ) : null}
 

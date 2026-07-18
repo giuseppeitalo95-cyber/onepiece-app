@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import AppAnnouncementModal from "./components/AppAnnouncementModal";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,7 +46,10 @@ export default function RootLayout({
       <head>
         {process.env.R2_PUBLIC_BASE_URL ? <link rel="preconnect" href={process.env.R2_PUBLIC_BASE_URL} /> : null}
       </head>
-<body className="min-h-dvh onepiece-bg onepiece-vibrant">{children}</body>
+<body className="min-h-dvh onepiece-bg onepiece-vibrant">
+  {children}
+  <AppAnnouncementModal />
+</body>
     </html>
   );
 }
