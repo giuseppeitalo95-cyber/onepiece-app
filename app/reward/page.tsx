@@ -34,6 +34,7 @@ type RewardResult = {
 }
 
 type Phase = 'idle' | 'locking' | 'revealed'
+type WinnerOrigin = { x: number; y: number }
 
 const CARD_COUNT = 9
 const confettiColors = ['#fde047', '#f59e0b', '#67e8f9', '#fb7185', '#ffffff']
@@ -72,6 +73,8 @@ export default function DailyRewardPage() {
   const [message, setMessage] = useState('')
   const founderAttemptRef = useRef(0)
   const localPreviewRef = useRef(false)
+  const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const [winnerOrigin, setWinnerOrigin] = useState<WinnerOrigin>({ x: 0, y: 0 })
 
   const loadStatus = useCallback(async () => {
     if (process.env.NODE_ENV === 'development' && window.location.search.includes('preview=founder')) {
@@ -111,6 +114,15 @@ export default function DailyRewardPage() {
   const chooseCard = async (index: number) => {
     if (!status?.available || phase !== 'idle') return
 
+    const selectedRect = cardRefs.current[index]?.getBoundingClientRect()
+    if (selectedRect) {
+      setWinnerOrigin({
+        x: selectedRect.left + selectedRect.width / 2 - window.innerWidth / 2,
+        y: selectedRect.top + selectedRect.height / 2 - window.innerHeight * 0.43,
+      })
+    } else {
+      setWinnerOrigin({ x: 0, y: 0 })
+    }
     setSelectedIndex(index)
     setPhase('locking')
     setMessage('La rotta è stata scelta...')
@@ -193,6 +205,7 @@ export default function DailyRewardPage() {
     setSelectedIndex(null)
     setResult(null)
     setMessage('')
+    setWinnerOrigin({ x: 0, y: 0 })
     setPhase('idle')
   }
 
@@ -270,11 +283,18 @@ export default function DailyRewardPage() {
                   const selected = selectedIndex === index
                   const dismissed = selectedIndex !== null && !selected
                   const flipped = selected && phase === 'revealed' && result
-                  const cardStyle = { '--order': index } as CSSProperties
+                  const cardStyle = {
+                    '--order': index,
+                    ...(selected ? {
+                      '--winner-from-x': `${winnerOrigin.x}px`,
+                      '--winner-from-y': `${winnerOrigin.y}px`,
+                    } : {}),
+                  } as CSSProperties
 
                   return (
                     <button
                       key={index}
+                      ref={element => { cardRefs.current[index] = element }}
                       type="button"
                       disabled={phase !== 'idle'}
                       onClick={() => chooseCard(index)}

@@ -131,6 +131,7 @@
   filter:
     drop-shadow(0 0 36px rgba(255, 255, 255, 0.72))
     drop-shadow(0 0 72px rgba(250, 204, 21, 0.58));
+  animation: winnerMoveToCenter 900ms cubic-bezier(.16,.82,.18,1) both;
 }
 
 .cardButton.dismissed {
@@ -267,6 +268,18 @@
 @keyframes winnerPulse {
   0%, 100% { filter: brightness(1) saturate(1); }
   50% { filter: brightness(1.22) saturate(1.28); }
+}
+
+@keyframes winnerMoveToCenter {
+  from {
+    transform: translate(
+      calc(-50% + var(--winner-from-x, 0px)),
+      calc(-50% + var(--winner-from-y, 0px))
+    ) scale(1);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 @keyframes winnerReveal {
