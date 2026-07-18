@@ -1323,7 +1323,7 @@ export default function Dashboard() {
       <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1fr_340px]">
         <div className="min-h-0 overflow-y-auto p-3">
           {catalogSelectedCard && (
-            <div className="mb-3 grid grid-cols-[92px_minmax(0,1fr)] gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3 lg:hidden">
+            <div className="mb-3 grid grid-cols-[112px_minmax(0,1fr)] gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/10 p-3 lg:hidden">
               <CardImage
                 src={catalogSelectedCard.image_url}
                 cardId={catalogSelectedCard.id}
@@ -1337,9 +1337,13 @@ export default function Dashboard() {
                 <button
                   onClick={() => addCatalogCard(catalogSelectedCard)}
                   disabled={catalogAddingId === catalogSelectedCard.id}
-                  className="mt-2 rounded-xl bg-cyan-300 px-3 py-2 text-[11px] font-black text-slate-950 disabled:opacity-60"
+                  className="mt-2 grid h-11 w-11 place-items-center rounded-full border border-cyan-100/60 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:scale-105 active:scale-90 disabled:opacity-60"
+                  aria-label={`Aggiungi ${catalogSelectedCard.name} alla collezione`}
+                  title="Aggiungi alla collezione"
                 >
-                  {catalogAddingId === catalogSelectedCard.id ? 'Aggiungo...' : 'Aggiungi'}
+                  {catalogAddingId === catalogSelectedCard.id
+                    ? <RotateCcw size={18} className="animate-spin" />
+                    : <Plus size={22} strokeWidth={3} />}
                 </button>
               </div>
             </div>
@@ -1354,9 +1358,9 @@ export default function Dashboard() {
           ) : catalogCards.length === 0 ? (
             <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-400">Nessuna carta trovata.</div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {catalogCards.map((card) => (
-                <div key={card.id} className="rounded-2xl border border-slate-800 bg-slate-900/86 p-2">
+                <div key={card.id} className="rounded-2xl border border-slate-800 bg-slate-900/86 p-2.5">
                   <button
                     onClick={() => openCatalogCard(card)}
                     className="block w-full text-left"
@@ -1365,17 +1369,21 @@ export default function Dashboard() {
                       src={card.image_url}
                       cardId={card.id}
                       alt={card.name}
-                      className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950"
+                      className="aspect-[5/7] overflow-hidden rounded-xl bg-slate-950"
                     />
-                    <p className="mt-2 line-clamp-2 text-[11px] font-bold text-white">{card.name}</p>
-                    <p className="mt-1 truncate text-[9px] text-slate-500">{card.id}</p>
+                    <p className="mt-2 line-clamp-2 text-[13px] font-bold leading-tight text-white">{card.name}</p>
+                    <p className="mt-1 truncate text-[10px] text-slate-500">{card.id}</p>
                   </button>
                   <button
                     onClick={() => addCatalogCard(card)}
                     disabled={catalogAddingId === card.id}
-                    className="mt-2 w-full rounded-xl bg-cyan-300 px-2 py-2 text-[11px] font-black text-slate-950 disabled:opacity-60"
+                    className="mx-auto mt-2 grid h-10 w-10 place-items-center rounded-full border border-cyan-100/60 bg-cyan-300 text-slate-950 shadow-md shadow-cyan-950/30 transition hover:scale-105 active:scale-90 disabled:opacity-60"
+                    aria-label={`Aggiungi ${card.name} alla collezione`}
+                    title="Aggiungi alla collezione"
                   >
-                    {catalogAddingId === card.id ? '...' : 'Aggiungi'}
+                    {catalogAddingId === card.id
+                      ? <RotateCcw size={17} className="animate-spin" />
+                      : <Plus size={21} strokeWidth={3} />}
                   </button>
                 </div>
               ))}
@@ -1403,9 +1411,13 @@ export default function Dashboard() {
               <button
                 onClick={() => addCatalogCard(catalogSelectedCard)}
                 disabled={catalogAddingId === catalogSelectedCard.id}
-                className="mt-3 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-60"
+                className="mx-auto mt-3 grid h-14 w-14 place-items-center rounded-full border border-cyan-100/60 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:scale-105 active:scale-90 disabled:opacity-60"
+                aria-label={`Aggiungi ${catalogSelectedCard.name} alla collezione`}
+                title="Aggiungi alla collezione"
               >
-                {catalogAddingId === catalogSelectedCard.id ? 'Aggiungo...' : 'Aggiungi alla collezione'}
+                {catalogAddingId === catalogSelectedCard.id
+                  ? <RotateCcw size={20} className="animate-spin" />
+                  : <Plus size={26} strokeWidth={3} />}
               </button>
             </div>
           ) : (

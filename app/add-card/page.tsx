@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import CardImage from '@/app/components/CardImage'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
+import { LoaderCircle, Plus } from 'lucide-react'
 
 type Card = {
   id: string
@@ -351,7 +352,7 @@ useEffect(() => {
                 src={card.image_url}
                 cardId={card.id}
                 alt={card.name}
-                className="h-16 w-12 overflow-hidden rounded bg-gray-700"
+                className="h-24 w-[4.5rem] overflow-hidden rounded-lg bg-gray-700"
                 imgClassName="h-full w-full object-cover"
                 fallbackClassName="flex h-full w-full items-center justify-center text-xs"
               />
@@ -362,20 +363,24 @@ useEffect(() => {
               ) : null}
             </button>
 
-            <div className="flex-1">
-              <p className="font-bold">{card.name}</p>
-              <p className="text-xs text-gray-400">
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-bold leading-tight">{card.name}</p>
+              <p className="mt-1 text-sm text-gray-400">
                 {getRarityLabel(card) || card.rarity} • {card.card_color}
               </p>
-              <p className="text-[10px] text-gray-500">{displayCardId(card.id)}</p>
+              <p className="mt-1 text-xs text-gray-500">{displayCardId(card.id)}</p>
             </div>
 
             <button
               onClick={() => addCard(card)}
               disabled={addingId === card.id}
-              className="px-3 py-1 bg-amber-400 text-black rounded-lg"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-cyan-100/60 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:scale-105 active:scale-90 disabled:opacity-60"
+              aria-label={`Aggiungi ${card.name} alla collezione`}
+              title="Aggiungi alla collezione"
             >
-              {addingId === card.id ? '...' : 'Aggiungi'}
+              {addingId === card.id
+                ? <LoaderCircle size={18} className="animate-spin" />
+                : <Plus size={22} strokeWidth={3} />}
             </button>
 
           </div>
