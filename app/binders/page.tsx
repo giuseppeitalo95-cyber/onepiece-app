@@ -17,6 +17,7 @@ import { shareBinder } from '@/lib/binderShare'
 import { validateUserText } from '@/lib/textModeration'
 
 type PickerSource = 'collection' | 'catalog'
+type CoverMode = 'color' | 'kit'
 
 const layouts = [
   { columns: 2, rows: 2, label: '2x2' },
@@ -24,6 +25,51 @@ const layouts = [
   { columns: 4, rows: 4, label: '4x4' },
   { columns: 4, rows: 5, label: '4x5' },
 ]
+
+function BinderCoverPicker({ mode, color, kitId, kits, onModeChange, onColorChange, onKitChange }: {
+  mode: CoverMode
+  color: string
+  kitId: string
+  kits: BinderKit[]
+  onModeChange: (mode: CoverMode) => void
+  onColorChange: (color: string) => void
+  onKitChange: (kit: BinderKit) => void
+}) {
+  return (
+    <div>
+      <div className="flex w-full rounded-xl border border-white/10 bg-slate-900 p-1">
+        <button type="button" onClick={() => onModeChange('color')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] ${mode === 'color' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Colori</button>
+        <button type="button" onClick={() => onModeChange('kit')} disabled={kits.length === 0} className={`flex-1 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] disabled:opacity-35 ${mode === 'kit' ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>Copertine</button>
+      </div>
+
+      {mode === 'color' ? (
+        <div className="mt-3 grid grid-cols-8 gap-2 sm:grid-cols-10">
+          {BINDER_COLORS.map(value => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onColorChange(value)}
+              className={`grid aspect-square place-items-center rounded-xl border-2 transition active:scale-90 ${color === value ? 'border-cyan-100 shadow-[0_0_16px_rgba(103,232,249,0.45)]' : 'border-white/10'}`}
+              style={{ backgroundColor: value }}
+              aria-label={`Colore ${value}`}
+            >
+              {color === value ? <Check size={14} className="text-white drop-shadow" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 grid max-h-56 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+          {kits.map(kit => (
+            <button key={kit.id} type="button" onClick={() => onKitChange(kit)} className={`overflow-hidden rounded-xl border-2 p-1 text-left transition active:scale-95 ${kitId === kit.id ? 'border-cyan-200 bg-cyan-300/10' : 'border-white/10'}`} aria-label={`Copertina ${kit.title}`}>
+              <img src={kit.closed_url} alt="" className="aspect-[3/4] w-full rounded-lg object-cover" />
+              <span className="mt-1 block truncate text-[9px] font-black text-white">{kit.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const cloneBinder = (binder: BinderRecord): BinderRecord => JSON.parse(JSON.stringify(binder))
 
@@ -101,7 +147,8 @@ export default function BindersPage() {
   const [introOpen, setIntroOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('Il mio raccoglitore')
-  const newColor = BINDER_COLORS[0]
+  const [newColor, setNewColor] = useState(BINDER_COLORS[0])
+  const [newCoverMode, setNewCoverMode] = useState<CoverMode>('color')
   const [binderKits, setBinderKits] = useState<BinderKit[]>([])
   const [newKitId, setNewKitId] = useState('')
   const [newLayout, setNewLayout] = useState(layouts[1])
@@ -249,7 +296,7 @@ export default function BindersPage() {
     setStatus('')
     try {
       const id = crypto.randomUUID()
-      const selectedKit = binderKits.find(kit => kit.id === newKitId)
+      const selectedKit = newCoverMode === 'kit' ? binderKits.find(kit => kit.id === newKitId) : null
       const record: BinderRecord = {
         id,
         user_id: userId,
@@ -464,7 +511,22 @@ export default function BindersPage() {
             {editing ? (
               <div className="mx-auto mt-3 flex max-w-3xl flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/55 p-3">
                 <input value={activeBinder.title} onChange={event => updateActive(binder => ({ ...binder, title: event.target.value }))} maxLength={60} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-base font-bold text-white outline-none focus:border-cyan-300" aria-label="Nome raccoglitore" />
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{binderKits.map(kit => <button key={kit.id} type="button" onClick={() => updateActive(binder => ({ ...binder, cover_image_url: encodeBinderKit(kit) }))} className={`overflow-hidden rounded-xl border-2 p-1 text-left transition active:scale-95 ${decodeBinderKit(activeBinder.cover_image_url)?.id === kit.id ? 'border-cyan-200 bg-cyan-300/10' : 'border-white/10'}`} aria-label={`Copertina ${kit.title}`}><img src={kit.closed_url} alt="" className="aspect-[3/4] w-full rounded-lg object-cover" /><span className="mt-1 block truncate text-[9px] font-black text-white">{kit.title}</span></button>)}</div>
+                <BinderCoverPicker
+                  mode={activeBinder.cover_image_url ? 'kit' : 'color'}
+                  color={activeBinder.cover_color}
+                  kitId={decodeBinderKit(activeBinder.cover_image_url)?.id || ''}
+                  kits={binderKits}
+                  onModeChange={mode => {
+                    if (mode === 'color') {
+                      updateActive(binder => ({ ...binder, cover_image_url: null }))
+                      return
+                    }
+                    const kit = decodeBinderKit(activeBinder.cover_image_url) || binderKits[0]
+                    if (kit) updateActive(binder => ({ ...binder, cover_image_url: encodeBinderKit(kit) }))
+                  }}
+                  onColorChange={color => updateActive(binder => ({ ...binder, cover_color: color, cover_image_url: null }))}
+                  onKitChange={kit => updateActive(binder => ({ ...binder, cover_image_url: encodeBinderKit(kit) }))}
+                />
                 <div className="flex w-fit rounded-xl border border-white/10 bg-slate-900 p-1">{layouts.map(layout => <button key={layout.label} type="button" onClick={() => changeLayout(layout.columns, layout.rows)} className={`rounded-lg px-3 py-1.5 text-xs font-black transition ${activeBinder.columns_count === layout.columns && activeBinder.rows_count === layout.rows ? 'bg-cyan-300 text-slate-950' : 'text-slate-300'}`}>{layout.label}</button>)}</div>
               </div>
             ) : null}
@@ -492,7 +554,20 @@ export default function BindersPage() {
             <div className="flex items-center justify-between"><h2 className="text-xl font-black">Nuovo raccoglitore</h2><button onClick={() => setCreateOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.06]" aria-label="Chiudi"><X size={17} /></button></div>
             <input value={newTitle} onChange={event => setNewTitle(event.target.value)} maxLength={60} className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-base font-bold outline-none focus:border-cyan-300" placeholder="Nome raccoglitore" />
             <p className="mt-4 text-xs font-black uppercase tracking-[0.15em] text-slate-400">Copertina</p>
-            <div className="mt-2 grid max-h-56 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">{binderKits.map(kit => <button key={kit.id} type="button" onClick={() => setNewKitId(kit.id)} className={`overflow-hidden rounded-xl border-2 p-1 text-left transition active:scale-95 ${newKitId === kit.id ? 'border-cyan-200 bg-cyan-300/10' : 'border-white/10'}`}><img src={kit.closed_url} alt="" className="aspect-[3/4] w-full rounded-lg object-cover" /><span className="mt-1 block truncate text-[9px] font-black text-white">{kit.title}</span></button>)}{binderKits.length === 0 ? <p className="col-span-full rounded-xl border border-dashed border-slate-700 p-3 text-xs text-slate-400">Nessun kit disponibile: verrà usata la copertina classica.</p> : null}</div>
+            <div className="mt-2">
+              <BinderCoverPicker
+                mode={newCoverMode}
+                color={newColor}
+                kitId={newKitId}
+                kits={binderKits}
+                onModeChange={mode => {
+                  setNewCoverMode(mode)
+                  if (mode === 'kit') setNewKitId(current => current || binderKits[0]?.id || '')
+                }}
+                onColorChange={color => { setNewColor(color); setNewCoverMode('color') }}
+                onKitChange={kit => { setNewKitId(kit.id); setNewCoverMode('kit') }}
+              />
+            </div>
             <p className="mt-4 text-xs font-black uppercase tracking-[0.15em] text-slate-400">Tasche per pagina</p>
             <div className="mt-2 grid grid-cols-4 gap-2">{layouts.map(layout => <button key={layout.label} type="button" onClick={() => setNewLayout(layout)} className={`rounded-xl border px-2 py-3 text-sm font-black transition active:scale-95 ${newLayout.label === layout.label ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.05] text-slate-200'}`}>{layout.label}</button>)}</div>
             {status ? <p className="mt-3 text-center text-xs font-bold text-rose-100">{status}</p> : null}
