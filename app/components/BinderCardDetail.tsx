@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import CardImage from './CardImage'
+import CardErrorReport from './CardErrorReport'
 import { getRarityLabel } from '@/lib/rarity'
 import type { BinderCard } from '@/lib/binders'
 
@@ -78,6 +79,7 @@ function BinderCardDetailContent({ card, onClose }: { card: BinderCard; onClose:
               ].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.05] p-3"><p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-black text-white">{value}</p></div>)}
             </div>
             {details.card_text ? <p className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm leading-6 text-slate-300">{details.card_text}</p> : null}
+            <CardErrorReport cardId={details.card_id} cardName={details.name} pagePath="/binders" />
           </div>
         </div>
       </div>

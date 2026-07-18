@@ -8,6 +8,7 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import DailyRewardBanner from '@/app/components/DailyRewardBanner'
+import CardErrorReport from '@/app/components/CardErrorReport'
 import { useRouter } from 'next/navigation'
 import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
@@ -1880,6 +1881,12 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          <CardErrorReport
+            cardId={selectedCard.card_id}
+            cardName={selectedCard.name || 'Carta sconosciuta'}
+            pagePath="/dashboard"
+          />
 
         </div>
       </div>

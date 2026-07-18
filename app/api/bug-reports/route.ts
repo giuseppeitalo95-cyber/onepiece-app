@@ -85,8 +85,9 @@ export async function POST(request: Request) {
 
   if (insertError) return Response.json({ ok: false, error: insertError.message }, { status: 500 })
 
+  const isCardError = /^Errore carta\b/i.test(title)
   const push = await notifyAdmins(
-    'Nuova segnalazione bug',
+    isCardError ? 'Errore segnalato su una carta' : 'Nuova segnalazione bug',
     `${profile?.username || user.email || 'Utente'}: ${title || message.slice(0, 80)}`
   )
 

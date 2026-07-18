@@ -210,8 +210,11 @@ export default function Topbar() {
 
         if (previousCount !== null && nextCount > previousCount) {
           const latest = unresolvedReports[0]
+          const isCardError = latest?.kind === 'bug' && /^Errore carta\b/i.test(latest?.title || '')
           void showBrowserNotification(
-            latest?.kind === 'card' ? 'Nuova carta assente' : 'Nuova segnalazione bug',
+            latest?.kind === 'card'
+              ? 'Nuova carta assente'
+              : isCardError ? 'Errore segnalato su una carta' : 'Nuova segnalazione bug',
             latest?.kind === 'card'
               ? `${latest?.card_code || latest?.card_op || 'Carta'} · ${latest?.card_variant || latest?.card_name || 'Variante non indicata'}`
               : `${latest?.reporter_username || latest?.reporter_email || 'Utente'}: ${latest?.title || latest?.message || 'Nuovo bug'}`,
