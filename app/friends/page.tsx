@@ -8,7 +8,6 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import BinderCover from '@/app/components/BinderCover'
-import { emptyProgressSummary, summarizeProgress, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
 import { isProfileOnline } from '@/lib/onlineStatus'
 import { getRarityLabel } from '@/lib/rarity'
@@ -89,7 +88,6 @@ export default function FriendsPage() {
   const [selectedFriendCard, setSelectedFriendCard] = useState<(UserCard | DeckCard) | null>(null)
   const [selectedFriendCardPrice, setSelectedFriendCardPrice] = useState<number | null>(null)
   const [selectedFriendCardPriceLoading, setSelectedFriendCardPriceLoading] = useState(false)
-  const [selectedProgress, setSelectedProgress] = useState<ProgressSummary>(emptyProgressSummary())
   const [searchTerm, setSearchTerm] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -313,7 +311,6 @@ export default function FriendsPage() {
     setSelectedFriendCardPrice(null)
     if (!friendIds.includes(profile.id)) {
       setSelectedCards([])
-      setSelectedProgress(emptyProgressSummary())
       return
     }
 
@@ -343,7 +340,6 @@ export default function FriendsPage() {
       inventory_price: null
     }))
     setSelectedCards(baseCards)
-    setSelectedProgress(summarizeProgress(baseCards))
 
     const friendDecks = (decks ?? []).map((deck: any) => ({
       id: String(deck.id),
@@ -363,7 +359,6 @@ export default function FriendsPage() {
     })
 
     setSelectedCards(pricedCards)
-    setSelectedProgress(summarizeProgress(pricedCards))
   }
 
   const closeModal = () => {
@@ -374,7 +369,6 @@ export default function FriendsPage() {
     setSelectedFriendDeck(null)
     setSelectedFriendCard(null)
     setSelectedFriendCardPrice(null)
-    setSelectedProgress(emptyProgressSummary())
   }
 
   const isFriend = selectedProfile ? friendIds.includes(selectedProfile.id) : false
@@ -761,24 +755,7 @@ export default function FriendsPage() {
                 </div>
 
                 {isFriend ? (
-                  <div className="rounded-3xl border border-amber-200/20 bg-gradient-to-br from-amber-200/12 to-cyan-200/10 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">Livello</p>
-                        <p className="mt-1 text-3xl font-black text-white">LV {selectedProgress.level}</p>
-                      </div>
-                      <div className="text-right text-xs font-bold text-cyan-100">
-                        {selectedProgress.unlockedCount}/{selectedProgress.totalBadges}
-                        <span className="block text-slate-400">badge</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/60">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-200 to-cyan-200"
-                        style={{ width: `${selectedProgress.progressPercent}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2 rounded-3xl border border-white/10 bg-slate-950/45 p-3">
                       <button
                         type="button"
                         disabled
@@ -794,7 +771,6 @@ export default function FriendsPage() {
                         <MessageCircle size={14} />
                         Messaggio
                       </button>
-                    </div>
                   </div>
                 ) : null}
 

@@ -1,3 +1,11 @@
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim())
+})
+
 self.addEventListener('push', event => {
   let data = {}
 
@@ -12,6 +20,8 @@ self.addEventListener('push', event => {
     body: data.body || 'Hai una nuova notifica.',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
     data: {
       url: data.url || '/'
     }

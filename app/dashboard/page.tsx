@@ -10,7 +10,6 @@ import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import DailyRewardBanner from '@/app/components/DailyRewardBanner'
 import CardErrorReport from '@/app/components/CardErrorReport'
 import { useRouter } from 'next/navigation'
-import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel, rarityFilterValue } from '@/lib/rarity'
 
@@ -264,7 +263,6 @@ export default function Dashboard() {
       inventory_price: card.inventory_price == null ? null : Number(card.inventory_price)
     }))
     setCards(loadedCards)
-    void evaluateProgressSynced(uid, loadedCards, { claimDaily: true })
     setLoadingCards(false)
     void backfillMissingCardDetails(uid, loadedCards)
     void syncLivePricesForCards(uid, loadedCards)
@@ -453,12 +451,6 @@ export default function Dashboard() {
     )
     setAnalyticsLivePrices(prev => ({ ...prev, ...liveMap }))
     setPricesReady(true)
-
-    const progressCards = cardsToSync.map(card => {
-      const live = liveMap[card.card_id]
-      return live == null ? card : { ...card, market_price: live, inventory_price: null }
-    })
-    void evaluateProgressSynced(uid, progressCards, { claimDaily: true })
 
     const missingSavedPrices = cardsToSync
       .filter(card => getSavedPrice(card) == null && liveMap[card.card_id] != null)

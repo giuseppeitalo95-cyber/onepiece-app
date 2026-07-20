@@ -3,15 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import {
-  emptyProgressSummary,
-  evaluateProgressSynced,
-  type ProgressSummary,
-} from '@/lib/progression'
 import { Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucide-react'
-import AchievementToasts from './AchievementToasts'
 import AppLogo from './AppLogo'
-import { getPremiumTier, premiumClassName, premiumLabel, type PremiumTier } from '@/lib/premium'
+import PushNotificationPrompt from './PushNotificationPrompt'
+import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { validateUserText } from '@/lib/textModeration'
 
@@ -27,6 +22,11 @@ type AdminNotice = {
   card_variant?: string
   card_name?: string
   kind: 'bug' | 'card'
+}
+
+type TopbarProfile = PremiumProfile & {
+  username?: string | null
+  avatar_url?: string | null
 }
 
 const readAdminNotices = (payload: unknown, kind: AdminNotice['kind']) => {
@@ -57,9 +57,6 @@ export default function Topbar() {
   const [bugSending, setBugSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const bugUnreadRef = useRef<number | null>(null)
-  const [progress, setProgress] = useState<ProgressSummary>(
-    emptyProgressSummary()
-  )
   const tierLabel =
     premiumTier === 'admin'
       ? 'Admin'
@@ -113,12 +110,12 @@ export default function Topbar() {
         return
       }
 
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('username, avatar_url, is_premium, premium_until, is_vip, vip_note')
         .eq('id', session.user.id)
         .maybeSingle()
-      let profileData = data as any
+      let profileData = data as TopbarProfile | null
 
       if (error) {
         const fallback = await supabase
@@ -126,7 +123,7 @@ export default function Topbar() {
           .select('username, avatar_url')
           .eq('id', session.user.id)
           .maybeSingle()
-        profileData = fallback.data as any
+        profileData = fallback.data as TopbarProfile | null
       }
 
       if (!profileData?.username && pathname !== '/complete-profile') {
@@ -134,22 +131,9 @@ export default function Topbar() {
         return
       }
 
-      const { data: cardData } = await supabase
-        .from('user_cards')
-        .select(
-          'card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price'
-        )
-        .eq('user_id', session.user.id)
-
       await touchLastSeen(session.user.id)
 
       if (cancelled) return
-
-      setProgress(
-        await evaluateProgressSynced(session.user.id, cardData || [], {
-          claimDaily: true,
-        })
-      )
 
       setUsername(profileData?.username || 'Utente')
       setAvatarUrl(profileData?.avatar_url || '')
@@ -246,7 +230,7 @@ export default function Topbar() {
         .eq('id', session.user.id)
         .maybeSingle()
 
-      if (getPremiumTier(profileData as any, session.user) === 'admin') {
+      if (getPremiumTier(profileData as TopbarProfile | null, session.user) === 'admin') {
         await loadBugUnread()
       }
     }, 15000)
@@ -343,8 +327,7 @@ export default function Topbar() {
 
   return (
     <>
-      <AchievementToasts />
-
+      <PushNotificationPrompt silent />
       <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
         <div className="relative z-10 flex items-center gap-1.5">
           <button
@@ -416,24 +399,6 @@ export default function Topbar() {
                 </div>
               )}
             </div>
-
-            <span
-              className="relative ml-1 grid h-10 w-10 shrink-0 place-items-center rounded-full p-[2px] sm:ml-0"
-              style={{
-                background: `conic-gradient(#facc15 ${
-                  progress.progressPercent * 3.6
-                }deg, rgba(255,255,255,0.12) 0deg)`,
-              }}
-              aria-label={`Livello ${progress.level}, ${Math.round(
-                progress.progressPercent
-              )} percento`}
-            >
-              <span className="grid h-full w-full place-items-center rounded-full border border-amber-100/30 bg-[#173842] text-[10px] font-black leading-none text-amber-100 shadow-[0_0_18px_rgba(250,204,21,0.24)]">
-                LV
-                <br />
-                {progress.level}
-              </span>
-            </span>
 
             <span className={`hidden max-w-[130px] truncate pr-1 text-xs font-bold text-cyan-50 sm:block ${premiumClassName(premiumTier)}`}>
               {loading ? '...' : username}

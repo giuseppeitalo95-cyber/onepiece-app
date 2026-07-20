@@ -1,18 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
-import webPush from 'web-push'
 import { ADMIN_ACCOUNT } from '@/lib/admin'
+import { sendPushToUsers } from '@/lib/pushNotifications'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:giuseppeitalo95@gmail.com'
-
-type PushSubscriptionRow = {
-  id: string
-  subscription: webPush.PushSubscription
-}
-
 export type AdminPushResult = {
   configured: boolean
   adminIds: string[]
@@ -23,10 +14,9 @@ export type AdminPushResult = {
 
 export const notifyAdmins = async (title: string, body: string, url = '/admin'): Promise<AdminPushResult> => {
   const empty = { configured: false, adminIds: [], subscriptions: 0, sent: 0, failures: [] }
-  if (!SERVICE_ROLE_KEY || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return empty
+  if (!SERVICE_ROLE_KEY) return empty
 
   const client = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-  webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
   const adminIds = new Set<string>([ADMIN_ACCOUNT.id])
   try {
@@ -50,34 +40,13 @@ export const notifyAdmins = async (title: string, body: string, url = '/admin'):
     // Il fallback sull'account Admin e sufficiente.
   }
 
-  const { data: subscriptions } = await client
-    .from('push_subscriptions')
-    .select('id, subscription')
-    .in('user_id', [...adminIds])
-
-  const payload = JSON.stringify({ title, body, url })
-  let sent = 0
-  const failures: string[] = []
-
-  await Promise.all(((subscriptions || []) as PushSubscriptionRow[]).map(async item => {
-    try {
-      await webPush.sendNotification(item.subscription, payload)
-      sent += 1
-    } catch (error: unknown) {
-      const pushError = error as { statusCode?: unknown; message?: unknown }
-      const statusCode = Number(pushError.statusCode || 0)
-      failures.push(String(statusCode || pushError.message || 'send_failed'))
-      if (statusCode === 404 || statusCode === 410) {
-        await client.from('push_subscriptions').delete().eq('id', item.id)
-      }
-    }
-  }))
+  const delivery = await sendPushToUsers(client, [...adminIds], { title, body, url, tag: 'admin-opv' })
 
   return {
-    configured: true,
+    configured: delivery.configured,
     adminIds: [...adminIds],
-    subscriptions: subscriptions?.length || 0,
-    sent,
-    failures,
+    subscriptions: delivery.subscriptions,
+    sent: delivery.sent,
+    failures: delivery.failures,
   }
 }

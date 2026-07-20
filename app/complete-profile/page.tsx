@@ -6,11 +6,10 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ShieldCheck, Sparkles, UserRound } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { validateUserText } from '@/lib/textModeration'
 
 export default function CompleteProfilePage() {
   const router = useRouter()
-  const [userId, setUserId] = useState<string | null>(null)
+  const [accessToken, setAccessToken] = useState('')
   const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -27,7 +26,7 @@ export default function CompleteProfilePage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username, username_locked')
+        .select('username')
         .eq('id', session.user.id)
         .maybeSingle()
 
@@ -36,65 +35,34 @@ export default function CompleteProfilePage() {
         return
       }
 
-      setUserId(session.user.id)
-      const suggestedNickname = typeof session.user.user_metadata?.username === 'string'
-        ? session.user.user_metadata.username.trim()
-        : ''
-      setNickname(suggestedNickname)
+      setAccessToken(session.access_token)
       setLoading(false)
     }
 
-    load()
+    void load()
   }, [router])
 
   const saveNickname = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!userId || saving) return
+    if (!accessToken || saving) return
 
     const cleanNickname = nickname.trim()
     setError('')
-
-    if (cleanNickname.length < 3) {
-      setError('Scegli un nickname di almeno 3 caratteri.')
-      return
-    }
-
-    const moderation = validateUserText(cleanNickname)
-    if (!moderation.ok) {
-      setError(moderation.message)
-      return
-    }
-
     setSaving(true)
 
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle()
-
-    const { error: saveError } = existingProfile
-      ? await supabase
-          .from('profiles')
-          .update({
-            username: cleanNickname,
-            username_locked: false
-          })
-          .eq('id', userId)
-      : await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            username: cleanNickname,
-            username_locked: false
-          })
-
+    const response = await fetch('/api/profile/nickname', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ nickname: cleanNickname }),
+    })
+    const result = await response.json().catch(() => null)
     setSaving(false)
 
-    if (saveError) {
-      setError(saveError.code === '23505'
-        ? 'Questo nickname è già utilizzato. Scegline un altro.'
-        : 'Non sono riuscito a salvare il nickname. Riprova.')
+    if (!response.ok || !result?.ok) {
+      setError(result?.error || 'Non sono riuscito a salvare il nickname. Riprova.')
       return
     }
 
@@ -125,7 +93,7 @@ export default function CompleteProfilePage() {
           </div>
           <h1 className="mt-4 text-3xl font-black text-white">Scegli il nickname</h1>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-300">
-            Lo userai in tutta l&apos;app. Dopo la conferma potrai modificarlo una sola volta dal profilo.
+            Lo userai in tutta l&apos;app. In seguito potrai modificarlo una volta ogni 30 giorni.
           </p>
         </div>
 
@@ -139,9 +107,12 @@ export default function CompleteProfilePage() {
               value={nickname}
               onChange={(event) => setNickname(event.target.value)}
               placeholder="peppitalo"
-              className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/15"
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/15"
               autoFocus
               autoComplete="nickname"
+              minLength={3}
+              maxLength={24}
+              required
             />
           </label>
 
@@ -154,7 +125,7 @@ export default function CompleteProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98] disabled:opacity-60"
           >
             <ShieldCheck size={17} />
             {saving ? 'Salvataggio...' : 'Conferma nickname'}

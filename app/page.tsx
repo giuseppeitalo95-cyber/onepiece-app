@@ -5,9 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Download, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, UserRound } from 'lucide-react'
+import { Download, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { validateUserText } from '@/lib/textModeration'
 
 type AuthMode = 'login' | 'register'
 
@@ -41,7 +40,6 @@ export default function Home() {
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [username, setUsername] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [authMessage, setAuthMessage] = useState('')
@@ -51,7 +49,12 @@ export default function Home() {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        router.replace('/dashboard')
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        router.replace(profile?.username ? '/dashboard' : '/complete-profile')
         return
       }
       setCheckingSession(false)
@@ -86,27 +89,12 @@ export default function Home() {
     if (authBusy) return
 
     const cleanEmail = email.trim().toLowerCase()
-    const cleanUsername = username.trim()
-
     setAuthError('')
     setAuthMessage('')
 
     if (!cleanEmail || !password.trim()) {
       setAuthError('Inserisci email e password.')
       return
-    }
-
-    if (mode === 'register' && cleanUsername.length < 3) {
-      setAuthError('Scegli un nickname di almeno 3 caratteri.')
-      return
-    }
-
-    if (mode === 'register') {
-      const moderation = validateUserText(cleanUsername)
-      if (!moderation.ok) {
-        setAuthError(moderation.message)
-        return
-      }
     }
 
     setAuthBusy(true)
@@ -117,9 +105,7 @@ export default function Home() {
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            username: cleanUsername
-          }
+          data: {}
         }
       })
 
@@ -249,22 +235,6 @@ export default function Home() {
           </div>
 
           <form onSubmit={handleEmailAuth} className="space-y-3">
-            {mode === 'register' && (
-              <label className="block">
-                <span className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-300">
-                  <UserRound size={14} />
-                  Nickname
-                </span>
-                <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="peppitalo"
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/15"
-                  autoComplete="nickname"
-                />
-              </label>
-            )}
-
             <label className="block">
               <span className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-300">
                 <Mail size={14} />

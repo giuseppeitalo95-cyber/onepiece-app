@@ -215,13 +215,6 @@
   50% { box-shadow: 0 0 24px rgba(110, 231, 249, 0.34); }
 }
 
-@keyframes achievement-in {
-  0% { opacity: 0; transform: translateX(26px) scale(0.96); filter: blur(4px); }
-  14% { opacity: 1; transform: translateX(0) scale(1.02); filter: blur(0); }
-  22%, 88% { opacity: 1; transform: translateX(0) scale(1); }
-  100% { opacity: 0; transform: translateX(18px) scale(0.98); }
-}
-
 @keyframes opv-hat-float {
   0%, 100% { transform: translateX(-50%) translateY(0) rotate(-0.8deg); }
   50% { transform: translateX(-50%) translateY(-2px) rotate(0.8deg); }
@@ -233,10 +226,6 @@
 
 .op-nav-icon {
   animation: nav-active-pop 320ms cubic-bezier(0.2, 0.85, 0.25, 1.25) both;
-}
-
-.op-achievement-toast {
-  animation: achievement-in 5.2s cubic-bezier(0.18, 0.84, 0.26, 1) both;
 }
 
 .opv-logo {

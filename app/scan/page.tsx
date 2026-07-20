@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from 'lucide-react'
-import { evaluateProgressSynced } from '@/lib/progression'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { parseCardCodeFromText } from '@/lib/cardRecognition'
@@ -1744,7 +1743,6 @@ export default function ScanPage() {
     try {
       await saveCardToCollection(savedCard)
       await confirmDailyScanUsage()
-      void refreshProgressAfterCollectionChange()
 
       setScannedCards(prev => [savedCard, ...prev])
       recognitionStreakRef.current = null
@@ -2320,17 +2318,6 @@ export default function ScanPage() {
 
       if (error) throw error
     }
-  }
-
-  const refreshProgressAfterCollectionChange = async () => {
-    if (!userId) return
-
-    const { data } = await supabase
-      .from('user_cards')
-      .select('card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
-      .eq('user_id', userId)
-
-    void evaluateProgressSynced(userId, data || [], { claimDaily: true })
   }
 
   const discardScanResults = () => {

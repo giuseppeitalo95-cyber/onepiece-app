@@ -19,11 +19,9 @@ export default function Callback() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('username, username_locked')
+        .select('username')
         .eq('id', user.id)
         .maybeSingle()
-
-      const unlockValentinaNickname = profileData?.username?.trim().toLocaleLowerCase('it-IT') === 'valentina tempesta'
 
       if (!profileData) {
         const { error: insertError } = await supabase
@@ -37,11 +35,6 @@ export default function Callback() {
         if (insertError) {
           console.log('PROFILE ERROR:', insertError.message)
         }
-      } else if (unlockValentinaNickname && profileData.username_locked !== false) {
-        await supabase
-          .from('profiles')
-          .update({ username_locked: false })
-          .eq('id', user.id)
       }
 
       const { data: { session } } = await supabase.auth.getSession()
@@ -55,7 +48,7 @@ export default function Callback() {
       }
 
       const firstAccess = !profileData?.username
-      router.replace(firstAccess ? '/complete-profile' : unlockValentinaNickname ? '/profile' : '/dashboard')
+      router.replace(firstAccess ? '/complete-profile' : '/dashboard')
     }
 
     handle()

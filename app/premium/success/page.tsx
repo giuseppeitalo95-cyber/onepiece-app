@@ -11,7 +11,7 @@ export default function PremiumSuccessPage() {
           <Crown size={26} />
         </div>
         <h1 className="mt-4 text-2xl font-black">Premium attivato</h1>
-        <p className="mt-2 text-sm text-slate-300">Grazie per supportare OPV. Se non vedi subito il badge, riapri l'app tra qualche secondo.</p>
+        <p className="mt-2 text-sm text-slate-300">Grazie per supportare OPV. Se non vedi subito lo stato Premium, riapri l'app tra qualche secondo.</p>
         <Link href="/bacheca" className="mt-5 inline-flex rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950">
           Torna all'app
         </Link>

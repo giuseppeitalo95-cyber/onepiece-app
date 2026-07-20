@@ -3,16 +3,24 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Award, Camera, Flame, LockKeyhole, Trophy, UploadCloud } from 'lucide-react'
+import { Camera, UploadCloud } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import PushNotificationPrompt from '@/app/components/PushNotificationPrompt'
 import BinderGallery from '@/app/components/BinderGallery'
-import { isAdminAccount } from '@/lib/admin'
 import { normalizeBinder, type BinderRecord } from '@/lib/binders'
-import { emptyProgressSummary, evaluateProgressSynced, type ProgressSummary } from '@/lib/progression'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
-import { validateUserText } from '@/lib/textModeration'
+
+type ProfileData = PremiumProfile & {
+  username?: string | null
+  avatar_url?: string | null
+}
+
+const getAvatarPublicUrl = (avatarPath: string | null) => {
+  if (!avatarPath) return ''
+  if (avatarPath.startsWith('http')) return avatarPath
+  return supabase.storage.from('avatars').getPublicUrl(avatarPath).data?.publicUrl ?? ''
+}
 
 export default function Profile() {
   const router = useRouter()
@@ -21,17 +29,15 @@ export default function Profile() {
   const [username, setUsername] = useState('')
   const [canEdit, setCanEdit] = useState(false)
   const [firstAccess, setFirstAccess] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [uploadStatus, setUploadStatus] = useState('')
   const [savingAvatar, setSavingAvatar] = useState(false)
   const [savingUsername, setSavingUsername] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [premiumTier, setPremiumTier] = useState<PremiumTier>('free')
-  const [adminNotifications, setAdminNotifications] = useState(0)
-  const [progress, setProgress] = useState<ProgressSummary>(emptyProgressSummary())
+  const [nicknameCredits, setNicknameCredits] = useState(0)
+  const [nextNicknameChange, setNextNicknameChange] = useState<string | null>(null)
   const [profileBinders, setProfileBinders] = useState<BinderRecord[]>([])
 
   useEffect(() => {
@@ -47,26 +53,21 @@ export default function Profile() {
       setEmail(user.email ?? '')
       setUserId(user.id)
 
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .select('username, username_locked, avatar_url, is_premium, premium_until, is_vip, vip_note')
+        .select('username, avatar_url, is_premium, premium_until, is_vip, vip_note')
         .eq('id', user.id)
         .single()
-      let profileData = data as any
+      let profileData = data as ProfileData | null
 
       if (error) {
         const fallback = await supabase
           .from('profiles')
-          .select('username, username_locked, avatar_url')
+          .select('username, avatar_url')
           .eq('id', user.id)
           .single()
-        profileData = fallback.data as any
+        profileData = fallback.data as ProfileData | null
       }
-
-      const { data: cardData } = await supabase
-        .from('user_cards')
-        .select('card_id, quantity, name, rarity, card_color, card_type, card_cost, card_power, market_price, inventory_price')
-        .eq('user_id', user.id)
 
       const { data: binderData } = await supabase
         .from('binders')
@@ -75,55 +76,29 @@ export default function Profile() {
         .order('updated_at', { ascending: false })
 
       const rawAvatarUrl = profileData?.avatar_url ?? ''
-      const resolvedAvatarUrl = await getAvatarPublicUrl(rawAvatarUrl)
+      const resolvedAvatarUrl = getAvatarPublicUrl(rawAvatarUrl)
       const isFirstAccess = !profileData?.username
-      const nicknameCanBeChanged = isFirstAccess || profileData?.username_locked === false
+      const nicknameResponse = await fetch('/api/profile/nickname', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }).catch(() => null)
+      const nicknameStatus = await nicknameResponse?.json().catch(() => null)
+      const nicknameCanBeChanged = isFirstAccess || Boolean(nicknameStatus?.canChange)
 
-      const isAdminUser = isAdminAccount(user, profileData)
       const tier = getPremiumTier(profileData as PremiumProfile, user)
 
       setUsername(profileData?.username ?? '')
       setAvatarUrl(resolvedAvatarUrl)
       setCanEdit(nicknameCanBeChanged)
+      setNicknameCredits(Number(nicknameStatus?.credits || 0))
+      setNextNicknameChange(nicknameStatus?.nextChangeAt || null)
       setFirstAccess(isFirstAccess)
-      setIsAdmin(isAdminUser)
       setPremiumTier(tier)
-      setProgress(await evaluateProgressSynced(user.id, cardData || [], { claimDaily: true }))
       setProfileBinders((binderData || []).map(normalizeBinder))
 
-      if (isAdminUser) {
-        await fetchAdminNotifications()
-      }
-
-      setLoading(false)
     }
 
     load()
-  }, [])
-
-  const getAvatarPublicUrl = async (avatarPath: string | null) => {
-    if (!avatarPath) return ''
-    // If it's already a full URL, return it
-    if (avatarPath.startsWith('http')) return avatarPath
-
-    // If it's a relative path, get the public URL
-    const { data: publicData } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(avatarPath)
-
-    return publicData?.publicUrl ?? ''
-  }
-
-  const fetchAdminNotifications = async () => {
-    const { count, error } = await supabase
-      .from('missing_card_reports')
-      .select('id', { count: 'exact' })
-      .eq('status', 'new')
-
-    if (!error && typeof count === 'number') {
-      setAdminNotifications(count)
-    }
-  }
+  }, [router])
 
   const resizeImageIfNeeded = async (file: File) => {
     const maxFileSize = 2 * 1024 * 1024 // 2MB
@@ -178,36 +153,29 @@ export default function Profile() {
       return
     }
 
-    const moderation = validateUserText(username)
-    if (!moderation.ok) {
-      alert(moderation.message)
-      return
-    }
-
     setSavingUsername(true)
-    const shouldOpenScanner = firstAccess
+    const { data: { session } } = await supabase.auth.getSession()
+    const response = await fetch('/api/profile/nickname', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ nickname: username }),
+    })
+    const result = await response.json().catch(() => null)
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        username: username.trim(),
-        username_locked: true
-      })
-      .eq('id', userId)
-
-    if (error) {
-      console.error(error)
-      alert(error.code === '23505' ? 'Questo nickname è già utilizzato.' : 'Errore salvataggio')
+    if (!response.ok || !result?.ok) {
+      alert(result?.error || 'Errore salvataggio')
       setSavingUsername(false)
       return
     }
 
     setCanEdit(false)
+    setNicknameCredits(Math.max(0, nicknameCredits - 1))
+    setNextNicknameChange(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString())
     setFirstAccess(false)
     setSavingUsername(false)
-    if (shouldOpenScanner) {
-      router.replace('/dashboard')
-    }
   }
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,6 +261,23 @@ export default function Profile() {
   }
 
   const logout = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration('/opv-sw.js')
+      const subscription = await registration?.pushManager.getSubscription()
+      if (session?.access_token && subscription?.endpoint) {
+        await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        })
+      }
+      await subscription?.unsubscribe()
+      window.localStorage.removeItem('opv_push_registered')
+      window.localStorage.removeItem('opv_push_vapid_key')
+    } catch {
+      // La disconnessione dell'account deve comunque proseguire.
+    }
     await supabase.auth.signOut({ scope: 'global' })
     router.replace('/')
   }
@@ -302,18 +287,6 @@ export default function Profile() {
     .map((word) => word.charAt(0).toUpperCase())
     .slice(0, 2)
     .join('') || 'OP'
-
-  const badgeTone = {
-    cyan: 'from-cyan-300/26 to-cyan-100/8 text-cyan-100 border-cyan-200/24',
-    rose: 'from-rose-300/24 to-rose-100/8 text-rose-100 border-rose-200/24',
-    emerald: 'from-emerald-300/24 to-emerald-100/8 text-emerald-100 border-emerald-200/24',
-    violet: 'from-violet-300/24 to-violet-100/8 text-violet-100 border-violet-200/24',
-    amber: 'from-amber-300/24 to-amber-100/8 text-amber-100 border-amber-200/24',
-  }
-
-  const unlockedBadges = progress.badges.filter(badge => badge.unlocked)
-  const lockedBadges = progress.badges.filter(badge => !badge.unlocked)
-  const sortedBadges = [...unlockedBadges, ...lockedBadges]
 
   return (
     <div className={`min-h-screen pb-32 text-white onepiece-wave-bg onepiece-clouds sm:pb-36 ${firstAccess ? 'pt-4' : 'pt-14'}`}>
@@ -371,51 +344,16 @@ export default function Profile() {
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
                 {firstAccess
                   ? 'Scegli il nickname che userai nell’app.'
-                  : 'Puoi modificare il nickname ancora una volta.'}
+                  : nicknameCredits > 0
+                    ? `Hai ${nicknameCredits} modifica extra disponibile.`
+                    : 'Il nickname può essere modificato una volta ogni 30 giorni.'}
               </p>
             ) : null}
           </div>
 
           <section className="mt-6 rounded-[1.5rem] border border-cyan-200/18 bg-white/[0.055] p-4 shadow-inner shadow-white/5 sm:p-5">
-            <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-              <div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-200/30 bg-cyan-200/12 text-xl font-black text-cyan-50">
-                    {progress.level}
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-white">Livello {progress.level}</h3>
-                  </div>
-                </div>
-
-                <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-950/72">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-rose-300"
-                    style={{ width: `${progress.progressPercent}%` }}
-                  />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
-                  <span>{progress.xp} EXP</span>
-                  <span>{progress.nextLevelXp - progress.xp} EXP al prossimo livello</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'Badge', value: `${progress.unlockedCount}/${progress.totalBadges}`, Icon: Award },
-                  { label: 'Streak', value: `${progress.dailyStreak}`, Icon: Flame },
-                  { label: 'Daily', value: progress.dailyClaimedToday ? '+5' : '0', Icon: Trophy },
-                ].map(({ label, value, Icon }) => (
-                  <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/52 p-3 text-center">
-                    <Icon className="mx-auto text-cyan-200" size={17} />
-                    <p className="mt-2 text-lg font-black text-white">{value}</p>
-                    <p className="mt-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
             {!firstAccess && (
-              <div className="mt-4">
+              <div>
                 <PushNotificationPrompt mode="profile" />
               </div>
             )}
@@ -479,8 +417,10 @@ export default function Profile() {
                         {savingUsername ? 'Salvataggio...' : 'Conferma nickname'}
                       </button>
                     ) : (
-                      <span className="rounded-full bg-emerald-500/15 px-3 py-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
-                        Nome bloccato
+                      <span className="max-w-[220px] rounded-2xl bg-slate-800/80 px-3 py-2 text-right text-xs font-semibold text-slate-300">
+                        {nextNicknameChange
+                          ? `Modificabile dal ${new Date(nextNicknameChange).toLocaleDateString('it-IT')}`
+                          : 'Modifica mensile non disponibile'}
                       </span>
                     )}
                   </div>
@@ -510,72 +450,6 @@ export default function Profile() {
             <aside className="hidden lg:block" />
           </div>
 
-          <section className="mt-6 rounded-[1.5rem] border border-white/10 bg-slate-950/68 p-4 sm:p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h3 className="text-2xl font-black text-white">Badge e obiettivi</h3>
-              </div>
-              <p className="text-sm font-bold text-slate-300">
-                {unlockedBadges.length} sbloccati, {lockedBadges.length} da conquistare
-              </p>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {sortedBadges.map((badge) => {
-                const progressValue = badge.progressValue
-                const percent = progressValue
-                  ? Math.round((progressValue.current / progressValue.target) * 100)
-                  : badge.unlocked ? 100 : 0
-
-                return (
-                  <div
-                    key={badge.id}
-                    className={`min-h-[162px] rounded-3xl border p-3 transition ${
-                      badge.unlocked
-                        ? `bg-gradient-to-br ${badgeTone[badge.tone]} shadow-lg shadow-black/10`
-                        : 'border-slate-700 bg-slate-950/72 text-slate-500 grayscale'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border text-sm font-black ${
-                        badge.unlocked
-                          ? 'border-white/20 bg-white/12 text-white'
-                          : 'border-slate-700 bg-slate-900 text-slate-500'
-                      }`}>
-                        {badge.unlocked ? badge.code : <LockKeyhole size={16} />}
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-black ${
-                        badge.unlocked ? 'bg-white/14 text-white' : 'bg-slate-900 text-slate-500'
-                      }`}>
-                        +{badge.xp}
-                      </span>
-                    </div>
-
-                    <h4 className={`mt-3 line-clamp-2 text-sm font-black ${badge.unlocked ? 'text-white' : 'text-slate-500'}`}>
-                      {badge.title}
-                    </h4>
-                    <p className={`mt-1 line-clamp-3 text-xs leading-5 ${badge.unlocked ? 'text-slate-200' : 'text-slate-600'}`}>
-                      {badge.description}
-                    </p>
-
-                    {progressValue ? (
-                      <div className="mt-3">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-900/80">
-                          <div
-                            className={`h-full rounded-full ${badge.unlocked ? 'bg-white/80' : 'bg-slate-700'}`}
-                            style={{ width: `${Math.min(100, percent)}%` }}
-                          />
-                        </div>
-                        <p className={`mt-1 text-[10px] font-bold ${badge.unlocked ? 'text-white/80' : 'text-slate-600'}`}>
-                          {progressValue.current}/{progressValue.target}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
         </div>
       </main>
     </div>

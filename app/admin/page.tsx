@@ -13,6 +13,8 @@ type ProfileItem = {
   id: string
   username: string | null
   username_locked?: boolean
+  username_changed_at?: string | null
+  username_change_credits?: number
   is_blocked?: boolean
   is_premium?: boolean
   is_vip?: boolean
@@ -617,7 +619,7 @@ export default function AdminPage() {
   const fetchProfiles = async () => {
     console.log('🔍 [ADMIN] Fetching profiles...')
     // Prima prova con tutte le colonne, se fallisce usa solo le colonne base
-    let query = supabase.from('profiles').select('id, username, username_locked, is_blocked, is_premium, is_vip, vip_note, vip_since')
+    const query = supabase.from('profiles').select('id, username, username_locked, username_changed_at, username_change_credits, is_blocked, is_premium, is_vip, vip_note, vip_since')
 
     const { data, error } = await query
 
@@ -640,6 +642,8 @@ export default function AdminPage() {
       const enrichedData = (basicData || []).map(profile => ({
         ...profile,
         username_locked: false,
+        username_changed_at: null,
+        username_change_credits: 0,
         is_blocked: false,
         is_premium: false,
         is_vip: false
@@ -890,19 +894,39 @@ export default function AdminPage() {
     setBusy(false)
   }
 
-  const unlockNickname = async (profile: ProfileItem) => {
-    if (busy || profile.username_locked === false) return
-    if (!confirm(`Consentire a ${profile.username || profile.id} una modifica del nickname?`)) return
+  const updateNicknameAsAdmin = async (profile: ProfileItem) => {
+    if (busy) return
+    const nickname = window.prompt('Nuovo nickname', profile.username || '')?.trim()
+    if (!nickname || nickname === profile.username) return
 
+    const token = await getAccessToken()
+    if (!token) return
     setBusy(true)
-    const { error } = await supabase
-      .from('profiles')
-      .update({ username_locked: false })
-      .eq('id', profile.id)
+    const response = await fetch('/api/profile/nickname', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: 'rename', userId: profile.id, nickname }),
+    })
+    const result = await response.json().catch(() => null)
+    setActionMessage(response.ok && result?.ok ? `Nickname aggiornato in ${nickname}.` : result?.error || 'Modifica non riuscita.')
+    await fetchProfiles()
+    setBusy(false)
+  }
 
-    setActionMessage(error
-      ? `Errore modifica nickname: ${error.message}`
-      : `${profile.username || 'Utente'} potrà modificare il nickname una volta.`)
+  const grantNicknameCredit = async (profile: ProfileItem) => {
+    if (busy || !confirm(`Aggiungere una modifica nickname extra a ${profile.username || profile.id}?`)) return
+    const token = await getAccessToken()
+    if (!token) return
+    setBusy(true)
+    const response = await fetch('/api/profile/nickname', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: 'grant-credit', userId: profile.id }),
+    })
+    const result = await response.json().catch(() => null)
+    setActionMessage(response.ok && result?.ok
+      ? `${profile.username || 'Utente'} ha ora ${result.credits} modifica extra.`
+      : result?.error || 'Credito non assegnato.')
     await fetchProfiles()
     setBusy(false)
   }
@@ -1899,7 +1923,13 @@ export default function AdminPage() {
                     <p className="font-semibold text-white truncate">{profile.username || 'Utente anonimo'}</p>
                     <p className="text-xs text-slate-500">ID: {profile.id}</p>
                     <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                      <span className="text-slate-400">{profile.username_locked ? 'Nickname bloccato' : 'Nickname modificabile'}</span>
+                      <span className="text-slate-400">
+                        {Number(profile.username_change_credits || 0) > 0
+                          ? `${profile.username_change_credits} modifiche extra`
+                          : profile.username_changed_at
+                            ? `Ultima modifica ${new Date(profile.username_changed_at).toLocaleDateString('it-IT')}`
+                            : 'Modifica mensile disponibile'}
+                      </span>
                       {profile.id === ADMIN_ACCOUNT.id ? (
                         <span className="rounded-full bg-rose-300/15 px-2 py-0.5 font-black text-rose-100">Admin</span>
                       ) : profile.is_vip || getDailyRewardVipUntil(profile.vip_note) ? (
@@ -1912,11 +1942,18 @@ export default function AdminPage() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => unlockNickname(profile)}
-                      disabled={busy || profile.username_locked === false}
+                      onClick={() => updateNicknameAsAdmin(profile)}
+                      disabled={busy}
                       className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-40"
                     >
-                      {profile.username_locked === false ? 'Nickname modificabile' : 'Modifica nickname'}
+                      Modifica nickname
+                    </button>
+                    <button
+                      onClick={() => grantNicknameCredit(profile)}
+                      disabled={busy}
+                      className="rounded-2xl border border-violet-200/20 bg-violet-300/10 px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-300/20 disabled:opacity-40"
+                    >
+                      +1 modifica
                     </button>
                     <button
                       onClick={() => toggleVipUser(profile)}
