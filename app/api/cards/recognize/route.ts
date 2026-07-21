@@ -7,7 +7,7 @@ const normalize = (value: string) =>
 const compact = (value: string) => normalize(value).replace(/\s/g, '')
 const baseCode = (value: string) => {
   const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
-  const withoutUnderscoreVariant = raw.replace(/_p\d+$/i, '')
+  const withoutUnderscoreVariant = raw.replace(/_[pr]\d+$/i, '')
   return withoutUnderscoreVariant
     .replace(/[^a-z0-9]/g, '')
     .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')

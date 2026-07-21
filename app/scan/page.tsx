@@ -575,14 +575,14 @@ export default function ScanPage() {
   const compactText = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
   const baseCardCode = (value: string) => {
     const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
-    const withoutUnderscoreVariant = raw.replace(/_p\d+$/i, '')
+    const withoutUnderscoreVariant = raw.replace(/_[pr]\d+$/i, '')
     return withoutUnderscoreVariant
       .replace(/[^a-z0-9]/g, '')
       .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
   }
   const displayCardId = (value?: string | null) =>
     (value || '')
-      .replace(/_p\d+$/i, '')
+      .replace(/_[pr]\d+$/i, '')
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
 
   const variantLabel = (card: ScannedCard) => {
