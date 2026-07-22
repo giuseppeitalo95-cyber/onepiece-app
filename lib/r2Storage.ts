@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import {
+  DeleteObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -159,6 +160,43 @@ export const getR2Usage = async (force = false) => {
 
   usageCache = { expiresAt: Date.now() + 5 * 60 * 1000, objects, bytes }
   return usageCache
+}
+
+export const listR2Objects = async ({
+  prefix = '',
+  continuationToken,
+  limit = 60,
+}: {
+  prefix?: string
+  continuationToken?: string
+  limit?: number
+}) => {
+  const { client, config } = getClient()
+  const result = await client.send(new ListObjectsV2Command({
+    Bucket: config.bucket,
+    Prefix: prefix.trim().slice(0, 500) || undefined,
+    ContinuationToken: continuationToken || undefined,
+    MaxKeys: Math.min(100, Math.max(1, limit)),
+  }))
+
+  return {
+    objects: (result.Contents || []).map(object => ({
+      key: String(object.Key || ''),
+      bytes: Number(object.Size || 0),
+      updatedAt: object.LastModified?.toISOString() || null,
+      etag: object.ETag?.replace(/"/g, '') || null,
+      publicUrl: object.Key ? getR2PublicUrl(object.Key) : null,
+    })).filter(object => Boolean(object.key)),
+    nextToken: result.IsTruncated ? result.NextContinuationToken || null : null,
+  }
+}
+
+export const deleteR2Object = async (key: string) => {
+  const cleanKey = key.trim()
+  if (!cleanKey || cleanKey.length > 1000) throw new Error('Chiave R2 non valida')
+  const { client, config } = getClient()
+  await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: cleanKey }))
+  usageCache = null
 }
 
 const objectExists = async (key: string) => {

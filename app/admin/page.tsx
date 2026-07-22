@@ -8,6 +8,7 @@ import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
 import CatalogCardManager from './CatalogCardManager'
 import BinderKitManager from './BinderKitManager'
+import AdminDatabaseManager from './AdminDatabaseManager'
 
 type ProfileItem = {
   id: string
@@ -195,7 +196,7 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'binderKits' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'binderKits' | 'data' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
 
 const formatBytes = (bytes?: number | null) => {
   const value = Number(bytes || 0)
@@ -1001,6 +1002,7 @@ export default function AdminPage() {
     reports: 'Segnalazioni',
     catalog: 'Catalogo carte',
     binderKits: 'Kit raccoglitori',
+    data: 'Gestione dati',
     analytics: 'Statistiche',
     services: 'Servizi',
     status: 'Status',
@@ -1014,6 +1016,7 @@ export default function AdminPage() {
     { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
     { key: 'catalog' as const, title: 'Catalogo carte', description: 'Importa varianti tramite link Cardmarket', icon: Database, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'binderKits' as const, title: 'Kit raccoglitori', description: 'Crea, modifica ed elimina copertine', icon: BookOpen, tone: 'text-violet-100 bg-violet-300/10' },
+    { key: 'data' as const, title: 'Gestione dati', description: 'Tabelle Supabase, utenti e file Cloudflare', icon: Database, tone: 'text-emerald-100 bg-emerald-300/10' },
     { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
     { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
     { key: 'status' as const, title: 'Status', description: 'Stato API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
@@ -1222,6 +1225,8 @@ export default function AdminPage() {
         ) : null}
 
         {activeSection === 'binderKits' ? <BinderKitManager /> : null}
+
+        {activeSection === 'data' ? <AdminDatabaseManager /> : null}
 
         <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
