@@ -20,6 +20,7 @@ export type VisibleTextMatch<T extends VisibleTextCard> = {
   exactName: boolean
   nameCoverage: number
   nameMatches: number
+  hasEffect: boolean
   effectMatches: number
   effectCoverage: number
   effectBigrams: number
@@ -144,6 +145,7 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
 
       const effectTokens = significantWords(String(card.card_text || ''))
       const uniqueEffectTokens = [...new Set(effectTokens)]
+      const hasEffect = uniqueEffectTokens.length > 0
       const effectMatches = uniqueEffectTokens.filter(token => ocrSignificantSet.has(token)).length
       const effectCoverage = uniqueEffectTokens.length > 0
         ? effectMatches / uniqueEffectTokens.length
@@ -165,6 +167,10 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
       const costMatch = Boolean(cost && cost !== 'NaN' && ocrNumbers.has(cost))
       const powerMatch = Boolean(power && power !== 'NaN' && ocrNumbers.has(power))
       const counterMatch = Boolean(counter && counter !== 'NaN' && ocrNumbers.has(counter))
+      const printedValueMatches = Number(costMatch) + Number(powerMatch) + Number(counterMatch)
+      const noEffectIdentityBonus = !hasEffect && exactName
+        ? printedValueMatches * 10 + Math.min(metadataMatches, 3) * 3
+        : 0
 
       const score =
         (exactName ? 120 : nameCoverage * 78) +
@@ -175,7 +181,8 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         Math.min(metadataMatches, 6) * 2.5 +
         (costMatch ? 5 : 0) +
         (powerMatch ? 13 : 0) +
-        (counterMatch ? 6 : 0)
+        (counterMatch ? 6 : 0) +
+        noEffectIdentityBonus
 
       const strongName = exactName || (nameCoverage >= 0.72 && nameMatches > 0)
       const strongEffect = effectMatches >= 6 && effectCoverage >= 0.24
@@ -193,6 +200,7 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         exactName,
         nameCoverage,
         nameMatches,
+        hasEffect,
         effectMatches,
         effectCoverage,
         effectBigrams,
@@ -221,12 +229,15 @@ export const selectCardsByVisibleText = <T extends VisibleTextCard>(ocrText: str
   if (!best) return []
 
   const weakEffectWithExactName = best.exactName && best.effectMatches < 3
-  const maximumFamilies = weakEffectWithExactName ? 32 : 14
+  const noEffectWithExactName = best.exactName && !best.hasEffect
+  const maximumFamilies = noEffectWithExactName ? 20 : weakEffectWithExactName ? 32 : 14
   const selectedFamilyKeys: string[] = []
 
   for (const match of ranked) {
-    const eligible = weakEffectWithExactName
-      ? match.exactName
+    const eligible = noEffectWithExactName
+      ? match.exactName && match.score >= best.score - 18
+      : weakEffectWithExactName
+        ? match.exactName
       : match.confident && match.score >= best.score - 42
     if (!eligible) continue
 

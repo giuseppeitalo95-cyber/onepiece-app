@@ -59,6 +59,7 @@ type VisibleTextDecision = {
   decisive: boolean
   exactName: boolean
   nameCoverage: number
+  hasEffect: boolean
   effectMatches: number
   effectBigrams: number
   metadataMatches: number
@@ -1781,7 +1782,16 @@ export default function ScanPage() {
           (
             textMatch.powerMatch ||
             (textMatch.costMatch && textMatch.effectMatches >= 1) ||
-            textMatch.effectMatches >= 3
+            textMatch.effectMatches >= 3 ||
+            (
+              !textMatch.hasEffect &&
+              textMatch.powerMatch &&
+              (
+                textMatch.costMatch ||
+                textMatch.counterMatch ||
+                textMatch.metadataMatches >= 1
+              )
+            )
           )
         )
       ))
@@ -1800,7 +1810,11 @@ export default function ScanPage() {
         }
       }
 
-      const verificationLimit = textMatch?.exactName ? 10 : 16
+      const verificationLimit = textMatch?.exactName && !textMatch.hasEffect
+        ? 20
+        : textMatch?.exactName
+          ? 10
+          : 16
       const verified = await verifyPhotoCandidates(
         candidates.slice(0, verificationLimit),
         orientation.crop,

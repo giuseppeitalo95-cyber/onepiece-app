@@ -110,11 +110,17 @@ export async function POST(req: Request) {
       const allPrintedValuesMatch = Boolean(bestTextMatch && (
         bestTextMatch.costMatch && bestTextMatch.powerMatch
       ))
+      const strongNoEffectIdentity = Boolean(bestTextMatch && (
+        !bestTextMatch.hasEffect &&
+        bestTextMatch.exactName &&
+        bestTextMatch.powerMatch &&
+        (bestTextMatch.costMatch || bestTextMatch.counterMatch || bestTextMatch.metadataMatches >= 1)
+      ))
       const decisiveTextMatch = Boolean(
         bestTextMatch?.confident &&
         strongIdentity &&
         scoreGap >= 8 &&
-        (strongEffect || allPrintedValuesMatch)
+        (strongEffect || allPrintedValuesMatch || strongNoEffectIdentity)
       )
 
       return Response.json({
@@ -127,6 +133,7 @@ export async function POST(req: Request) {
               decisive: decisiveTextMatch,
               exactName: bestTextMatch.exactName,
               nameCoverage: bestTextMatch.nameCoverage,
+              hasEffect: bestTextMatch.hasEffect,
               effectMatches: bestTextMatch.effectMatches,
               effectBigrams: bestTextMatch.effectBigrams,
               metadataMatches: bestTextMatch.metadataMatches,
