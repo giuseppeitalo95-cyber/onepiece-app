@@ -11,6 +11,15 @@ export type MultiCardDetection = {
   crop: HTMLCanvasElement
   thumbnail: string
   score: number
+  ocrText?: string
+}
+
+export type OcrPositionedWord = {
+  text: string
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 type OpenCvModule = Record<string, any>
@@ -494,7 +503,10 @@ export type OcrSheetRegion = {
   height: number
 }
 
-export const buildMultiCardOcrSheet = (detections: MultiCardDetection[]) => {
+export const buildMultiCardOcrSheet = (
+  detections: MultiCardDetection[],
+  sourceCanvas: HTMLCanvasElement
+) => {
   const cellWidth = 600
   const cellHeight = 840
   const gap = 36
@@ -504,9 +516,14 @@ export const buildMultiCardOcrSheet = (detections: MultiCardDetection[]) => {
   ])
   const columns = oriented.length <= 4 ? 2 : 4
   const rows = Math.ceil(oriented.length / columns)
+  const sourceScale = Math.min(1, 1400 / Math.max(sourceCanvas.width, sourceCanvas.height))
+  const sourceWidth = Math.max(1, Math.round(sourceCanvas.width * sourceScale))
+  const sourceHeight = Math.max(1, Math.round(sourceCanvas.height * sourceScale))
+  const gridWidth = oriented.length > 0 ? gap + columns * (cellWidth + gap) : 0
+  const gridHeight = oriented.length > 0 ? rows * (cellHeight + gap) : 0
   const canvas = document.createElement('canvas')
-  canvas.width = gap + columns * (cellWidth + gap)
-  canvas.height = gap + rows * (cellHeight + gap)
+  canvas.width = Math.max(sourceWidth + gap * 2, gridWidth)
+  canvas.height = sourceHeight + gap * 3 + gridHeight
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Impossibile comporre le carte')
 
@@ -516,14 +533,168 @@ export const buildMultiCardOcrSheet = (detections: MultiCardDetection[]) => {
   context.imageSmoothingQuality = 'high'
 
   const regions: OcrSheetRegion[] = []
+  const sourceX = Math.round((canvas.width - sourceWidth) / 2)
+  context.drawImage(sourceCanvas, sourceX, gap, sourceWidth, sourceHeight)
+  regions.push({
+    id: 'source',
+    x: sourceX,
+    y: gap,
+    width: sourceWidth,
+    height: sourceHeight,
+  })
+
+  const gridStartY = sourceHeight + gap * 2
   oriented.forEach((item, index) => {
     const column = index % columns
     const row = Math.floor(index / columns)
     const x = gap + column * (cellWidth + gap)
-    const y = gap + row * (cellHeight + gap)
+    const y = gridStartY + row * (cellHeight + gap)
     context.drawImage(item.canvas, x, y, cellWidth, cellHeight)
     regions.push({ id: item.id, x, y, width: cellWidth, height: cellHeight })
   })
 
   return { canvas, regions }
+}
+
+type OcrLayout = {
+  columns: number
+  rows: number
+  score: number
+  occupiedCells: number
+  cellWeights: number[]
+}
+
+const meaningfulWordWeight = (value: string) => {
+  const compact = value.replace(/[^a-z0-9]/gi, '')
+  return compact.length >= 1 ? Math.min(12, compact.length) : 0
+}
+
+const bestOcrLayout = (
+  words: OcrPositionedWord[],
+  sourceWidth: number,
+  sourceHeight: number,
+  maximumCards: number
+) => {
+  let best: OcrLayout | null = null
+  const sourceAspect = sourceWidth / Math.max(1, sourceHeight)
+
+  for (let rows = 1; rows <= 4; rows += 1) {
+    for (let columns = 1; columns <= 4; columns += 1) {
+      const totalCells = rows * columns
+      if (totalCells < 2 || totalCells > maximumCards) continue
+
+      const cardAspect = sourceAspect * rows / columns
+      if (cardAspect < 0.46 || cardAspect > 0.98) continue
+
+      const cellWeights = new Array(totalCells).fill(0)
+      for (const word of words) {
+        const weight = meaningfulWordWeight(word.text)
+        if (weight === 0) continue
+        const column = Math.min(columns - 1, Math.max(0, Math.floor(word.x * columns)))
+        const row = Math.min(rows - 1, Math.max(0, Math.floor(word.y * rows)))
+        cellWeights[row * columns + column] += weight
+      }
+
+      const occupiedCells = cellWeights.filter(weight => weight >= 4).length
+      const occupancyRatio = occupiedCells / totalCells
+      if (occupiedCells < 2 || occupancyRatio < 0.65) continue
+
+      const aspectScore = Math.exp(-Math.abs(Math.log(cardAspect / 0.714)) * 5)
+      const balance = cellWeights
+        .filter(weight => weight >= 4)
+        .reduce((sum, weight) => sum + Math.min(1, weight / 12), 0) / occupiedCells
+      const score =
+        Math.pow(occupiedCells, 1.12) *
+        Math.pow(occupancyRatio, 2.4) *
+        Math.pow(aspectScore, 2.6) *
+        (0.72 + balance * 0.28)
+
+      if (!best || score > best.score) {
+        best = { columns, rows, score, occupiedCells, cellWeights }
+      }
+    }
+  }
+
+  return best
+}
+
+export const inferCardsFromOcrLayout = async (
+  sourceCanvas: HTMLCanvasElement,
+  words: OcrPositionedWord[],
+  maximumCards = 12
+) => {
+  const usableWords = words.filter(word =>
+    Number.isFinite(word.x) &&
+    Number.isFinite(word.y) &&
+    word.x >= 0 &&
+    word.x <= 1 &&
+    word.y >= 0 &&
+    word.y <= 1 &&
+    meaningfulWordWeight(word.text) > 0
+  )
+  if (usableWords.length < 4) return { detections: [] as MultiCardDetection[], confidence: 0 }
+
+  const layout = bestOcrLayout(
+    usableWords,
+    sourceCanvas.width,
+    sourceCanvas.height,
+    maximumCards
+  )
+  if (!layout) return { detections: [] as MultiCardDetection[], confidence: 0 }
+
+  const cv = await loadOpenCv()
+  const source = cv.imread(sourceCanvas)
+  const detections: MultiCardDetection[] = []
+  const cellWidth = sourceCanvas.width / layout.columns
+  const cellHeight = sourceCanvas.height / layout.rows
+  const horizontalInset = cellWidth * 0.035
+  const verticalInset = cellHeight * 0.025
+
+  try {
+    for (let row = 0; row < layout.rows; row += 1) {
+      for (let column = 0; column < layout.columns; column += 1) {
+        const cellIndex = row * layout.columns + column
+
+        const left = column * cellWidth + horizontalInset
+        const top = row * cellHeight + verticalInset
+        const right = (column + 1) * cellWidth - horizontalInset
+        const bottom = (row + 1) * cellHeight - verticalInset
+        const corners: [CardPoint, CardPoint, CardPoint, CardPoint] = [
+          { x: left, y: top },
+          { x: right, y: top },
+          { x: right, y: bottom },
+          { x: left, y: bottom },
+        ]
+        const crop = warpCard(cv, source, corners)
+        const cellWords = usableWords.filter(word =>
+          word.x >= column / layout.columns &&
+          word.x < (column + 1) / layout.columns &&
+          word.y >= row / layout.rows &&
+          word.y < (row + 1) / layout.rows
+        )
+
+        detections.push({
+          id: `ocr-grid-${row}-${column}`,
+          corners,
+          crop,
+          thumbnail: crop.toDataURL('image/jpeg', 0.82),
+          score: layout.score * (layout.cellWeights[cellIndex] >= 4 ? 1 : 0.75),
+          ocrText: cellWords
+            .sort((first, second) => first.y - second.y || first.x - second.x)
+            .map(word => word.text)
+            .join(' ')
+            .trim(),
+        })
+      }
+    }
+  } finally {
+    source.delete()
+  }
+
+  const confidence = Math.min(
+    1,
+    (layout.occupiedCells / (layout.rows * layout.columns)) *
+    Math.min(1, layout.score / 6)
+  )
+  return { detections, confidence }
 }

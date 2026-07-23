@@ -14,7 +14,9 @@ import {
   buildMultiCardOcrSheet,
   createDetectionPreview,
   detectCardsInPhoto,
+  inferCardsFromOcrLayout,
   type MultiCardDetection,
+  type OcrPositionedWord,
   type OcrSheetRegion,
 } from '@/lib/multiCardDetection'
 
@@ -1362,10 +1364,27 @@ export default function ScanPage() {
       }
 
       const texts = new Map<string, string>()
+      let sourceWords: OcrPositionedWord[] = []
       for (const region of Array.isArray(data?.regionTexts) ? data.regionTexts : []) {
-        texts.set(String(region?.id || ''), String(region?.text || ''))
+        const regionId = String(region?.id || '')
+        texts.set(regionId, String(region?.text || ''))
+        if (regionId === 'source' && Array.isArray(region?.words)) {
+          sourceWords = region.words
+            .map((word: OcrPositionedWord) => ({
+              text: String(word?.text || ''),
+              x: Number(word?.x),
+              y: Number(word?.y),
+              width: Number(word?.width),
+              height: Number(word?.height),
+            }))
+            .filter((word: OcrPositionedWord) =>
+              word.text.length > 0 &&
+              Number.isFinite(word.x) &&
+              Number.isFinite(word.y)
+            )
+        }
       }
-      return texts
+      return { texts, sourceWords }
     } catch {
       setRecognitionMessage('OCR non raggiungibile. Controlla la connessione e riprova.')
       return null
@@ -1743,10 +1762,13 @@ export default function ScanPage() {
       rotatedContext.drawImage(detection.crop, 0, 0)
     }
 
-    const orientations = [
-      { text: regionTexts.get(`${index}:0`) || '', crop: detection.crop },
-      { text: regionTexts.get(`${index}:180`) || '', crop: rotatedCrop },
-    ].sort((first, second) => multiTextQuality(second.text) - multiTextQuality(first.text))
+    const orientations = (detection.ocrText
+      ? [{ text: detection.ocrText, crop: detection.crop }]
+      : [
+          { text: regionTexts.get(`${index}:0`) || '', crop: detection.crop },
+          { text: regionTexts.get(`${index}:180`) || '', crop: rotatedCrop },
+        ]
+    ).sort((first, second) => multiTextQuality(second.text) - multiTextQuality(first.text))
 
     for (const orientation of orientations) {
       if (!orientation.text.trim()) continue
@@ -1845,15 +1867,9 @@ export default function ScanPage() {
       const detections = await detectCardsInPhoto(photoCanvas, 12)
       if (!isScanStillActive(generation)) return
       setMultiDetections(detections)
-      setMultiPreviewUrl(createDetectionPreview(photoCanvas, detections))
-
-      if (detections.length === 0) {
-        setRecognitionMessage('Non ho trovato rettangoli completi. Separa meglio le carte e riprova dall’alto.')
-        return
-      }
-
+      setMultiPreviewUrl(null)
       setRecognitionMessage(
-        `${detections.length} ${detections.length === 1 ? 'carta individuata' : 'carte individuate'}. Controlla le miniature prima di usare Google Vision.`
+        'Foto pronta. Analizza per individuare le carte usando insieme bordi, nomi ed effetti.'
       )
     } catch (error) {
       console.error('Multi-card detection error:', error)
@@ -1878,37 +1894,59 @@ export default function ScanPage() {
   }
 
   const analyzeMultiDetections = async () => {
-    if (photoProcessing || multiDetections.length === 0) return
+    const sourceCanvas = multiSourceCanvasRef.current
+    if (photoProcessing || !sourceCanvas) return
     scanGenerationRef.current += 1
     const generation = scanGenerationRef.current
     scanSessionRef.current = true
     showSummaryRef.current = false
     setPhotoProcessing(true)
     setCameraError(null)
-    setRecognitionMessage(`Preparo ${multiDetections.length} carte in un’unica scansione Google Vision...`)
+    setRecognitionMessage('Leggo l’intera foto con una sola scansione Google Vision...')
 
     try {
-      const { canvas, regions } = buildMultiCardOcrSheet(multiDetections)
-      const regionTexts = await runOcrOnSheet(canvas, regions)
-      if (!isScanStillActive(generation) || !regionTexts) return
+      const { canvas, regions } = buildMultiCardOcrSheet(multiDetections, sourceCanvas)
+      const ocrResult = await runOcrOnSheet(canvas, regions)
+      if (!isScanStillActive(generation) || !ocrResult) return
 
-      const results: Array<MultiRecognitionItem | null> = new Array(multiDetections.length).fill(null)
+      const textBackedDetections = multiDetections.filter((_, index) => {
+        const upright = ocrResult.texts.get(`${index}:0`) || ''
+        const rotated = ocrResult.texts.get(`${index}:180`) || ''
+        return Math.max(multiTextQuality(upright), multiTextQuality(rotated)) >= 12
+      })
+      const inferred = await inferCardsFromOcrLayout(sourceCanvas, ocrResult.sourceWords, 12)
+      const shouldUseOcrLayout =
+        inferred.confidence >= 0.72 &&
+        inferred.detections.length > textBackedDetections.length
+      const detections = shouldUseOcrLayout ? inferred.detections : textBackedDetections
+
+      if (detections.length === 0) {
+        setRecognitionMessage(
+          'Non riesco a separare le carte in questa foto. Mostrale intere e lascia un piccolo spazio tra quelle sparse.'
+        )
+        return
+      }
+
+      setMultiDetections(detections)
+      setMultiPreviewUrl(createDetectionPreview(sourceCanvas, detections))
+
+      const results: Array<MultiRecognitionItem | null> = new Array(detections.length).fill(null)
       let cursor = 0
       let completed = 0
       const worker = async () => {
-        while (cursor < multiDetections.length) {
+        while (cursor < detections.length) {
           const index = cursor
           cursor += 1
-          results[index] = await recognizeMultiDetection(multiDetections[index], index, regionTexts)
+          results[index] = await recognizeMultiDetection(detections[index], index, ocrResult.texts)
           completed += 1
-          setRecognitionMessage(`Riconoscimento carte: ${completed}/${multiDetections.length}...`)
+          setRecognitionMessage(`Riconoscimento carte: ${completed}/${detections.length}...`)
         }
       }
-      await Promise.all(Array.from({ length: Math.min(3, multiDetections.length) }, () => worker()))
+      await Promise.all(Array.from({ length: Math.min(3, detections.length) }, () => worker()))
       if (!isScanStillActive(generation)) return
 
       const recognized = results.filter((item): item is MultiRecognitionItem => Boolean(item))
-      const unrecognized = multiDetections.length - recognized.length
+      const unrecognized = detections.length - recognized.length
       setMultiUnrecognized(unrecognized)
 
       if (recognized.length === 0) {
@@ -2857,7 +2895,7 @@ export default function ScanPage() {
                     </div>
                   </div>
 
-                  {scanMode === 'multi' && multiDetections.length > 0 && !pendingRecognition ? (
+                  {scanMode === 'multi' && multiPreviewUrl && multiDetections.length > 0 && !pendingRecognition ? (
                     <div className="mt-3">
                       <div className="flex gap-2 overflow-x-auto pb-1">
                         {multiDetections.map((detection, index) => (
@@ -2885,7 +2923,7 @@ export default function ScanPage() {
                   ) : null}
 
                   <div className="mt-4 space-y-3">
-                    {scanMode === 'multi' && multiDetections.length > 0 ? (
+                    {scanMode === 'multi' && capturedPhotoUrl ? (
                       <div
                         className="fixed inset-x-3 z-40 mx-auto grid max-w-[480px] grid-cols-[1fr_auto] gap-2 rounded-[22px] border border-white/15 bg-slate-950/92 p-2 shadow-[0_18px_42px_rgba(0,0,0,0.45)] backdrop-blur-xl"
                         style={{ bottom: 'calc(max(0.5rem, env(safe-area-inset-bottom)) + 5.25rem)' }}
@@ -2897,7 +2935,9 @@ export default function ScanPage() {
                           className="op-solid-action flex items-center justify-center gap-2 rounded-2xl border border-amber-200/45 bg-amber-300 px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-slate-950 transition active:scale-[0.98] disabled:opacity-60"
                         >
                           {photoProcessing ? <LoaderCircle className="animate-spin" size={18} /> : <ScanLine size={18} />}
-                          Analizza {multiDetections.length}
+                          {multiPreviewUrl && multiDetections.length > 0
+                            ? `Analizza ${multiDetections.length}`
+                            : 'Analizza foto'}
                         </button>
                         <button
                           type="button"

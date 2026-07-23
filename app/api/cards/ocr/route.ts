@@ -126,7 +126,15 @@ const normalizeOcrRegions = (value: unknown): OcrRegion[] => {
 const extractVisionRegionTexts = (result: any, regions: OcrRegion[]) => {
   if (regions.length === 0) return []
 
-  const words: Array<{ text: string; x: number; y: number }> = []
+  const words: Array<{
+    text: string
+    x: number
+    y: number
+    left: number
+    top: number
+    right: number
+    bottom: number
+  }> = []
   const pages = Array.isArray(result?.fullTextAnnotation?.pages)
     ? result.fullTextAnnotation.pages
     : []
@@ -140,10 +148,18 @@ const extractVisionRegionTexts = (result: any, regions: OcrRegion[]) => {
           const xs = vertices.map((vertex: any) => Number(vertex?.x || 0)).filter(Number.isFinite)
           const ys = vertices.map((vertex: any) => Number(vertex?.y || 0)).filter(Number.isFinite)
           if (!text || xs.length === 0 || ys.length === 0) continue
+          const left = Math.min(...xs)
+          const top = Math.min(...ys)
+          const right = Math.max(...xs)
+          const bottom = Math.max(...ys)
           words.push({
             text,
-            x: xs.reduce((sum: number, value: number) => sum + value, 0) / xs.length,
-            y: ys.reduce((sum: number, value: number) => sum + value, 0) / ys.length,
+            x: (left + right) / 2,
+            y: (top + bottom) / 2,
+            left,
+            top,
+            right,
+            bottom,
           })
         }
       }
@@ -157,10 +173,18 @@ const extractVisionRegionTexts = (result: any, regions: OcrRegion[]) => {
       const xs = vertices.map((vertex: any) => Number(vertex?.x || 0)).filter(Number.isFinite)
       const ys = vertices.map((vertex: any) => Number(vertex?.y || 0)).filter(Number.isFinite)
       if (!text || xs.length === 0 || ys.length === 0) continue
+      const left = Math.min(...xs)
+      const top = Math.min(...ys)
+      const right = Math.max(...xs)
+      const bottom = Math.max(...ys)
       words.push({
         text,
-        x: xs.reduce((sum: number, value: number) => sum + value, 0) / xs.length,
-        y: ys.reduce((sum: number, value: number) => sum + value, 0) / ys.length,
+        x: (left + right) / 2,
+        y: (top + bottom) / 2,
+        left,
+        top,
+        right,
+        bottom,
       })
     }
   }
@@ -183,6 +207,13 @@ const extractVisionRegionTexts = (result: any, regions: OcrRegion[]) => {
     return {
       id: region.id,
       text: selected.map(word => word.text).join(' ').trim(),
+      words: selected.map(word => ({
+        text: word.text,
+        x: (word.x - region.x) / region.width,
+        y: (word.y - region.y) / region.height,
+        width: (word.right - word.left) / region.width,
+        height: (word.bottom - word.top) / region.height,
+      })),
     }
   })
 }
