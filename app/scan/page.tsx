@@ -6,13 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight, Images, Info, LoaderCircle, Minus, Plus, ScanLine, X } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, Images, Info, LoaderCircle, Minus, Plus, ScanLine } from 'lucide-react'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { parseCardCodeFromText } from '@/lib/cardRecognition'
 import {
   buildMultiCardOcrSheet,
-  createDetectionPreview,
   detectCardsInPhoto,
   inferCardsFromOcrLayout,
   type MultiCardDetection,
@@ -113,7 +112,6 @@ export default function ScanPage() {
   const [scanMode, setScanMode] = useState<ScanMode | null>(null)
   const [introMode, setIntroMode] = useState<ScanMode | null>(null)
   const [multiDetections, setMultiDetections] = useState<MultiCardDetection[]>([])
-  const [multiPreviewUrl, setMultiPreviewUrl] = useState<string | null>(null)
   const [multiUnrecognized, setMultiUnrecognized] = useState(0)
   const [multiConfirmationProgress, setMultiConfirmationProgress] = useState({ current: 0, total: 0 })
   const [summaryDrag, setSummaryDrag] = useState({ active: false, startX: 0, offset: 0 })
@@ -1406,7 +1404,6 @@ export default function ScanPage() {
     currentMultiItemRef.current = null
     multiUsageConfirmedRef.current = false
     setMultiDetections([])
-    setMultiPreviewUrl(null)
     setMultiUnrecognized(0)
     setMultiConfirmationProgress({ current: 0, total: 0 })
   }
@@ -1850,7 +1847,6 @@ export default function ScanPage() {
     clearCapturedPhoto()
     multiSourceCanvasRef.current = null
     setMultiDetections([])
-    setMultiPreviewUrl(null)
     setRecognitionMessage(
       multiUnrecognized > 0
         ? `Foto completata. ${multiUnrecognized} carte non erano abbastanza leggibili.`
@@ -1871,7 +1867,6 @@ export default function ScanPage() {
     setPendingRecognition(null)
     setVariantChoiceRequired(false)
     setMultiDetections([])
-    setMultiPreviewUrl(null)
     setMultiUnrecognized(0)
     setMultiConfirmationProgress({ current: 0, total: 0 })
     setCameraError(null)
@@ -1886,7 +1881,6 @@ export default function ScanPage() {
       const detections = await detectCardsInPhoto(photoCanvas, 12)
       if (!isScanStillActive(generation)) return
       setMultiDetections(detections)
-      setMultiPreviewUrl(null)
       setRecognitionMessage(
         'Foto pronta. Analizza per individuare le carte usando insieme bordi, nomi ed effetti.'
       )
@@ -1897,19 +1891,6 @@ export default function ScanPage() {
     } finally {
       if (scanGenerationRef.current === generation) setPhotoProcessing(false)
     }
-  }
-
-  const removeMultiDetection = (id: string) => {
-    const next = multiDetections.filter(detection => detection.id !== id)
-    setMultiDetections(next)
-    if (multiSourceCanvasRef.current) {
-      setMultiPreviewUrl(createDetectionPreview(multiSourceCanvasRef.current, next))
-    }
-    setRecognitionMessage(
-      next.length > 0
-        ? `${next.length} ${next.length === 1 ? 'carta pronta' : 'carte pronte'} per l’analisi.`
-        : 'Hai rimosso tutti i rilevamenti. Scatta una nuova foto.'
-    )
   }
 
   const analyzeMultiDetections = async () => {
@@ -1947,7 +1928,6 @@ export default function ScanPage() {
       }
 
       setMultiDetections(detections)
-      setMultiPreviewUrl(createDetectionPreview(sourceCanvas, detections))
 
       const results: Array<MultiRecognitionItem | null> = new Array(detections.length).fill(null)
       let cursor = 0
@@ -2881,7 +2861,7 @@ export default function ScanPage() {
                       <canvas ref={processingCanvasRef} className="hidden" />
                       {capturedPhotoUrl ? (
                         <img
-                          src={scanMode === 'multi' && multiPreviewUrl ? multiPreviewUrl : capturedPhotoUrl}
+                          src={capturedPhotoUrl}
                           alt={scanMode === 'multi' ? 'Carte individuate nella foto' : 'Foto della carta'}
                           className="h-full w-full bg-slate-950 object-contain"
                         />
@@ -2914,33 +2894,6 @@ export default function ScanPage() {
                     </div>
                   </div>
 
-                  {scanMode === 'multi' && multiPreviewUrl && multiDetections.length > 0 && !pendingRecognition ? (
-                    <div className="mt-3">
-                      <div className="flex gap-2 overflow-x-auto pb-1">
-                        {multiDetections.map((detection, index) => (
-                          <div key={detection.id} className="relative w-[72px] shrink-0">
-                            <img
-                              src={detection.thumbnail}
-                              alt={`Carta rilevata ${index + 1}`}
-                              className="aspect-[5/7] w-full rounded-xl border border-cyan-200/30 bg-slate-950 object-cover"
-                            />
-                            <span className="absolute left-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-slate-950/90 px-1 text-[9px] font-black text-white">
-                              {index + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeMultiDetection(detection.id)}
-                              className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full border border-red-300/35 bg-red-500 text-white shadow-lg transition active:scale-90"
-                              aria-label={`Rimuovi carta ${index + 1}`}
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
                   <div className="mt-4 space-y-3">
                     {scanMode === 'multi' && capturedPhotoUrl ? (
                       <div
@@ -2954,9 +2907,7 @@ export default function ScanPage() {
                           className="op-solid-action flex items-center justify-center gap-2 rounded-2xl border border-amber-200/45 bg-amber-300 px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-slate-950 transition active:scale-[0.98] disabled:opacity-60"
                         >
                           {photoProcessing ? <LoaderCircle className="animate-spin" size={18} /> : <ScanLine size={18} />}
-                          {multiPreviewUrl && multiDetections.length > 0
-                            ? `Analizza ${multiDetections.length}`
-                            : 'Analizza foto'}
+                          Analizza foto
                         </button>
                         <button
                           type="button"
@@ -2980,7 +2931,10 @@ export default function ScanPage() {
                       </button>
                     )}
 
-                    {scannedCards.length > 0 && (
+                    {scannedCards.length > 0 &&
+                      !pendingRecognition &&
+                      !photoProcessing &&
+                      !(scanMode === 'multi' && capturedPhotoUrl) && (
                       <button
                         type="button"
                         onClick={stopCamera}
