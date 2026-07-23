@@ -556,12 +556,14 @@ export const buildMultiCardOcrSheet = (
   return { canvas, regions }
 }
 
-type OcrLayout = {
+export type OcrLayout = {
   columns: number
   rows: number
   score: number
+  confidence: number
   occupiedCells: number
   cellWeights: number[]
+  wordCells: number[]
 }
 
 const meaningfulWordWeight = (value: string) => {
@@ -569,7 +571,120 @@ const meaningfulWordWeight = (value: string) => {
   return compact.length >= 1 ? Math.min(12, compact.length) : 0
 }
 
-const bestOcrLayout = (
+type AxisClustering = {
+  centers: number[]
+  assignments: number[]
+  quality: number
+}
+
+const median = (values: number[]) => {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((first, second) => first - second)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+const clusterAxis = (values: number[], clusterCount: number): AxisClustering | null => {
+  if (clusterCount < 1 || values.length < clusterCount) return null
+  if (clusterCount === 1) {
+    return {
+      centers: [values.reduce((sum, value) => sum + value, 0) / values.length],
+      assignments: values.map(() => 0),
+      quality: 0.48,
+    }
+  }
+
+  const sortedValues = [...values].sort((first, second) => first - second)
+  let centers = Array.from({ length: clusterCount }, (_, index) => {
+    const quantileIndex = Math.min(
+      sortedValues.length - 1,
+      Math.max(0, Math.round(((index + 0.5) / clusterCount) * sortedValues.length - 0.5))
+    )
+    return sortedValues[quantileIndex]
+  })
+  let assignments = values.map(() => 0)
+
+  for (let iteration = 0; iteration < 24; iteration += 1) {
+    assignments = values.map(value => {
+      let nearest = 0
+      let nearestDistance = Number.POSITIVE_INFINITY
+      centers.forEach((center, index) => {
+        const currentDistance = Math.abs(value - center)
+        if (currentDistance < nearestDistance) {
+          nearest = index
+          nearestDistance = currentDistance
+        }
+      })
+      return nearest
+    })
+
+    const nextCenters = centers.map((center, index) => {
+      const members = values.filter((_, valueIndex) => assignments[valueIndex] === index)
+      return members.length > 0
+        ? members.reduce((sum, value) => sum + value, 0) / members.length
+        : center
+    })
+    const movement = nextCenters.reduce(
+      (sum, center, index) => sum + Math.abs(center - centers[index]),
+      0
+    )
+    centers = nextCenters
+    if (movement < 0.0001) break
+  }
+
+  const orderedCenters = centers
+    .map((center, originalIndex) => ({ center, originalIndex }))
+    .sort((first, second) => first.center - second.center)
+  const indexMap = new Map(
+    orderedCenters.map((item, index) => [item.originalIndex, index])
+  )
+  centers = orderedCenters.map(item => item.center)
+  assignments = assignments.map(index => indexMap.get(index) ?? index)
+
+  const clusterSizes = centers.map((_, index) =>
+    assignments.filter(assignment => assignment === index).length
+  )
+  if (clusterSizes.some(size => size === 0)) return null
+
+  const gaps = centers.slice(1).map((center, index) => center - centers[index])
+  if (Math.min(...gaps) < 0.075) return null
+
+  const silhouettes = values.map((value, valueIndex) => {
+    const ownCluster = assignments[valueIndex]
+    const ownMembers = values.filter((_, index) =>
+      index !== valueIndex && assignments[index] === ownCluster
+    )
+    const ownDistance = ownMembers.length > 0
+      ? ownMembers.reduce((sum, member) => sum + Math.abs(value - member), 0) / ownMembers.length
+      : 0
+    const otherDistance = Math.min(
+      ...centers
+        .map((_, clusterIndex) => clusterIndex)
+        .filter(clusterIndex => clusterIndex !== ownCluster)
+        .map(clusterIndex => {
+          const members = values.filter((_, index) => assignments[index] === clusterIndex)
+          return members.reduce((sum, member) => sum + Math.abs(value - member), 0) / members.length
+        })
+    )
+    return otherDistance > 0
+      ? (otherDistance - ownDistance) / Math.max(otherDistance, ownDistance)
+      : 0
+  })
+  const silhouette = silhouettes.reduce((sum, value) => sum + value, 0) / silhouettes.length
+  const minimumShare = Math.min(...clusterSizes) / values.length
+  const tinyClusterPenalty = Math.max(0, 0.08 - minimumShare) * 3
+  const complexityPenalty = (clusterCount - 1) * 0.035
+
+  return {
+    centers,
+    assignments,
+    quality: silhouette - tinyClusterPenalty - complexityPenalty,
+  }
+}
+
+export const detectOcrGridLayout = (
   words: OcrPositionedWord[],
   sourceWidth: number,
   sourceHeight: number,
@@ -577,40 +692,133 @@ const bestOcrLayout = (
 ) => {
   let best: OcrLayout | null = null
   const sourceAspect = sourceWidth / Math.max(1, sourceHeight)
+  const horizontalValues = words.map(word => word.x + word.width / 2)
+  const verticalValues = words.map(word => word.y + word.height / 2)
+  const horizontalClusters = Array.from({ length: 4 }, (_, index) =>
+    clusterAxis(horizontalValues, index + 1)
+  )
+  const verticalClusters = Array.from({ length: 4 }, (_, index) =>
+    clusterAxis(verticalValues, index + 1)
+  )
 
   for (let rows = 1; rows <= 4; rows += 1) {
     for (let columns = 1; columns <= 4; columns += 1) {
-      const totalCells = rows * columns
-      if (totalCells < 2 || totalCells > maximumCards) continue
+      const horizontal = horizontalClusters[columns - 1]
+      const vertical = verticalClusters[rows - 1]
+      if (!horizontal || !vertical) continue
 
-      const cardAspect = sourceAspect * rows / columns
-      if (cardAspect < 0.46 || cardAspect > 0.98) continue
-
-      const cellWeights = new Array(totalCells).fill(0)
-      for (const word of words) {
-        const weight = meaningfulWordWeight(word.text)
-        if (weight === 0) continue
-        const column = Math.min(columns - 1, Math.max(0, Math.floor(word.x * columns)))
-        const row = Math.min(rows - 1, Math.max(0, Math.floor(word.y * rows)))
-        cellWeights[row * columns + column] += weight
+      let physicalRows = rows
+      let physicalColumns = columns
+      const clusteredCardAspect = sourceAspect * rows / columns
+      if (clusteredCardAspect < 0.58) {
+        const expectedRows = Math.max(
+          rows,
+          Math.min(4, Math.round(0.714 * columns / sourceAspect))
+        )
+        if (expectedRows * columns <= maximumCards) physicalRows = expectedRows
+      } else if (clusteredCardAspect > 0.9) {
+        const expectedColumns = Math.max(
+          columns,
+          Math.min(4, Math.round(sourceAspect * rows / 0.714))
+        )
+        if (rows * expectedColumns <= maximumCards) physicalColumns = expectedColumns
       }
 
-      const occupiedCells = cellWeights.filter(weight => weight >= 4).length
-      const occupancyRatio = occupiedCells / totalCells
-      if (occupiedCells < 2 || occupancyRatio < 0.65) continue
+      const columnSlots = horizontal.centers.map(center =>
+        Math.min(
+          physicalColumns - 1,
+          Math.max(0, Math.round(center * physicalColumns - 0.5))
+        )
+      )
+      const rowSlots = vertical.centers.map(center =>
+        Math.min(
+          physicalRows - 1,
+          Math.max(0, Math.round(center * physicalRows - 0.5))
+        )
+      )
+      if (
+        new Set(columnSlots).size !== columns ||
+        new Set(rowSlots).size !== rows
+      ) {
+        physicalRows = rows
+        physicalColumns = columns
+        columnSlots.splice(0, columnSlots.length, ...horizontal.centers.map((_, index) => index))
+        rowSlots.splice(0, rowSlots.length, ...vertical.centers.map((_, index) => index))
+      }
 
-      const aspectScore = Math.exp(-Math.abs(Math.log(cardAspect / 0.714)) * 5)
+      const totalCells = physicalRows * physicalColumns
+      if (totalCells < 2 || totalCells > maximumCards) continue
+
+      const cardAspect = sourceAspect * physicalRows / physicalColumns
+      if (cardAspect < 0.34 || cardAspect > 1.35) continue
+
+      const cellWeights = new Array(totalCells).fill(0)
+      const wordCells = words.map((_, index) => {
+        const column = columnSlots[horizontal.assignments[index]]
+        const row = rowSlots[vertical.assignments[index]]
+        return row * physicalColumns + column
+      })
+      words.forEach((word, index) => {
+        const weight = meaningfulWordWeight(word.text)
+        if (weight === 0) return
+        cellWeights[wordCells[index]] += weight
+      })
+
+      const occupiedCells = cellWeights.filter(weight => weight >= 3).length
+      const occupancyRatio = occupiedCells / totalCells
+      if (occupiedCells < 2) continue
+
+      const sourceAspectScore = Math.exp(-Math.abs(Math.log(cardAspect / 0.714)) * 2.2)
+      const horizontalSpacing = median(
+        horizontal.centers.slice(1).map((center, index) =>
+          (center - horizontal.centers[index]) * sourceWidth
+        )
+      )
+      const verticalSpacing = median(
+        vertical.centers.slice(1).map((center, index) =>
+          (center - vertical.centers[index]) * sourceHeight
+        )
+      )
+      const spacingAspect = horizontalSpacing > 0 && verticalSpacing > 0
+        ? horizontalSpacing / verticalSpacing
+        : cardAspect
+      const spacingAspectScore = Math.exp(
+        -Math.abs(Math.log(Math.max(0.01, spacingAspect) / 0.714)) * 2.6
+      )
       const balance = cellWeights
-        .filter(weight => weight >= 4)
+        .filter(weight => weight >= 3)
         .reduce((sum, weight) => sum + Math.min(1, weight / 12), 0) / occupiedCells
       const score =
-        Math.pow(occupiedCells, 1.12) *
-        Math.pow(occupancyRatio, 2.4) *
-        Math.pow(aspectScore, 2.6) *
-        (0.72 + balance * 0.28)
+        horizontal.quality +
+        vertical.quality +
+        spacingAspectScore * 0.48 +
+        sourceAspectScore * 0.26 +
+        Math.sqrt(occupancyRatio) * 0.12 +
+        Math.log1p(occupiedCells) * 0.08 +
+        balance * 0.08
+      const confidence = Math.max(
+        0,
+        Math.min(
+          1,
+          0.35 +
+          Math.max(0, horizontal.quality) * 0.18 +
+          Math.max(0, vertical.quality) * 0.18 +
+          spacingAspectScore * 0.16 +
+          sourceAspectScore * 0.08 +
+          Math.sqrt(occupancyRatio) * 0.12
+        )
+      )
 
       if (!best || score > best.score) {
-        best = { columns, rows, score, occupiedCells, cellWeights }
+        best = {
+          columns: physicalColumns,
+          rows: physicalRows,
+          score,
+          confidence,
+          occupiedCells,
+          cellWeights,
+          wordCells,
+        }
       }
     }
   }
@@ -634,7 +842,7 @@ export const inferCardsFromOcrLayout = async (
   )
   if (usableWords.length < 4) return { detections: [] as MultiCardDetection[], confidence: 0 }
 
-  const layout = bestOcrLayout(
+  const layout = detectOcrGridLayout(
     usableWords,
     sourceCanvas.width,
     sourceCanvas.height,
@@ -654,6 +862,7 @@ export const inferCardsFromOcrLayout = async (
     for (let row = 0; row < layout.rows; row += 1) {
       for (let column = 0; column < layout.columns; column += 1) {
         const cellIndex = row * layout.columns + column
+        if (layout.cellWeights[cellIndex] < 3) continue
 
         const left = column * cellWidth + horizontalInset
         const top = row * cellHeight + verticalInset
@@ -666,11 +875,8 @@ export const inferCardsFromOcrLayout = async (
           { x: left, y: bottom },
         ]
         const crop = warpCard(cv, source, corners)
-        const cellWords = usableWords.filter(word =>
-          word.x >= column / layout.columns &&
-          word.x < (column + 1) / layout.columns &&
-          word.y >= row / layout.rows &&
-          word.y < (row + 1) / layout.rows
+        const cellWords = usableWords.filter((_, index) =>
+          layout.wordCells[index] === cellIndex
         )
 
         detections.push({
@@ -678,7 +884,7 @@ export const inferCardsFromOcrLayout = async (
           corners,
           crop,
           thumbnail: crop.toDataURL('image/jpeg', 0.82),
-          score: layout.score * (layout.cellWeights[cellIndex] >= 4 ? 1 : 0.75),
+          score: layout.score,
           ocrText: cellWords
             .sort((first, second) => first.y - second.y || first.x - second.x)
             .map(word => word.text)
@@ -691,10 +897,5 @@ export const inferCardsFromOcrLayout = async (
     source.delete()
   }
 
-  const confidence = Math.min(
-    1,
-    (layout.occupiedCells / (layout.rows * layout.columns)) *
-    Math.min(1, layout.score / 6)
-  )
-  return { detections, confidence }
+  return { detections, confidence: layout.confidence }
 }
