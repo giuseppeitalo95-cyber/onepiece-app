@@ -2816,7 +2816,11 @@ export default function ScanPage() {
 
                   <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                     <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
-                    <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
+                    <div className={`relative overflow-hidden rounded-[28px] ${
+                      scanMode === 'multi'
+                        ? 'h-[46dvh] min-h-[300px] max-h-[540px]'
+                        : 'aspect-[3/4]'
+                    }`}>
                       <canvas ref={processingCanvasRef} className="hidden" />
                       {capturedPhotoUrl ? (
                         <img
@@ -2835,7 +2839,7 @@ export default function ScanPage() {
                           </div>
                           <p className="max-w-72 text-sm leading-6 text-slate-300">
                             {scanMode === 'multi'
-                              ? 'Disponi le carte separate, completamente visibili e scatta dall’alto.'
+                              ? 'Disponi le carte separate oppure inquadra un’intera pagina del raccoglitore.'
                               : 'Inquadra tutta la carta, senza riflessi.'}
                           </p>
                         </div>
@@ -2882,7 +2886,10 @@ export default function ScanPage() {
 
                   <div className="mt-4 space-y-3">
                     {scanMode === 'multi' && multiDetections.length > 0 ? (
-                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <div
+                        className="fixed inset-x-3 z-40 mx-auto grid max-w-[480px] grid-cols-[1fr_auto] gap-2 rounded-[22px] border border-white/15 bg-slate-950/92 p-2 shadow-[0_18px_42px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+                        style={{ bottom: 'calc(max(0.5rem, env(safe-area-inset-bottom)) + 5.25rem)' }}
+                      >
                         <button
                           type="button"
                           onClick={analyzeMultiDetections}
@@ -3201,8 +3208,8 @@ export default function ScanPage() {
                 </h2>
                 {introMode === 'multi' ? (
                   <div className="mt-4 space-y-2 text-sm leading-6 text-slate-300">
-                    <p>Disponi da 1 a 12 carte completamente visibili su un piano e scatta dall’alto.</p>
-                    <p>Lascia un piccolo spazio tra le carte, evita sovrapposizioni e riflessi sulle bustine.</p>
+                    <p>Inquadra da 1 a 12 carte su un piano oppure un’intera pagina del raccoglitore.</p>
+                    <p>Mostra ogni carta per intero, evita sovrapposizioni e limita i riflessi sulle bustine.</p>
                     <p>Controlla i contorni numerati prima dell’analisi: tutta la foto usa una sola scansione Google Vision.</p>
                   </div>
                 ) : (

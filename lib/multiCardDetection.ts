@@ -151,6 +151,152 @@ type Candidate = {
   centerY: number
 }
 
+const translatedCorners = (
+  corners: [CardPoint, CardPoint, CardPoint, CardPoint],
+  offsetX: number,
+  offsetY: number
+) => corners.map(point => ({
+  x: point.x + offsetX,
+  y: point.y + offsetY,
+})) as [CardPoint, CardPoint, CardPoint, CardPoint]
+
+const normalizedVector = (x: number, y: number) => {
+  const length = Math.max(1, Math.hypot(x, y))
+  return { x: x / length, y: y / length }
+}
+
+const inferBinderGrid = (
+  cv: OpenCvModule,
+  edgeImage: any,
+  selected: Candidate[],
+  sourceWidth: number,
+  sourceHeight: number,
+  analysisScale: number,
+  maximumCards: number
+) => {
+  if (selected.length === 0 || selected.length > 3 || selected.length >= maximumCards) return selected
+
+  const anchor = [...selected].sort((first, second) => second.score - first.score)[0]
+  const anchorBounds = boundsForCorners(anchor.corners)
+  const widthRatio = anchorBounds.width / sourceWidth
+  const heightRatio = anchorBounds.height / sourceHeight
+  if (widthRatio < 0.17 || widthRatio > 0.42 || heightRatio < 0.18 || heightRatio > 0.46) {
+    return selected
+  }
+
+  const horizontal = normalizedVector(
+    (anchor.corners[1].x - anchor.corners[0].x) + (anchor.corners[2].x - anchor.corners[3].x),
+    (anchor.corners[1].y - anchor.corners[0].y) + (anchor.corners[2].y - anchor.corners[3].y)
+  )
+  const vertical = normalizedVector(
+    (anchor.corners[3].x - anchor.corners[0].x) + (anchor.corners[2].x - anchor.corners[1].x),
+    (anchor.corners[3].y - anchor.corners[0].y) + (anchor.corners[2].y - anchor.corners[1].y)
+  )
+  if (Math.abs(horizontal.x) < 0.9 || Math.abs(vertical.y) < 0.9) return selected
+
+  const cardWidth = (
+    distance(anchor.corners[0], anchor.corners[1]) +
+    distance(anchor.corners[3], anchor.corners[2])
+  ) / 2
+  const cardHeight = (
+    distance(anchor.corners[0], anchor.corners[3]) +
+    distance(anchor.corners[1], anchor.corners[2])
+  ) / 2
+  const horizontalStep = cardWidth * 1.12
+  const verticalStep = cardHeight * 1.1
+  const proposals: Candidate[] = []
+
+  for (let rowOffset = -4; rowOffset <= 4; rowOffset += 1) {
+    for (let columnOffset = -4; columnOffset <= 4; columnOffset += 1) {
+      const offsetX =
+        horizontal.x * horizontalStep * columnOffset +
+        vertical.x * verticalStep * rowOffset
+      const offsetY =
+        horizontal.y * horizontalStep * columnOffset +
+        vertical.y * verticalStep * rowOffset
+      const corners = translatedCorners(anchor.corners, offsetX, offsetY)
+      const bounds = boundsForCorners(corners)
+      const marginX = sourceWidth * 0.015
+      const marginY = sourceHeight * 0.015
+      if (
+        bounds.left < -marginX ||
+        bounds.top < -marginY ||
+        bounds.right > sourceWidth + marginX ||
+        bounds.bottom > sourceHeight + marginY
+      ) continue
+
+      const roiX = Math.max(0, Math.floor(bounds.left * analysisScale))
+      const roiY = Math.max(0, Math.floor(bounds.top * analysisScale))
+      const roiWidth = Math.min(
+        edgeImage.cols - roiX,
+        Math.max(1, Math.floor(bounds.width * analysisScale))
+      )
+      const roiHeight = Math.min(
+        edgeImage.rows - roiY,
+        Math.max(1, Math.floor(bounds.height * analysisScale))
+      )
+      if (roiWidth < 20 || roiHeight < 20) continue
+
+      const roi = edgeImage.roi(new cv.Rect(roiX, roiY, roiWidth, roiHeight))
+      const edgeDensity = cv.countNonZero(roi) / Math.max(1, roiWidth * roiHeight)
+      roi.delete()
+      if (edgeDensity < 0.035) continue
+
+      proposals.push({
+        corners,
+        score: anchor.score * (0.75 + Math.min(0.2, edgeDensity)),
+        centerX: anchor.centerX + offsetX,
+        centerY: anchor.centerY + offsetY,
+      })
+    }
+  }
+
+  const distinctRows = new Set(proposals.map(candidate => Math.round(candidate.centerY / verticalStep))).size
+  const distinctColumns = new Set(proposals.map(candidate => Math.round(candidate.centerX / horizontalStep))).size
+  if (proposals.length < 4 || distinctRows < 2 || distinctColumns < 2) return selected
+
+  const grid = proposals
+    .sort((first, second) => first.centerY - second.centerY || first.centerX - second.centerX)
+    .slice(0, maximumCards)
+  const extras = selected.filter(candidate => {
+    const candidateBounds = boundsForCorners(candidate.corners)
+    return !grid.some(gridCandidate => {
+      const gridBounds = boundsForCorners(gridCandidate.corners)
+      const centerInside =
+        candidate.centerX >= gridBounds.left &&
+        candidate.centerX <= gridBounds.right &&
+        candidate.centerY >= gridBounds.top &&
+        candidate.centerY <= gridBounds.bottom
+      return centerInside && candidateBounds.width * candidateBounds.height < gridBounds.width * gridBounds.height * 0.7
+    })
+  })
+
+  return [...grid, ...extras]
+    .filter((candidate, index, all) =>
+      all.findIndex(other => intersectionOverUnion(other.corners, candidate.corners) > 0.55) === index
+    )
+    .slice(0, maximumCards)
+}
+
+const rotatedRectCorners = (rect: any): CardPoint[] => {
+  const angle = Number(rect?.angle || 0) * Math.PI / 180
+  const halfWidth = Number(rect?.size?.width || 0) / 2
+  const halfHeight = Number(rect?.size?.height || 0) / 2
+  const centerX = Number(rect?.center?.x || 0)
+  const centerY = Number(rect?.center?.y || 0)
+  const widthX = Math.cos(angle) * halfWidth
+  const widthY = Math.sin(angle) * halfWidth
+  const heightX = -Math.sin(angle) * halfHeight
+  const heightY = Math.cos(angle) * halfHeight
+
+  return [
+    { x: centerX - widthX - heightX, y: centerY - widthY - heightY },
+    { x: centerX + widthX - heightX, y: centerY + widthY - heightY },
+    { x: centerX + widthX + heightX, y: centerY + widthY + heightY },
+    { x: centerX - widthX + heightX, y: centerY - widthY + heightY },
+  ]
+}
+
 export const detectCardsInPhoto = async (
   sourceCanvas: HTMLCanvasElement,
   maximumCards = 12
@@ -207,17 +353,23 @@ export const detectCardsInPhoto = async (
         }
         approx.delete()
       }
-      contour.delete()
-      if (!bestApprox) continue
 
       const rawPoints: CardPoint[] = []
-      for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
-        rawPoints.push({
-          x: bestApprox.data32S[pointIndex * 2],
-          y: bestApprox.data32S[pointIndex * 2 + 1],
-        })
+      let partialBorder = false
+      if (bestApprox) {
+        for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
+          rawPoints.push({
+            x: bestApprox.data32S[pointIndex * 2],
+            y: bestApprox.data32S[pointIndex * 2 + 1],
+          })
+        }
+        bestApprox.delete()
+      } else {
+        const rotatedRect = cv.minAreaRect(contour)
+        rawPoints.push(...rotatedRectCorners(rotatedRect))
+        partialBorder = true
       }
-      bestApprox.delete()
+      contour.delete()
 
       const ordered = orderCorners(rawPoints)
       const width = (distance(ordered[0], ordered[1]) + distance(ordered[3], ordered[2])) / 2
@@ -226,7 +378,8 @@ export const detectCardsInPhoto = async (
       const longSide = Math.max(width, height)
       const aspect = shortSide / Math.max(longSide, 1)
       const rectangularity = area / Math.max(width * height, 1)
-      if (shortSide < 55 || aspect < 0.55 || aspect > 0.84 || rectangularity < 0.58) continue
+      const minimumRectangularity = partialBorder ? 0.42 : 0.58
+      if (shortSide < 55 || aspect < 0.55 || aspect > 0.84 || rectangularity < minimumRectangularity) continue
 
       const sourceCorners = ordered.map(point => ({
         x: point.x / scale,
@@ -237,7 +390,7 @@ export const detectCardsInPhoto = async (
       const aspectScore = 1 - Math.min(1, Math.abs(aspect - 0.714) / 0.18)
       candidates.push({
         corners: sourceCorners,
-        score: area * Math.max(0.2, rectangularity) * Math.max(0.25, aspectScore),
+        score: area * Math.max(0.2, rectangularity) * Math.max(0.25, aspectScore) * (partialBorder ? 0.88 : 1),
         centerX,
         centerY,
       })
@@ -250,14 +403,24 @@ export const detectCardsInPhoto = async (
       if (selected.length >= maximumCards) break
     }
 
-    selected.sort((a, b) => {
+    const completedSelection = inferBinderGrid(
+      cv,
+      edges,
+      selected,
+      sourceCanvas.width,
+      sourceCanvas.height,
+      scale,
+      maximumCards
+    )
+
+    completedSelection.sort((a, b) => {
       const rowTolerance = Math.max(sourceCanvas.height * 0.08, 80)
       return Math.abs(a.centerY - b.centerY) > rowTolerance
         ? a.centerY - b.centerY
         : a.centerX - b.centerX
     })
 
-    return selected.map((candidate, index) => {
+    return completedSelection.map((candidate, index) => {
       const crop = warpCard(cv, source, candidate.corners)
       return {
         id: `detected-${Date.now()}-${index}`,
