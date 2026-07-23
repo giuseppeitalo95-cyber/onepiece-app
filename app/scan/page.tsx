@@ -1775,7 +1775,21 @@ export default function ScanPage() {
       const { candidates, textMatch } = await findVisibleTextCandidates(orientation.text)
       if (candidates.length === 0) continue
 
-      if (textMatch?.decisive) {
+      const textMatchIsStrong = Boolean(textMatch && (
+        textMatch.decisive ||
+        candidates.length === 1 ||
+        (
+          textMatch.exactName &&
+          textMatch.scoreGap >= 10 &&
+          (
+            textMatch.powerMatch ||
+            (textMatch.costMatch && textMatch.effectMatches >= 1) ||
+            textMatch.effectMatches >= 3
+          )
+        )
+      ))
+
+      if (textMatchIsStrong && textMatch) {
         const familyCandidates = candidates.filter(card =>
           baseCardCode(card.card_id || card.id || '') === textMatch.family
         )
@@ -1789,7 +1803,12 @@ export default function ScanPage() {
         }
       }
 
-      const verified = await verifyPhotoCandidates(candidates.slice(0, 20), orientation.crop, true)
+      const verificationLimit = textMatch?.exactName ? 10 : 16
+      const verified = await verifyPhotoCandidates(
+        candidates.slice(0, verificationLimit),
+        orientation.crop,
+        true
+      )
       if (!verified) continue
       const verifiedFamily = baseCardCode(verified.card.card_id)
       const familyCard = candidates.find(card =>
@@ -1942,7 +1961,7 @@ export default function ScanPage() {
           setRecognitionMessage(`Riconoscimento carte: ${completed}/${detections.length}...`)
         }
       }
-      await Promise.all(Array.from({ length: Math.min(3, detections.length) }, () => worker()))
+      await Promise.all(Array.from({ length: Math.min(4, detections.length) }, () => worker()))
       if (!isScanStillActive(generation)) return
 
       const recognized = results.filter((item): item is MultiRecognitionItem => Boolean(item))
