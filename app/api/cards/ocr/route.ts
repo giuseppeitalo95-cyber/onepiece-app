@@ -48,6 +48,14 @@ type ScanAccessResult = {
   error?: string | null
 }
 
+type OcrRegion = {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 const adminSupabase = supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
@@ -93,6 +101,90 @@ const extractVisionText = (result: any) => {
     result?.textAnnotations?.[0]?.description,
   ].filter(Boolean)
   return uniqueLines(ocrParts.join('\n'))
+}
+
+const normalizeOcrRegions = (value: unknown): OcrRegion[] => {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .slice(0, 24)
+    .map((region, index) => ({
+      id: String(region?.id || index).slice(0, 40),
+      x: Math.max(0, Number(region?.x || 0)),
+      y: Math.max(0, Number(region?.y || 0)),
+      width: Math.max(1, Number(region?.width || 1)),
+      height: Math.max(1, Number(region?.height || 1)),
+    }))
+    .filter(region =>
+      Number.isFinite(region.x) &&
+      Number.isFinite(region.y) &&
+      Number.isFinite(region.width) &&
+      Number.isFinite(region.height)
+    )
+}
+
+const extractVisionRegionTexts = (result: any, regions: OcrRegion[]) => {
+  if (regions.length === 0) return []
+
+  const words: Array<{ text: string; x: number; y: number }> = []
+  const pages = Array.isArray(result?.fullTextAnnotation?.pages)
+    ? result.fullTextAnnotation.pages
+    : []
+
+  for (const page of pages) {
+    for (const block of page?.blocks || []) {
+      for (const paragraph of block?.paragraphs || []) {
+        for (const word of paragraph?.words || []) {
+          const text = (word?.symbols || []).map((symbol: any) => symbol?.text || '').join('').trim()
+          const vertices = word?.boundingBox?.vertices || word?.boundingBox?.normalizedVertices || []
+          const xs = vertices.map((vertex: any) => Number(vertex?.x || 0)).filter(Number.isFinite)
+          const ys = vertices.map((vertex: any) => Number(vertex?.y || 0)).filter(Number.isFinite)
+          if (!text || xs.length === 0 || ys.length === 0) continue
+          words.push({
+            text,
+            x: xs.reduce((sum: number, value: number) => sum + value, 0) / xs.length,
+            y: ys.reduce((sum: number, value: number) => sum + value, 0) / ys.length,
+          })
+        }
+      }
+    }
+  }
+
+  if (words.length === 0) {
+    for (const annotation of (result?.textAnnotations || []).slice(1)) {
+      const text = String(annotation?.description || '').trim()
+      const vertices = annotation?.boundingPoly?.vertices || []
+      const xs = vertices.map((vertex: any) => Number(vertex?.x || 0)).filter(Number.isFinite)
+      const ys = vertices.map((vertex: any) => Number(vertex?.y || 0)).filter(Number.isFinite)
+      if (!text || xs.length === 0 || ys.length === 0) continue
+      words.push({
+        text,
+        x: xs.reduce((sum: number, value: number) => sum + value, 0) / xs.length,
+        y: ys.reduce((sum: number, value: number) => sum + value, 0) / ys.length,
+      })
+    }
+  }
+
+  return regions.map(region => {
+    const selected = words
+      .filter(word =>
+        word.x >= region.x &&
+        word.x <= region.x + region.width &&
+        word.y >= region.y &&
+        word.y <= region.y + region.height
+      )
+      .sort((first, second) => {
+        const lineTolerance = Math.max(10, region.height * 0.012)
+        return Math.abs(first.y - second.y) > lineTolerance
+          ? first.y - second.y
+          : first.x - second.x
+      })
+
+    return {
+      id: region.id,
+      text: selected.map(word => word.text).join(' ').trim(),
+    }
+  })
 }
 
 async function reserveMonthlyScan() {
@@ -410,6 +502,7 @@ export async function POST(req: NextRequest) {
     const images = rawImages
       .filter((image: unknown): image is string => typeof image === 'string' && image.length > 0)
       .slice(0, 2)
+    const ocrRegions = images.length === 1 ? normalizeOcrRegions(body?.regions) : []
 
     if (images.length === 0) {
       return Response.json({ text: '', error: 'Missing image' }, { status: 400 })
@@ -498,6 +591,9 @@ export async function POST(req: NextRequest) {
     const text = uniqueLines(responses.map(extractVisionText).filter(Boolean).join('\n'))
     return Response.json({
       text,
+      regionTexts: ocrRegions.length > 0
+        ? extractVisionRegionTexts(responses[0], ocrRegions)
+        : undefined,
       scansUsed: usage.used,
       scansLimit: usage.limit
     })

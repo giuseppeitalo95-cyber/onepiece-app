@@ -6,10 +6,17 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, Images, Info, LoaderCircle, Minus, Plus, ScanLine, X } from 'lucide-react'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { parseCardCodeFromText } from '@/lib/cardRecognition'
+import {
+  buildMultiCardOcrSheet,
+  createDetectionPreview,
+  detectCardsInPhoto,
+  type MultiCardDetection,
+  type OcrSheetRegion,
+} from '@/lib/multiCardDetection'
 
 type ScannedCard = {
   id: string
@@ -60,6 +67,14 @@ type VisibleTextDecision = {
   scoreGap: number
 }
 
+type ScanMode = 'single' | 'multi'
+
+type MultiRecognitionItem = {
+  card: ScannedCard
+  text: string
+  crop: HTMLCanvasElement
+}
+
 export default function ScanPage() {
   const router = useRouter()
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -93,6 +108,12 @@ export default function ScanPage() {
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null)
   const [photoProcessing, setPhotoProcessing] = useState(false)
+  const [scanMode, setScanMode] = useState<ScanMode | null>(null)
+  const [introMode, setIntroMode] = useState<ScanMode | null>(null)
+  const [multiDetections, setMultiDetections] = useState<MultiCardDetection[]>([])
+  const [multiPreviewUrl, setMultiPreviewUrl] = useState<string | null>(null)
+  const [multiUnrecognized, setMultiUnrecognized] = useState(0)
+  const [multiConfirmationProgress, setMultiConfirmationProgress] = useState({ current: 0, total: 0 })
   const [summaryDrag, setSummaryDrag] = useState({ active: false, startX: 0, offset: 0 })
   const processingCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectionLoopRef = useRef<number | null>(null)
@@ -111,6 +132,10 @@ export default function ScanPage() {
   const sourceImageSamplesCacheRef = useRef(new WeakMap<HTMLCanvasElement, ImageData[]>())
   const workCanvasesRef = useRef<Record<string, HTMLCanvasElement>>({})
   const manualSearchRunRef = useRef(0)
+  const multiSourceCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const multiQueueRef = useRef<MultiRecognitionItem[]>([])
+  const currentMultiItemRef = useRef<MultiRecognitionItem | null>(null)
+  const multiUsageConfirmedRef = useRef(false)
 
   const scanCanvasSize = { width: 1080, height: 1440 }
 
@@ -1306,6 +1331,47 @@ export default function ScanPage() {
     }
   }
 
+  const runOcrOnSheet = async (canvas: HTMLCanvasElement, regions: OcrSheetRegion[]) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/cards/ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : ''
+        },
+        body: JSON.stringify({
+          images: [canvas.toDataURL('image/jpeg', 0.82)],
+          mode: 'photo',
+          regions,
+        })
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        if (data?.dailyScanLimitReached) {
+          setRecognitionMessage(`Limite giornaliero free raggiunto: ${data.dailyScansUsed}/${data.dailyScansLimit} scan.`)
+        } else if (data?.scanLimitReached) {
+          setRecognitionMessage(`Limite mensile globale raggiunto: ${data.scansUsed}/${data.scansLimit} scansioni.`)
+        } else if (data?.googleStatus === 429) {
+          setRecognitionMessage('Google Vision è temporaneamente occupato. Riprova tra pochi secondi.')
+        } else {
+          setRecognitionMessage('Scanner temporaneamente non disponibile. Riprova tra pochi secondi.')
+        }
+        return null
+      }
+
+      const texts = new Map<string, string>()
+      for (const region of Array.isArray(data?.regionTexts) ? data.regionTexts : []) {
+        texts.set(String(region?.id || ''), String(region?.text || ''))
+      }
+      return texts
+    } catch {
+      setRecognitionMessage('OCR non raggiungibile. Controlla la connessione e riprova.')
+      return null
+    }
+  }
+
   const clearCapturedPhoto = () => {
     if (capturedPhotoUrlRef.current) {
       URL.revokeObjectURL(capturedPhotoUrlRef.current)
@@ -1315,7 +1381,42 @@ export default function ScanPage() {
     if (photoInputRef.current) photoInputRef.current.value = ''
   }
 
-  const loadPhotoCanvas = async (file: File) => {
+  const resetMultiScan = () => {
+    multiSourceCanvasRef.current = null
+    multiQueueRef.current = []
+    currentMultiItemRef.current = null
+    multiUsageConfirmedRef.current = false
+    setMultiDetections([])
+    setMultiPreviewUrl(null)
+    setMultiUnrecognized(0)
+    setMultiConfirmationProgress({ current: 0, total: 0 })
+  }
+
+  const selectScanMode = (mode: ScanMode) => {
+    scanGenerationRef.current += 1
+    clearCapturedPhoto()
+    resetMultiScan()
+    setPendingRecognition(null)
+    setVariantChoiceRequired(false)
+    setCameraError(null)
+    setPhotoProcessing(false)
+    setScanMode(mode)
+    setRecognitionMessage(
+      mode === 'single'
+        ? 'Scatta una foto nitida mostrando una sola carta.'
+        : 'Scatta una foto dall’alto: troverò automaticamente tutte le carte visibili.'
+    )
+
+    const introKey = `opv-scan-intro-${mode}-v1`
+    if (window.localStorage.getItem(introKey) !== 'seen') setIntroMode(mode)
+  }
+
+  const closeScanIntro = () => {
+    if (introMode) window.localStorage.setItem(`opv-scan-intro-${introMode}-v1`, 'seen')
+    setIntroMode(null)
+  }
+
+  const loadPhotoCanvas = async (file: File, maxDimension = 2200) => {
     let source: CanvasImageSource
     let sourceWidth = 0
     let sourceHeight = 0
@@ -1341,7 +1442,6 @@ export default function ScanPage() {
       cleanup = () => URL.revokeObjectURL(objectUrl)
     }
 
-    const maxDimension = 2200
     const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(sourceWidth * scale))
@@ -1620,6 +1720,213 @@ export default function ScanPage() {
     }
   }
 
+  const multiTextQuality = (value: string) => {
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    const tokens = normalized.split(' ').filter(token => token.length >= 2)
+    const anchors = normalized.match(/\b(counter|trigger|character|leader|event|stage|power|cost|activate|main|on play)\b/gi)?.length || 0
+    const numeric = normalized.match(/\b\d{1,5}\b/g)?.length || 0
+    return tokens.length + anchors * 8 + numeric * 2 + Math.min(40, normalized.length / 18)
+  }
+
+  const recognizeMultiDetection = async (
+    detection: MultiCardDetection,
+    index: number,
+    regionTexts: Map<string, string>
+  ): Promise<MultiRecognitionItem | null> => {
+    const rotatedCrop = document.createElement('canvas')
+    rotatedCrop.width = detection.crop.width
+    rotatedCrop.height = detection.crop.height
+    const rotatedContext = rotatedCrop.getContext('2d')
+    if (rotatedContext) {
+      rotatedContext.translate(rotatedCrop.width, rotatedCrop.height)
+      rotatedContext.rotate(Math.PI)
+      rotatedContext.drawImage(detection.crop, 0, 0)
+    }
+
+    const orientations = [
+      { text: regionTexts.get(`${index}:0`) || '', crop: detection.crop },
+      { text: regionTexts.get(`${index}:180`) || '', crop: rotatedCrop },
+    ].sort((first, second) => multiTextQuality(second.text) - multiTextQuality(first.text))
+
+    for (const orientation of orientations) {
+      if (!orientation.text.trim()) continue
+      const { candidates, textMatch } = await findVisibleTextCandidates(orientation.text)
+      if (candidates.length === 0) continue
+
+      if (textMatch?.decisive) {
+        const familyCandidates = candidates.filter(card =>
+          baseCardCode(card.card_id || card.id || '') === textMatch.family
+        )
+        const textCard = familyCandidates.find(card => card.card_id === textMatch.cardId) || familyCandidates[0]
+        if (textCard) {
+          return {
+            card: toScannedCard(textCard),
+            text: orientation.text,
+            crop: orientation.crop,
+          }
+        }
+      }
+
+      const verified = await verifyPhotoCandidates(candidates.slice(0, 20), orientation.crop, true)
+      if (!verified) continue
+      const verifiedFamily = baseCardCode(verified.card.card_id)
+      const familyCard = candidates.find(card =>
+        baseCardCode(card.card_id || card.id || '') === verifiedFamily && !/_p\d+$/i.test(card.card_id)
+      )
+      return {
+        card: familyCard ? toScannedCard(familyCard) : verified.card,
+        text: orientation.text,
+        crop: orientation.crop,
+      }
+    }
+
+    return null
+  }
+
+  const presentMultiRecognition = (item: MultiRecognitionItem, generation: number) => {
+    currentMultiItemRef.current = item
+    const total = multiConfirmationProgress.total || multiQueueRef.current.length + 1
+    const current = total - multiQueueRef.current.length
+    setMultiConfirmationProgress({ current, total })
+    setPendingRecognition(item.card)
+    setRecognitionQuantity(1)
+    setVariantChoiceRequired(true)
+    setRecognitionMessage(`Carta ${current} di ${total}: controlla la variante e conferma.`)
+    enrichPendingPriceInBackground(item.card, generation)
+    refineRecognitionVariant(item.text, item.crop, generation, item.card)
+  }
+
+  const advanceMultiRecognition = () => {
+    const next = multiQueueRef.current.shift() || null
+    if (next) {
+      presentMultiRecognition(next, scanGenerationRef.current)
+      return
+    }
+
+    currentMultiItemRef.current = null
+    setPendingRecognition(null)
+    setVariantChoiceRequired(false)
+    clearCapturedPhoto()
+    multiSourceCanvasRef.current = null
+    setMultiDetections([])
+    setMultiPreviewUrl(null)
+    setRecognitionMessage(
+      multiUnrecognized > 0
+        ? `Foto completata. ${multiUnrecognized} carte non erano abbastanza leggibili.`
+        : 'Foto completata. Puoi scattare un altro gruppo o vedere i risultati.'
+    )
+  }
+
+  const processMultiPhoto = async (file: File) => {
+    scanGenerationRef.current += 1
+    const generation = scanGenerationRef.current
+    scanSessionRef.current = true
+    showSummaryRef.current = false
+    multiUsageConfirmedRef.current = false
+    multiQueueRef.current = []
+    currentMultiItemRef.current = null
+    setScanSessionActive(true)
+    setShowSummary(false)
+    setPendingRecognition(null)
+    setVariantChoiceRequired(false)
+    setMultiDetections([])
+    setMultiPreviewUrl(null)
+    setMultiUnrecognized(0)
+    setMultiConfirmationProgress({ current: 0, total: 0 })
+    setCameraError(null)
+    setPhotoProcessing(true)
+    setRecognitionMessage('Cerco i bordi e la posizione di ogni carta...')
+
+    try {
+      const photoCanvas = await loadPhotoCanvas(file, 3400)
+      if (!isScanStillActive(generation)) return
+      multiSourceCanvasRef.current = photoCanvas
+
+      const detections = await detectCardsInPhoto(photoCanvas, 12)
+      if (!isScanStillActive(generation)) return
+      setMultiDetections(detections)
+      setMultiPreviewUrl(createDetectionPreview(photoCanvas, detections))
+
+      if (detections.length === 0) {
+        setRecognitionMessage('Non ho trovato rettangoli completi. Separa meglio le carte e riprova dall’alto.')
+        return
+      }
+
+      setRecognitionMessage(
+        `${detections.length} ${detections.length === 1 ? 'carta individuata' : 'carte individuate'}. Controlla le miniature prima di usare Google Vision.`
+      )
+    } catch (error) {
+      console.error('Multi-card detection error:', error)
+      setCameraError('Non sono riuscito ad analizzare questa foto. Riprova con più luce e tutte le carte visibili.')
+      setRecognitionMessage('Pronto per un nuovo scatto.')
+    } finally {
+      if (scanGenerationRef.current === generation) setPhotoProcessing(false)
+    }
+  }
+
+  const removeMultiDetection = (id: string) => {
+    const next = multiDetections.filter(detection => detection.id !== id)
+    setMultiDetections(next)
+    if (multiSourceCanvasRef.current) {
+      setMultiPreviewUrl(createDetectionPreview(multiSourceCanvasRef.current, next))
+    }
+    setRecognitionMessage(
+      next.length > 0
+        ? `${next.length} ${next.length === 1 ? 'carta pronta' : 'carte pronte'} per l’analisi.`
+        : 'Hai rimosso tutti i rilevamenti. Scatta una nuova foto.'
+    )
+  }
+
+  const analyzeMultiDetections = async () => {
+    if (photoProcessing || multiDetections.length === 0) return
+    scanGenerationRef.current += 1
+    const generation = scanGenerationRef.current
+    scanSessionRef.current = true
+    showSummaryRef.current = false
+    setPhotoProcessing(true)
+    setCameraError(null)
+    setRecognitionMessage(`Preparo ${multiDetections.length} carte in un’unica scansione Google Vision...`)
+
+    try {
+      const { canvas, regions } = buildMultiCardOcrSheet(multiDetections)
+      const regionTexts = await runOcrOnSheet(canvas, regions)
+      if (!isScanStillActive(generation) || !regionTexts) return
+
+      const results: Array<MultiRecognitionItem | null> = new Array(multiDetections.length).fill(null)
+      let cursor = 0
+      let completed = 0
+      const worker = async () => {
+        while (cursor < multiDetections.length) {
+          const index = cursor
+          cursor += 1
+          results[index] = await recognizeMultiDetection(multiDetections[index], index, regionTexts)
+          completed += 1
+          setRecognitionMessage(`Riconoscimento carte: ${completed}/${multiDetections.length}...`)
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(3, multiDetections.length) }, () => worker()))
+      if (!isScanStillActive(generation)) return
+
+      const recognized = results.filter((item): item is MultiRecognitionItem => Boolean(item))
+      const unrecognized = multiDetections.length - recognized.length
+      setMultiUnrecognized(unrecognized)
+
+      if (recognized.length === 0) {
+        setRecognitionMessage('Le carte sono state separate, ma il testo non era abbastanza leggibile. Avvicina la fotocamera e riprova.')
+        return
+      }
+
+      multiQueueRef.current = recognized.slice(1)
+      setMultiConfirmationProgress({ current: 1, total: recognized.length })
+      presentMultiRecognition(recognized[0], generation)
+    } catch (error) {
+      console.error('Multi-card OCR error:', error)
+      setRecognitionMessage('L’analisi multipla si è interrotta. La modalità singola resta disponibile.')
+    } finally {
+      if (scanGenerationRef.current === generation) setPhotoProcessing(false)
+    }
+  }
+
   const processCapturedPhoto = async (file: File) => {
     scanGenerationRef.current += 1
     const generation = scanGenerationRef.current
@@ -1707,11 +2014,19 @@ export default function ScanPage() {
     const previewUrl = URL.createObjectURL(file)
     capturedPhotoUrlRef.current = previewUrl
     setCapturedPhotoUrl(previewUrl)
-    void processCapturedPhoto(file)
+    if (scanMode === 'multi') {
+      void processMultiPhoto(file)
+    } else {
+      void processCapturedPhoto(file)
+    }
   }
 
   const openNativeCamera = () => {
     if (photoProcessing) return
+    if (!scanMode) {
+      setCameraError('Scegli prima una modalità di scansione.')
+      return
+    }
     if (ocrStatus && !ocrStatus.googleVisionConfigured) {
       setCameraError('Scanner temporaneamente non disponibile.')
       return
@@ -1721,7 +2036,7 @@ export default function ScanPage() {
       return
     }
     if (ocrStatus?.error) {
-      setCameraError(`Il blocco delle 1000 scansioni non e pronto: ${ocrStatus.error}`)
+      setCameraError(`Il contatore delle scansioni non è pronto: ${ocrStatus.error}`)
       return
     }
     photoInputRef.current?.click()
@@ -1744,7 +2059,14 @@ export default function ScanPage() {
 
     try {
       await saveCardToCollection(savedCard)
-      await confirmDailyScanUsage()
+      if (scanMode === 'multi') {
+        if (!multiUsageConfirmedRef.current) {
+          await confirmDailyScanUsage()
+          multiUsageConfirmedRef.current = true
+        }
+      } else {
+        await confirmDailyScanUsage()
+      }
 
       setScannedCards(prev => [savedCard, ...prev])
       recognitionStreakRef.current = null
@@ -1755,9 +2077,13 @@ export default function ScanPage() {
       setPendingRecognition(null)
       setRecognitionQuantity(1)
       setVariantChoiceRequired(false)
-      clearCapturedPhoto()
       scanCooldownUntilRef.current = Date.now() + 150
-      setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Scatta la foto della prossima carta.`)
+      if (scanMode === 'multi') {
+        advanceMultiRecognition()
+      } else {
+        clearCapturedPhoto()
+        setRecognitionMessage(`Carta aggiunta alla collezione: ${card.name}. Scatta la foto della prossima carta.`)
+      }
 
       if (savedCard.market_price == null && savedCard.inventory_price == null) {
         void enrichCardWithLivePrice(savedCard).then(async pricedCard => {
@@ -1800,7 +2126,6 @@ export default function ScanPage() {
   }
 
   const discardPendingRecognition = () => {
-    clearCapturedPhoto()
     pendingRecognitionSignatureRef.current = null
     recognitionStreakRef.current = null
     ocrMissStreakRef.current = 0
@@ -1808,7 +2133,12 @@ export default function ScanPage() {
     setPendingRecognition(null)
     setRecognitionQuantity(1)
     setVariantChoiceRequired(false)
-    setRecognitionMessage('Carta scartata. Scatta la foto della prossima carta.')
+    if (scanMode === 'multi') {
+      advanceMultiRecognition()
+    } else {
+      clearCapturedPhoto()
+      setRecognitionMessage('Carta scartata. Scatta la foto della prossima carta.')
+    }
   }
 
   const detectCardFromFrame = async () => {
@@ -2412,85 +2742,213 @@ export default function ScanPage() {
         <div className="flex-1 overflow-hidden flex flex-col pb-20">
           <div className="flex-1 flex items-center justify-center px-3 py-4 sm:px-6">
             <div className="w-full max-w-[480px]">
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleCapturedPhoto}
-              />
-              <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
-                <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
-                <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
-                  <canvas ref={processingCanvasRef} className="hidden" />
-                  {capturedPhotoUrl ? (
-                    <img
-                      src={capturedPhotoUrl}
-                      alt="Foto della carta"
-                      className="h-full w-full bg-slate-950 object-contain"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
-                      <div className="rounded-full border border-cyan-300/30 bg-cyan-300/10 p-5 shadow-[0_0_28px_rgba(103,232,249,0.12)]">
-                        <Camera className="text-cyan-200" size={54} />
+              {!scanMode ? (
+                <div className="overflow-hidden rounded-[28px] border border-cyan-200/20 bg-slate-950/82 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+                  <div className="mb-5 px-1 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">Scegli modalità</p>
+                    <h1 className="mt-2 text-2xl font-black text-white">Come vuoi scannerizzare?</h1>
+                  </div>
+                  <div className="grid gap-3">
+                    <button
+                      type="button"
+                      onClick={() => selectScanMode('single')}
+                      className="group flex min-h-28 items-center gap-4 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-left transition hover:border-cyan-200/55 active:scale-[0.98]"
+                    >
+                      <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-cyan-200/30 bg-cyan-300/10 text-cyan-100">
+                        <ScanLine size={28} />
+                      </span>
+                      <span>
+                        <span className="block text-base font-black text-white">Scansiona una carta</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-400">Il sistema stabile per una carta alla volta.</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectScanMode('multi')}
+                      className="group relative flex min-h-28 items-center gap-4 overflow-hidden rounded-2xl border border-amber-300/35 bg-amber-300/[0.08] p-4 text-left transition hover:border-amber-200/70 active:scale-[0.98]"
+                    >
+                      <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-amber-200/35 bg-amber-300/15 text-amber-100">
+                        <Images size={28} />
+                      </span>
+                      <span>
+                        <span className="flex items-center gap-2 text-base font-black text-white">
+                          Scansiona più carte
+                          <span className="rounded-full border border-amber-200/25 bg-amber-300/10 px-2 py-0.5 text-[8px] uppercase tracking-[0.16em] text-amber-100">Nuovo</span>
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-300">Trova fino a 12 carte con una sola foto.</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleCapturedPhoto}
+                  />
+
+                  <div className="mb-3 grid grid-cols-2 rounded-2xl border border-slate-700 bg-slate-950/75 p-1">
+                    <button
+                      type="button"
+                      onClick={() => selectScanMode('single')}
+                      className={`flex h-10 items-center justify-center gap-2 rounded-xl text-xs font-black transition active:scale-95 ${
+                        scanMode === 'single' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'
+                      }`}
+                    >
+                      <ScanLine size={16} />
+                      Una carta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectScanMode('multi')}
+                      className={`flex h-10 items-center justify-center gap-2 rounded-xl text-xs font-black transition active:scale-95 ${
+                        scanMode === 'multi' ? 'bg-amber-300 text-slate-950' : 'text-slate-400'
+                      }`}
+                    >
+                      <Images size={16} />
+                      Più carte
+                    </button>
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-[28px] border border-amber-400/25 bg-slate-950/80 shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
+                    <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 via-transparent to-transparent" />
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-[28px]">
+                      <canvas ref={processingCanvasRef} className="hidden" />
+                      {capturedPhotoUrl ? (
+                        <img
+                          src={scanMode === 'multi' && multiPreviewUrl ? multiPreviewUrl : capturedPhotoUrl}
+                          alt={scanMode === 'multi' ? 'Carte individuate nella foto' : 'Foto della carta'}
+                          className="h-full w-full bg-slate-950 object-contain"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-slate-800 p-6 text-center">
+                          <div className={`rounded-full border p-5 ${
+                            scanMode === 'multi'
+                              ? 'border-amber-300/35 bg-amber-300/10 text-amber-100'
+                              : 'border-cyan-300/30 bg-cyan-300/10 text-cyan-200'
+                          }`}>
+                            {scanMode === 'multi' ? <Images size={54} /> : <Camera size={54} />}
+                          </div>
+                          <p className="max-w-72 text-sm leading-6 text-slate-300">
+                            {scanMode === 'multi'
+                              ? 'Disponi le carte separate, completamente visibili e scatta dall’alto.'
+                              : 'Inquadra tutta la carta, senza riflessi.'}
+                          </p>
+                        </div>
+                      )}
+
+                      {photoProcessing && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/78 text-cyan-100 backdrop-blur-sm">
+                          <LoaderCircle className="animate-spin" size={36} />
+                          <p className="text-sm font-black uppercase tracking-[0.18em]">
+                            {scanMode === 'multi' ? 'Analisi multipla' : 'Analisi foto'}
+                          </p>
+                        </div>
+                      )}
+                      <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-white/10" />
+                    </div>
+                  </div>
+
+                  {scanMode === 'multi' && multiDetections.length > 0 && !pendingRecognition ? (
+                    <div className="mt-3">
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {multiDetections.map((detection, index) => (
+                          <div key={detection.id} className="relative w-[72px] shrink-0">
+                            <img
+                              src={detection.thumbnail}
+                              alt={`Carta rilevata ${index + 1}`}
+                              className="aspect-[5/7] w-full rounded-xl border border-cyan-200/30 bg-slate-950 object-cover"
+                            />
+                            <span className="absolute left-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-slate-950/90 px-1 text-[9px] font-black text-white">
+                              {index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeMultiDetection(detection.id)}
+                              className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full border border-red-300/35 bg-red-500 text-white shadow-lg transition active:scale-90"
+                              aria-label={`Rimuovi carta ${index + 1}`}
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-sm text-slate-300">Inquadra tutta la carta, senza riflessi.</p>
                     </div>
-                  )}
+                  ) : null}
 
-                  {photoProcessing && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/72 text-cyan-100 backdrop-blur-sm">
-                      <LoaderCircle className="animate-spin" size={36} />
-                      <p className="text-sm font-black uppercase tracking-[0.18em]">Analisi foto</p>
+                  <div className="mt-4 space-y-3">
+                    {scanMode === 'multi' && multiDetections.length > 0 ? (
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <button
+                          type="button"
+                          onClick={analyzeMultiDetections}
+                          disabled={photoProcessing}
+                          className="op-solid-action flex items-center justify-center gap-2 rounded-2xl border border-amber-200/45 bg-amber-300 px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-slate-950 transition active:scale-[0.98] disabled:opacity-60"
+                        >
+                          {photoProcessing ? <LoaderCircle className="animate-spin" size={18} /> : <ScanLine size={18} />}
+                          Analizza {multiDetections.length}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openNativeCamera}
+                          disabled={photoProcessing}
+                          className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-600 bg-slate-900 text-slate-200 transition active:scale-90 disabled:opacity-50"
+                          aria-label="Scatta di nuovo"
+                        >
+                          <Camera size={19} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={openNativeCamera}
+                        disabled={photoProcessing}
+                        className="op-solid-action flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/45 bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {photoProcessing ? <LoaderCircle className="animate-spin" size={19} /> : <Camera size={19} />}
+                        {capturedPhotoUrl ? 'Scatta di nuovo' : scanMode === 'multi' ? 'Scatta foto multipla' : 'Scatta foto'}
+                      </button>
+                    )}
+
+                    {scannedCards.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition active:scale-[0.98]"
+                      >
+                        Vai ai risultati
+                      </button>
+                    )}
+
+                    {cameraError && (
+                      <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+                        {cameraError}
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm leading-5 text-slate-300">
+                      {recognitionMessage}
                     </div>
-                  )}
-                  <div className="pointer-events-none absolute inset-0 rounded-[28px] border-2 border-white/10" />
-                </div>
-              </div>
 
-              <div className="mt-4 space-y-3">
-                <button
-                  onClick={openNativeCamera}
-                  disabled={photoProcessing}
-                  className="op-solid-action flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/45 bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
-                >
-                  {photoProcessing ? <LoaderCircle className="animate-spin" size={19} /> : <Camera size={19} />}
-                  {capturedPhotoUrl ? 'Scatta di nuovo' : 'Scatta foto'}
-                </button>
-
-                {scannedCards.length > 0 && (
-                  <button
-                    onClick={stopCamera}
-                    className="w-full rounded-2xl border border-red-400/50 bg-red-500/15 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.18em] text-red-200 shadow-lg shadow-red-950/20 transition hover:bg-red-500/25"
-                  >
-                    Vai ai risultati
-                  </button>
-                )}
-
-                {cameraError && (
-                  <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
-                    {cameraError}
+                    {(showSummary || scannedCards.length > 0) && (
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Carte</p>
+                          <p className="text-lg font-bold text-amber-300">{scannedQuantity}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
+                          <p className="text-lg font-bold text-emerald-400">{formatPrice(totalValue)}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-
-                <div className="rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-300">
-                  {recognitionMessage}
-                </div>
-
-                {(showSummary || scannedCards.length > 0) && (
-                  <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-800/60 px-3 py-3">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Carte</p>
-                      <p className="text-lg font-bold text-amber-300">{scannedQuantity}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Valore</p>
-                      <p className="text-lg font-bold text-emerald-400">{formatPrice(totalValue)}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2615,7 +3073,11 @@ export default function ScanPage() {
               <div className="flex h-[100dvh] w-full max-w-[420px] flex-col overflow-hidden bg-slate-900/95 shadow-[0_20px_60px_rgba(0,0,0,0.45)] sm:h-auto sm:max-h-[92dvh] sm:rounded-[28px] sm:border sm:border-amber-400/30">
 
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-6">
-                  <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">Carta rilevata</p>
+                  <p className="text-center text-[10px] uppercase tracking-[0.35em] text-amber-300">
+                    {scanMode === 'multi' && multiConfirmationProgress.total > 0
+                      ? `Carta ${multiConfirmationProgress.current} di ${multiConfirmationProgress.total}`
+                      : 'Carta rilevata'}
+                  </p>
                   <h3 className="mt-2 text-center text-xl font-bold text-white">{pendingRecognition.name}</h3>
                   <p className="mt-1 text-center text-[11px] uppercase tracking-[0.25em] text-slate-400">{displayCardId(pendingRecognition.card_id)}</p>
 
@@ -2724,6 +3186,38 @@ export default function ScanPage() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {introMode && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/78 px-4 py-6 backdrop-blur-sm">
+              <div className="w-full max-w-[390px] rounded-[26px] border border-cyan-200/25 bg-slate-900 p-5 shadow-[0_28px_90px_rgba(0,0,0,0.6)]">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/25 bg-cyan-300/10 text-cyan-100">
+                  {introMode === 'multi' ? <Images size={24} /> : <Info size={24} />}
+                </div>
+                <h2 className="mt-4 text-center text-xl font-black text-white">
+                  {introMode === 'multi' ? 'Scansione multipla' : 'Scansione singola'}
+                </h2>
+                {introMode === 'multi' ? (
+                  <div className="mt-4 space-y-2 text-sm leading-6 text-slate-300">
+                    <p>Disponi da 1 a 12 carte completamente visibili su un piano e scatta dall’alto.</p>
+                    <p>Lascia un piccolo spazio tra le carte, evita sovrapposizioni e riflessi sulle bustine.</p>
+                    <p>Controlla i contorni numerati prima dell’analisi: tutta la foto usa una sola scansione Google Vision.</p>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-2 text-sm leading-6 text-slate-300">
+                    <p>Mostra una sola carta intera, ben illuminata e leggibile.</p>
+                    <p>Evita riflessi, dita sul testo e inclinazioni forti. Controlla sempre la variante prima di confermare.</p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={closeScanIntro}
+                  className="mt-5 w-full rounded-2xl border border-cyan-200/40 bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition active:scale-[0.98]"
+                >
+                  Ho capito
+                </button>
               </div>
             </div>
           )}
