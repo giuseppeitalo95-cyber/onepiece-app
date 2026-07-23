@@ -1,6 +1,7 @@
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { readCatalogSyncState } from '@/lib/cardCatalogSync'
 import { getR2Status, isR2Configured } from '@/lib/r2Storage'
+import { readMonthlyScanLimit } from '@/lib/scanLimit'
 import { createServiceClient } from '@/lib/serverSupabase'
 
 export const dynamic = 'force-dynamic'
@@ -103,6 +104,7 @@ export async function GET(request: Request) {
     catalogSources,
     scanUsage,
     latestPriceSync,
+    scanLimit,
     catalogState,
     r2,
     optcgProbe,
@@ -125,6 +127,7 @@ export async function GET(request: Request) {
     countTable(client, 'card_catalog_sources'),
     client.from('scan_usage_global').select('scan_count').eq('month', month).maybeSingle(),
     client.from('cardmarket_prices').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
+    readMonthlyScanLimit(client),
     readCatalogSyncState().catch(() => null),
     getR2Status(),
     probeUrl('https://www.optcgapi.com/api/sets/card/OP01-001/'),
@@ -250,7 +253,7 @@ export async function GET(request: Request) {
     },
     scans: {
       used: Number(scanUsage.data?.scan_count || 0),
-      limit: 1000,
+      limit: scanLimit,
       error: scanUsage.error?.message || null,
     },
     prices: { latestSync: latestPriceSyncAt, error: latestPriceSync.error?.message || null },

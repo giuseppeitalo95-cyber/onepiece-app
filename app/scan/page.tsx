@@ -992,8 +992,10 @@ export default function ScanPage() {
           setRecognitionMessage(`Limite giornaliero free raggiunto: ${data.dailyScansUsed}/${data.dailyScansLimit} scan. Premium sblocca scan illimitate.`)
         } else if (data?.scanLimitReached) {
           setRecognitionMessage(`Limite mensile globale raggiunto: ${data.scansUsed}/${data.scansLimit} scansioni.`)
+        } else if (data?.googleStatus === 429) {
+          setRecognitionMessage('Google Vision è temporaneamente occupato. Riprova tra pochi secondi.')
         } else if (data?.error) {
-          setRecognitionMessage(`OCR non configurato: ${data.error}`)
+          setRecognitionMessage('Scanner temporaneamente non disponibile. Riprova tra pochi secondi.')
         }
         return null
       }
@@ -2036,12 +2038,12 @@ export default function ScanPage() {
 
   const startCamera = async () => {
     if (ocrStatus && !ocrStatus.googleVisionConfigured) {
-      setCameraError('Google Vision non e configurato. Devi aggiungere GOOGLE_VISION_API_KEY su Vercel.')
+      setCameraError('Google Vision non è configurato sul server.')
       return
     }
 
     if (ocrStatus && !ocrStatus.serviceRoleConfigured) {
-      setCameraError('Il blocco delle 1000 scansioni non e configurato. Devi aggiungere SUPABASE_SERVICE_ROLE_KEY su Vercel.')
+      setCameraError('Il contatore globale delle scansioni non è configurato sul server.')
       return
     }
 

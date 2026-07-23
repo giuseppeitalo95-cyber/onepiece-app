@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { FREE_DAILY_SCAN_LIMIT, getPremiumTier } from '@/lib/premium'
+import { DEFAULT_MONTHLY_SCAN_LIMIT, readMonthlyScanLimit } from '@/lib/scanLimit'
 
 export const runtime = 'edge'
 export const preferredRegion = 'fra1'
 export const dynamic = 'force-dynamic'
 
-const MONTHLY_SCAN_LIMIT = 1000
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
+const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'onepieceapp-494016'
+const GOOGLE_METADATA_TOKEN_URL = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token'
 
 const getValidSupabaseUrl = () => {
   const value = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
@@ -26,6 +28,7 @@ const supabaseUrl = getValidSupabaseUrl()
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const googleVisionApiKey = process.env.GOOGLE_VISION_API_KEY
 const scanAccessCache = new Map<string, { userId: string; tier: string; expiresAt: number }>()
+let googleAccessTokenCache: { token: string; expiresAt: number } | null = null
 
 type ScanUsageResult = {
   allowed?: boolean
@@ -97,15 +100,16 @@ async function reserveMonthlyScan() {
     return {
       allowed: false,
       used: 0,
-      limit: MONTHLY_SCAN_LIMIT,
+      limit: DEFAULT_MONTHLY_SCAN_LIMIT,
       error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
     }
   }
 
+  const monthlyLimit = await readMonthlyScanLimit(adminSupabase)
   const { data, error } = await adminSupabase
     .rpc('increment_global_scan_usage', {
       p_month: currentMonthKey(),
-      p_limit: MONTHLY_SCAN_LIMIT
+      p_limit: monthlyLimit
     })
     .single()
 
@@ -122,7 +126,7 @@ async function reserveMonthlyScan() {
     return {
       allowed: false,
       used: 0,
-      limit: MONTHLY_SCAN_LIMIT,
+      limit: monthlyLimit,
       error: error.message
     }
   }
@@ -132,9 +136,69 @@ async function reserveMonthlyScan() {
   return {
     allowed: Boolean(usage?.allowed),
     used: Number(usage?.used || 0),
-    limit: Number(usage?.monthly_limit || MONTHLY_SCAN_LIMIT),
+    limit: Number(usage?.monthly_limit || monthlyLimit),
     error: null
   }
+}
+
+const wait = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+async function getGoogleCloudAccessToken() {
+  if (!process.env.K_SERVICE) return null
+  if (googleAccessTokenCache && googleAccessTokenCache.expiresAt > Date.now() + 60_000) {
+    return googleAccessTokenCache.token
+  }
+
+  try {
+    const response = await fetch(GOOGLE_METADATA_TOKEN_URL, {
+      headers: { 'Metadata-Flavor': 'Google' },
+      cache: 'no-store',
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    const token = typeof data?.access_token === 'string' ? data.access_token : ''
+    if (!token) return null
+    googleAccessTokenCache = {
+      token,
+      expiresAt: Date.now() + Math.max(60, Number(data?.expires_in || 3000)) * 1000,
+    }
+    return token
+  } catch (error) {
+    console.error('Google metadata token error:', error)
+    return null
+  }
+}
+
+async function requestGoogleVision(payload: unknown) {
+  const accessToken = await getGoogleCloudAccessToken()
+  const url = accessToken
+    ? 'https://vision.googleapis.com/v1/images:annotate'
+    : `https://vision.googleapis.com/v1/images:annotate?key=${googleVisionApiKey}`
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`
+    headers['x-goog-user-project'] = GOOGLE_CLOUD_PROJECT
+  }
+
+  let response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  })
+
+  if (response.status === 429) {
+    await wait(650)
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    })
+  }
+
+  return { response, authentication: accessToken ? 'service-account' : 'api-key' }
 }
 
 async function resolveScanAccess(req: NextRequest): Promise<ScanAccessResult> {
@@ -379,28 +443,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${googleVisionApiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        requests: images.map((image: string) => ({
-            image: {
-              content: imageToBase64(image)
-            },
-            features: [
-              {
-                type: ocrMode === 'fast' ? 'TEXT_DETECTION' : 'DOCUMENT_TEXT_DETECTION',
-                maxResults: 50
-              }
-            ],
-            imageContext: {
-              languageHints: ['en']
-            }
-          }))
-      })
-    })
+    const visionPayload = {
+      requests: images.map((image: string) => ({
+        image: {
+          content: imageToBase64(image)
+        },
+        features: [
+          {
+            type: ocrMode === 'fast' ? 'TEXT_DETECTION' : 'DOCUMENT_TEXT_DETECTION',
+            maxResults: 50
+          }
+        ],
+        imageContext: {
+          languageHints: ['en']
+        }
+      }))
+    }
+    const { response, authentication } = await requestGoogleVision(visionPayload)
 
     if (!response.ok) {
       const message = await response.text()
@@ -411,6 +470,7 @@ export async function POST(req: NextRequest) {
           error: 'Google Vision request failed',
           googleStatus: response.status,
           googleMessage: message,
+          googleAuthentication: authentication,
           scansUsed: usage.used,
           scansLimit: usage.limit
         },
@@ -451,8 +511,7 @@ export async function GET() {
   try {
     const baseStatus = {
       googleVisionConfigured: Boolean(googleVisionApiKey),
-      serviceRoleConfigured: Boolean(adminSupabase),
-      scansLimit: MONTHLY_SCAN_LIMIT
+      serviceRoleConfigured: Boolean(adminSupabase)
     }
 
     if (!adminSupabase) {
@@ -460,6 +519,7 @@ export async function GET() {
         {
           ...baseStatus,
           scansUsed: 0,
+          scansLimit: DEFAULT_MONTHLY_SCAN_LIMIT,
           error: 'Missing SUPABASE_SERVICE_ROLE_KEY'
         },
         { status: 503 }
@@ -467,18 +527,18 @@ export async function GET() {
     }
 
     const month = currentMonthKey()
-    const { data, error } = await adminSupabase
-      .from('scan_usage_global')
-      .select('scan_count')
-      .eq('month', month)
-      .maybeSingle()
+    const [limit, usage] = await Promise.all([
+      readMonthlyScanLimit(adminSupabase),
+      adminSupabase.from('scan_usage_global').select('scan_count').eq('month', month).maybeSingle()
+    ])
 
-    if (error) {
+    if (usage.error) {
       return Response.json(
         {
           ...baseStatus,
           scansUsed: 0,
-          error: error.message
+          scansLimit: limit,
+          error: usage.error.message
         },
         { status: 503 }
       )
@@ -487,7 +547,8 @@ export async function GET() {
     return Response.json({
       ...baseStatus,
       month,
-      scansUsed: Number(data?.scan_count || 0),
+      scansUsed: Number(usage.data?.scan_count || 0),
+      scansLimit: limit,
       error: googleVisionApiKey ? null : 'Missing GOOGLE_VISION_API_KEY'
     })
   } catch (error) {
@@ -497,7 +558,7 @@ export async function GET() {
         googleVisionConfigured: Boolean(googleVisionApiKey),
         serviceRoleConfigured: Boolean(adminSupabase),
         scansUsed: 0,
-        scansLimit: MONTHLY_SCAN_LIMIT,
+        scansLimit: DEFAULT_MONTHLY_SCAN_LIMIT,
         error: 'Scan usage read error'
       },
       { status: 500 }

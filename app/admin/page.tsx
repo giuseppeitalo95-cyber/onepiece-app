@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Search, Send, Settings, Users, Wrench } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Save, Search, Send, Settings, Users, Wrench } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
@@ -232,6 +232,8 @@ export default function AdminPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [scanUsage, setScanUsage] = useState<ScanUsage | null>(null)
+  const [scanLimitInput, setScanLimitInput] = useState('1000')
+  const [scanLimitSaving, setScanLimitSaving] = useState(false)
   const [priceSyncing, setPriceSyncing] = useState(false)
   const [priceSyncResult, setPriceSyncResult] = useState<PriceSyncResult | null>(null)
   const [catalogSyncing, setCatalogSyncing] = useState<'catalog' | 'images' | ''>('')
@@ -378,6 +380,7 @@ export default function AdminPage() {
         scansLimit: Number(data?.scansLimit || 1000),
         error: data?.error
       })
+      setScanLimitInput(String(Number(data?.scansLimit || 1000)))
     } catch {
       setScanUsage({
         scansUsed: 0,
@@ -390,6 +393,46 @@ export default function AdminPage() {
   const getAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token || ''
+  }
+
+  const saveScanLimit = async () => {
+    const limit = Number(scanLimitInput)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100000 || scanLimitSaving) {
+      setActionMessage('Inserisci un limite intero tra 1 e 100000.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Impostare il blocco mensile Google Vision a ${limit} scansioni? ` +
+      'Questo limite protegge OPV, ma non modifica il budget configurato nella Console Google.'
+    )
+    if (!confirmed) return
+
+    const token = await getAccessToken()
+    if (!token) {
+      setActionMessage('Sessione admin non valida.')
+      return
+    }
+
+    setScanLimitSaving(true)
+    setActionMessage('')
+    const response = await fetch('/api/admin/scan-limit', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ limit, confirmation: 'SALVA' }),
+    }).catch(() => null)
+    const data = await response?.json().catch(() => null)
+
+    if (response?.ok && data?.ok) {
+      setActionMessage(`Limite Google Vision aggiornato a ${data.scansLimit} scansioni mensili.`)
+      await Promise.all([fetchScanUsage(), fetchSystemHealth()])
+    } else {
+      setActionMessage(data?.error || 'Non sono riuscito ad aggiornare il limite.')
+    }
+    setScanLimitSaving(false)
   }
 
   const fetchAnnouncements = async () => {
@@ -1586,6 +1629,33 @@ export default function AdminPage() {
               </p>
             </div>
           </div>
+          <div className="mt-5 grid gap-3 border-t border-slate-800 pt-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Blocco mensile OPV</span>
+              <input
+                type="number"
+                min={1}
+                max={100000}
+                step={1}
+                inputMode="numeric"
+                value={scanLimitInput}
+                onChange={event => setScanLimitInput(event.target.value)}
+                className="mt-2 h-12 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 text-base font-bold text-white outline-none transition focus:border-amber-300"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={saveScanLimit}
+              disabled={scanLimitSaving}
+              className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-amber-200/40 bg-amber-300 px-5 text-sm font-black text-slate-950 transition active:scale-95 disabled:opacity-60"
+            >
+              <Save size={17} />
+              {scanLimitSaving ? 'Salvo...' : 'Salva limite'}
+            </button>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-amber-100/75">
+            Aumentare questo numero non aumenta la quota gratuita e non cambia il budget Google Cloud. Se Google applica un limite o un costo, prevale sempre la configurazione della Console Google.
+          </p>
         </div>
 
         <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-violet-300/25 bg-slate-900/90 p-5' : 'hidden'}>
