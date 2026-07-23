@@ -1895,9 +1895,7 @@ export default function ScanPage() {
       const detections = await detectCardsInPhoto(photoCanvas, 12)
       if (!isScanStillActive(generation)) return
       setMultiDetections(detections)
-      setRecognitionMessage(
-        'Foto pronta. Analizza per individuare le carte usando insieme bordi, nomi ed effetti.'
-      )
+      await analyzeMultiDetections(photoCanvas, detections, generation)
     } catch (error) {
       console.error('Multi-card detection error:', error)
       setCameraError('Non sono riuscito ad analizzare questa foto. Riprova con più luce e tutte le carte visibili.')
@@ -1907,11 +1905,12 @@ export default function ScanPage() {
     }
   }
 
-  const analyzeMultiDetections = async () => {
-    const sourceCanvas = multiSourceCanvasRef.current
-    if (photoProcessing || !sourceCanvas) return
-    scanGenerationRef.current += 1
-    const generation = scanGenerationRef.current
+  const analyzeMultiDetections = async (
+    sourceCanvas: HTMLCanvasElement,
+    initialDetections: MultiCardDetection[],
+    generation: number
+  ) => {
+    if (!isScanStillActive(generation)) return
     scanSessionRef.current = true
     showSummaryRef.current = false
     setPhotoProcessing(true)
@@ -1919,11 +1918,11 @@ export default function ScanPage() {
     setRecognitionMessage('Leggo l’intera foto con una sola scansione Google Vision...')
 
     try {
-      const { canvas, regions } = buildMultiCardOcrSheet(multiDetections, sourceCanvas)
+      const { canvas, regions } = buildMultiCardOcrSheet(initialDetections, sourceCanvas)
       const ocrResult = await runOcrOnSheet(canvas, regions)
       if (!isScanStillActive(generation) || !ocrResult) return
 
-      const textBackedDetections = multiDetections.filter((_, index) => {
+      const textBackedDetections = initialDetections.filter((_, index) => {
         const upright = ocrResult.texts.get(`${index}:0`) || ''
         const rotated = ocrResult.texts.get(`${index}:180`) || ''
         return Math.max(multiTextQuality(upright), multiTextQuality(rotated)) >= 12
@@ -2909,39 +2908,20 @@ export default function ScanPage() {
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {scanMode === 'multi' && capturedPhotoUrl ? (
-                      <div
-                        className="fixed inset-x-3 z-40 mx-auto grid max-w-[480px] grid-cols-[1fr_auto] gap-2 rounded-[22px] border border-white/15 bg-slate-950/92 p-2 shadow-[0_18px_42px_rgba(0,0,0,0.45)] backdrop-blur-xl"
-                        style={{ bottom: 'calc(max(0.5rem, env(safe-area-inset-bottom)) + 5.25rem)' }}
-                      >
-                        <button
-                          type="button"
-                          onClick={analyzeMultiDetections}
-                          disabled={photoProcessing}
-                          className="op-solid-action flex items-center justify-center gap-2 rounded-2xl border border-amber-200/45 bg-amber-300 px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-slate-950 transition active:scale-[0.98] disabled:opacity-60"
-                        >
-                          {photoProcessing ? <LoaderCircle className="animate-spin" size={18} /> : <ScanLine size={18} />}
-                          Analizza foto
-                        </button>
-                        <button
-                          type="button"
-                          onClick={openNativeCamera}
-                          disabled={photoProcessing}
-                          className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-600 bg-slate-900 text-slate-200 transition active:scale-90 disabled:opacity-50"
-                          aria-label="Scatta di nuovo"
-                        >
-                          <Camera size={19} />
-                        </button>
-                      </div>
-                    ) : (
+                    {!photoProcessing && (
                       <button
                         type="button"
                         onClick={openNativeCamera}
-                        disabled={photoProcessing}
-                        className="op-solid-action flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/45 bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                        className="op-solid-action flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-200/45 bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-950 shadow-lg shadow-cyan-950/20 transition active:scale-[0.98]"
                       >
-                        {photoProcessing ? <LoaderCircle className="animate-spin" size={19} /> : <Camera size={19} />}
-                        {capturedPhotoUrl ? 'Scatta di nuovo' : scanMode === 'multi' ? 'Scatta foto multipla' : 'Scatta foto'}
+                        <Camera size={19} />
+                        {capturedPhotoUrl
+                          ? 'Scatta di nuovo'
+                          : scanMode === 'multi' && scannedCards.length > 0
+                            ? 'Scatta altro gruppo'
+                            : scanMode === 'multi'
+                              ? 'Scatta foto multipla'
+                              : 'Scatta foto'}
                       </button>
                     )}
 
