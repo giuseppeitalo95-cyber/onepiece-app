@@ -1583,7 +1583,7 @@ export default function ScanPage() {
   ) => {
     const canvas = document.createElement('canvas')
     canvas.width = 1600
-    canvas.height = 3600
+    canvas.height = detectedRect ? 4000 : 3600
     const context = canvas.getContext('2d')
     if (!context) return sourceCanvas
 
@@ -1592,10 +1592,17 @@ export default function ScanPage() {
     context.imageSmoothingEnabled = true
     context.imageSmoothingQuality = 'high'
 
-    const fullScale = Math.min(1500 / sourceCanvas.width, 680 / sourceCanvas.height)
+    const fullAreaHeight = detectedRect ? 500 : 700
+    const fullScale = Math.min(1500 / sourceCanvas.width, (fullAreaHeight - 20) / sourceCanvas.height)
     const fullWidth = sourceCanvas.width * fullScale
     const fullHeight = sourceCanvas.height * fullScale
-    context.drawImage(sourceCanvas, (canvas.width - fullWidth) / 2, (700 - fullHeight) / 2, fullWidth, fullHeight)
+    context.drawImage(
+      sourceCanvas,
+      (canvas.width - fullWidth) / 2,
+      (fullAreaHeight - fullHeight) / 2,
+      fullWidth,
+      fullHeight
+    )
 
     const cardAspect = 5 / 7
     const sourceAspect = sourceCanvas.width / sourceCanvas.height
@@ -1623,33 +1630,44 @@ export default function ScanPage() {
         detectedRect.y,
         detectedRect.width,
         detectedRect.height,
-        300,
-        740,
-        1000,
-        1400
+        350,
+        520,
+        900,
+        1260
       )
-      context.filter = 'contrast(1.18) saturate(0.82)'
+      context.filter = 'contrast(1.22) saturate(0.78)'
       context.drawImage(
         sourceCanvas,
         detectedRect.x,
-        detectedRect.y + detectedRect.height * 0.38,
+        detectedRect.y + detectedRect.height * 0.7,
         detectedRect.width,
-        detectedRect.height * 0.62,
+        detectedRect.height * 0.3,
         40,
-        2190,
+        1820,
         1520,
-        800
+        640
       )
       context.drawImage(
         sourceCanvas,
         detectedRect.x,
         detectedRect.y,
         detectedRect.width,
-        detectedRect.height * 0.36,
+        detectedRect.height * 0.25,
         40,
-        3040,
+        2500,
         1520,
-        500
+        510
+      )
+      context.drawImage(
+        sourceCanvas,
+        detectedRect.x,
+        detectedRect.y + detectedRect.height * 0.36,
+        detectedRect.width,
+        detectedRect.height * 0.38,
+        40,
+        3050,
+        1520,
+        810
       )
     } else {
       drawCardCrop(0.92, 40, 740, 720, 1008)
@@ -1810,7 +1828,7 @@ export default function ScanPage() {
         }
       }
 
-      const verificationLimit = textMatch?.exactName && !textMatch.hasEffect
+      const verificationLimit = textMatch && !textMatch.hasEffect
         ? 20
         : textMatch?.exactName
           ? 10

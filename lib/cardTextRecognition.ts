@@ -168,8 +168,9 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
       const powerMatch = Boolean(power && power !== 'NaN' && ocrNumbers.has(power))
       const counterMatch = Boolean(counter && counter !== 'NaN' && ocrNumbers.has(counter))
       const printedValueMatches = Number(costMatch) + Number(powerMatch) + Number(counterMatch)
-      const noEffectIdentityBonus = !hasEffect && exactName
-        ? printedValueMatches * 10 + Math.min(metadataMatches, 3) * 3
+      const strongNameIdentity = exactName || (nameCoverage >= 0.72 && nameMatches > 0)
+      const noEffectIdentityBonus = !hasEffect && strongNameIdentity
+        ? printedValueMatches * 17 + Math.min(metadataMatches, 3) * 3
         : 0
 
       const score =
@@ -184,7 +185,7 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
         (counterMatch ? 6 : 0) +
         noEffectIdentityBonus
 
-      const strongName = exactName || (nameCoverage >= 0.72 && nameMatches > 0)
+      const strongName = strongNameIdentity
       const strongEffect = effectMatches >= 6 && effectCoverage >= 0.24
       const veryStrongEffect = effectMatches >= 9 && effectCoverage >= 0.34
       const confident =
@@ -229,13 +230,18 @@ export const selectCardsByVisibleText = <T extends VisibleTextCard>(ocrText: str
   if (!best) return []
 
   const weakEffectWithExactName = best.exactName && best.effectMatches < 3
-  const noEffectWithExactName = best.exactName && !best.hasEffect
-  const maximumFamilies = noEffectWithExactName ? 20 : weakEffectWithExactName ? 32 : 14
+  const noEffectWithStrongName =
+    !best.hasEffect &&
+    (best.exactName || (best.nameCoverage >= 0.72 && best.nameMatches > 0))
+  const maximumFamilies = noEffectWithStrongName ? 20 : weakEffectWithExactName ? 32 : 14
   const selectedFamilyKeys: string[] = []
 
   for (const match of ranked) {
-    const eligible = noEffectWithExactName
-      ? match.exactName && match.score >= best.score - 18
+    const eligible = noEffectWithStrongName
+      ? (
+          (match.exactName || (match.nameCoverage >= 0.72 && match.nameMatches > 0)) &&
+          match.score >= best.score - 22
+        )
       : weakEffectWithExactName
         ? match.exactName
       : match.confident && match.score >= best.score - 42

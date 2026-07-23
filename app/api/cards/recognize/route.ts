@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       ))
       const strongNoEffectIdentity = Boolean(bestTextMatch && (
         !bestTextMatch.hasEffect &&
-        bestTextMatch.exactName &&
+        strongIdentity &&
         bestTextMatch.powerMatch &&
         (bestTextMatch.costMatch || bestTextMatch.counterMatch || bestTextMatch.metadataMatches >= 1)
       ))
