@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { BookOpen, House, Layers3, LibraryBig, ScanLine, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from './LanguageProvider'
 
 type NavItem = {
   label: string
@@ -66,6 +67,7 @@ const writeBadgeCache = (value: BadgeCache) => {
 
 export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
+  const { t } = useLanguage()
   const currentPage = getPageKey(pathname || '/dashboard') || activePage || 'collezione'
   const [badges, setBadges] = useState<Record<string, number>>({})
 
@@ -170,7 +172,7 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
             className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-0.5 py-2 text-[8px] font-black leading-none transition min-[390px]:text-[9px] sm:flex-row sm:gap-1.5 sm:px-1.5 sm:text-xs ${active
               ? 'op-nav-active text-slate-950'
               : 'text-slate-300 hover:bg-white/[0.08] hover:text-cyan-50'}`}
-            aria-label={label}
+            aria-label={t(label)}
           >
             {active && <span className="pointer-events-none absolute inset-0 rounded-[1.15rem] bg-gradient-to-r from-cyan-300 to-rose-300" />}
             <span className={`relative flex h-5 w-5 items-center justify-center rounded-full sm:h-6 sm:w-6 ${active ? 'op-nav-icon bg-white/30' : ''}`}>
@@ -182,8 +184,8 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
               )}
             </span>
             <span className={`relative block w-full max-w-full whitespace-nowrap text-center ${key === 'binders' ? 'text-[7px] min-[390px]:text-[8px] sm:text-xs' : ''}`}>
-              {label}
-              {badge > 0 && <span className="sr-only">, {badge} notifiche</span>}
+              {t(label)}
+              {badge > 0 && <span className="sr-only">, {badge} {t('notifiche')}</span>}
             </span>
           </Link>
         )

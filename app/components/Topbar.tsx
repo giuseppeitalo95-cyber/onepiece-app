@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucide-react'
+import { Check, Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucide-react'
 import AppLogo from './AppLogo'
 import PushNotificationPrompt from './PushNotificationPrompt'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { validateUserText } from '@/lib/textModeration'
+import { useLanguage } from './LanguageProvider'
 
 type AdminNotice = {
   status?: string
@@ -56,6 +57,7 @@ const readAdminNotices = (payload: unknown, kind: AdminNotice['kind']) => {
 export default function Topbar() {
   const router = useRouter()
   const pathname = usePathname()
+  const { locale, setLocale, t } = useLanguage()
 
   const [username, setUsername] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -67,6 +69,7 @@ export default function Topbar() {
   const [bugMessage, setBugMessage] = useState('')
   const [bugStatus, setBugStatus] = useState('')
   const [bugSending, setBugSending] = useState(false)
+  const [languageOpen, setLanguageOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const bugUnreadRef = useRef<number | null>(null)
   const isAdminRef = useRef(false)
@@ -424,20 +427,66 @@ export default function Topbar() {
           <AppLogo compact />
         </div>
 
-        <div className="flex min-w-0 shrink-0 items-center justify-end">
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 sm:gap-2">
           <button
             type="button"
             onClick={() => setBugOpen(true)}
-            className="mr-1 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-slate-300 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-cyan-50 active:scale-95 sm:mr-2 sm:h-10 sm:w-10"
-            aria-label="Segnala bug"
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-slate-300 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-cyan-50 active:scale-95 sm:h-10 sm:w-10"
+            aria-label={t('Segnala bug')}
           >
             <HelpCircle size={16} />
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setLanguageOpen(current => !current)}
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.045] text-base shadow-inner shadow-white/5 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 active:scale-95 sm:h-10 sm:w-10"
+              aria-label={locale === 'it' ? 'Cambia lingua' : 'Change language'}
+              aria-expanded={languageOpen}
+            >
+              <span aria-hidden="true" className="leading-none">{locale === 'it' ? '🇮🇹' : '🇬🇧'}</span>
+            </button>
+
+            {languageOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label={locale === 'it' ? 'Chiudi selezione lingua' : 'Close language menu'}
+                  className="fixed inset-0 z-40 cursor-default"
+                  onClick={() => setLanguageOpen(false)}
+                />
+                <div className="absolute right-0 top-[calc(100%+0.55rem)] z-50 w-40 overflow-hidden rounded-2xl border border-white/15 bg-[#173842]/98 p-1.5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
+                  {([
+                    { value: 'it' as const, flag: '🇮🇹', label: 'Italiano' },
+                    { value: 'en' as const, flag: '🇬🇧', label: 'English' },
+                  ]).map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setLocale(option.value)
+                        setLanguageOpen(false)
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition active:scale-[0.98] ${
+                        locale === option.value
+                          ? 'bg-cyan-300 text-slate-950'
+                          : 'text-slate-100 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className="text-base leading-none" aria-hidden="true">{option.flag}</span>
+                      <span className="flex-1">{option.label}</span>
+                      {locale === option.value ? <Check size={15} /> : null}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={() => router.push('/profile')}
             className="flex min-w-0 items-center rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-white/5 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 sm:gap-2 sm:px-2"
-            aria-label="Apri profilo"
+            aria-label={t('Apri profilo')}
           >
             <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-cyan-300/35 bg-gradient-to-br from-cyan-200 to-rose-200 sm:h-9 sm:w-9">
               {avatarUrl ? (
