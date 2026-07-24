@@ -436,7 +436,7 @@ export default function Topbar() {
           >
             <HelpCircle size={16} />
           </button>
-          <div className="relative">
+          <div className="relative" data-i18n-ignore="true">
             <button
               type="button"
               onClick={() => setLanguageOpen(current => !current)}
