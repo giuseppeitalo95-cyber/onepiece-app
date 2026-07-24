@@ -1033,7 +1033,7 @@ export default function Dashboard() {
   const topExpensiveCards = [...cards]
     .filter(card => getAnalyticsPrice(card) != null)
     .sort((a, b) => (getAnalyticsPrice(b) || 0) - (getAnalyticsPrice(a) || 0))
-    .slice(0, 5)
+    .slice(0, 10)
   const duplicateCards = cards.filter(card => card.quantity > 1)
   const groupByQuantity = (field: 'rarity' | 'card_color') => Object.entries(
     cards.reduce<Record<string, number>>((acc, card) => {
@@ -1055,7 +1055,7 @@ export default function Dashboard() {
     .filter(card => getAnalyticsPrice(card) != null)
     .sort((a, b) => ((getAnalyticsPrice(b) || 0) * b.quantity) - ((getAnalyticsPrice(a) || 0) * a.quantity))
   const analyticsCandidates = analyticsPricedCards
-    .slice(0, 12)
+    .slice(0, 10)
   const analyticsDeltas = cards
     .map(card => {
       const stored = getSavedPrice(card)
@@ -1548,7 +1548,7 @@ export default function Dashboard() {
           <div className="rounded-3xl border border-slate-700 bg-slate-900/82 p-3">
             <div className="flex items-center gap-2">
               <Crown className="text-cyan-200" size={18} />
-              <p className="text-sm font-black text-white">Carte piu costose</p>
+              <p className="text-sm font-black text-white">Top 10 carte più costose</p>
             </div>
             {topExpensiveCards.length > 0 ? (
               <div className="mt-3 space-y-2">
@@ -1599,7 +1599,7 @@ export default function Dashboard() {
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-400">
-              {analyticsLoading ? 'Aggiorno i prezzi...' : `Prezzi aggiornati: ${analyticsCandidates.length} carte principali`}
+              {analyticsLoading ? 'Aggiorno i prezzi...' : `Prezzi live aggiornati: ${analyticsCandidates.length} carte principali`}
             </p>
             <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
               <p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Valore aggiornato carte principali</p>

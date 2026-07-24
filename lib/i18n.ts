@@ -607,6 +607,7 @@ const en: Record<string, string> = {
   'Utenti': 'Users',
   'Utenti più attivi': 'Most active users',
   'Utilizzo sito': 'Site usage',
+  'Top 10 carte più costose': 'Top 10 most valuable cards',
   'Visualizza le carte del tuo amico': 'View your friend’s cards',
   'Vuoi attivare le notifiche per l’app?': 'Would you like to enable notifications?',
 }
@@ -629,6 +630,7 @@ const patterns: Array<[RegExp, (...matches: string[]) => string]> = [
   [/^(\d+) annuncio al giorno, (\d+) a settimana$/i, (daily, weekly) => `${daily} listing per day, ${weekly} per week`],
   [/^Annunci visibili solo agli amici per (\d+) giorni$/i, days => `Listings visible to friends for ${days} days`],
   [/^Annunci globali e visibili a tutti per (\d+) giorni$/i, days => `Global listings visible to everyone for ${days} days`],
+  [/^Prezzi live aggiornati: (\d+) carte principali$/i, value => `Live prices updated for ${value} top cards`],
   [/^(\d+) euro\/mese$/i, value => `€${value}/month`],
   [/^(\d+) euro$/i, value => `€${value}`],
 ]
