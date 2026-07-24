@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ArrowLeft, Bug, CheckCircle2, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Save, Search, Send, Settings, Users, Wrench } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, Bug, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Save, Search, Send, Users, Wrench, ScanLine, Tags } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
 import { getDailyRewardVipUntil } from '@/lib/premium'
@@ -196,7 +196,7 @@ const chartGranularities = [
 
 type ChartGranularityKey = typeof chartGranularities[number]['key']
 
-type AdminSection = 'home' | 'announcements' | 'reports' | 'catalog' | 'binderKits' | 'data' | 'analytics' | 'services' | 'status' | 'users' | 'cleanup' | 'info'
+type AdminSection = 'home' | 'communications' | 'reports' | 'catalog' | 'binderKits' | 'database' | 'analytics' | 'google' | 'status' | 'users' | 'maintenance'
 
 const formatBytes = (bytes?: number | null) => {
   const value = Number(bytes || 0)
@@ -273,13 +273,13 @@ export default function AdminPage() {
   const openSection = (section: AdminSection) => {
     setActiveSection(section)
 
-    if (section === 'services' || section === 'status' || section === 'info') {
+    if (section === 'database' || section === 'status' || section === 'maintenance') {
       void fetchSystemHealth()
     }
-    if (section === 'services') void fetchScanUsage()
+    if (section === 'google') void Promise.all([fetchScanUsage(), fetchSystemHealth()])
     if (section === 'reports') void Promise.all([fetchRequests(), fetchBugReports()])
-    if (section === 'announcements') void fetchAnnouncements()
-    if (section === 'users' || section === 'cleanup') void fetchProfiles()
+    if (section === 'communications') void fetchAnnouncements()
+    if (section === 'users' || section === 'maintenance') void fetchProfiles()
   }
 
   const syncPricesNow = async () => {
@@ -1057,31 +1057,44 @@ export default function AdminPage() {
 
   const sectionTitle: Record<AdminSection, string> = {
     home: 'Impostazioni Admin',
-    announcements: 'Popup e annunci',
+    communications: 'Comunicazioni',
     reports: 'Segnalazioni',
-    catalog: 'Catalogo carte',
+    catalog: 'Catalogo e prezzi',
     binderKits: 'Kit raccoglitori',
-    data: 'Gestione dati',
+    database: 'Database e storage',
     analytics: 'Statistiche',
-    services: 'Servizi',
-    status: 'Status',
-    users: 'Gestione utenti',
-    cleanup: 'Svuotamenti',
-    info: 'Info sistema',
+    google: 'Google Vision',
+    status: 'Stato sistema',
+    users: 'Utenti',
+    maintenance: 'Manutenzione',
   }
 
-  const adminSections = [
-    { key: 'announcements' as const, title: 'Popup e annunci', description: 'Pubblica aggiornamenti visibili una sola volta', icon: Megaphone, count: announcements.filter(item => item.is_active).length, tone: 'text-amber-100 bg-amber-300/10' },
-    { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug e carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
-    { key: 'catalog' as const, title: 'Catalogo carte', description: 'Importa varianti tramite link Cardmarket', icon: Database, tone: 'text-cyan-100 bg-cyan-300/10' },
-    { key: 'binderKits' as const, title: 'Kit raccoglitori', description: 'Crea, modifica ed elimina copertine', icon: BookOpen, tone: 'text-violet-100 bg-violet-300/10' },
-    { key: 'data' as const, title: 'Gestione dati', description: 'Tabelle Supabase, utenti e file Cloudflare', icon: Database, tone: 'text-emerald-100 bg-emerald-300/10' },
-    { key: 'analytics' as const, title: 'Statistiche', description: 'Utenti, pagine, scan e ricerche', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
-    { key: 'services' as const, title: 'Servizi', description: 'Catalogo, immagini, Vision e prezzi', icon: Wrench, tone: 'text-amber-100 bg-amber-300/10' },
-    { key: 'status' as const, title: 'Status', description: 'Stato API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
-    { key: 'users' as const, title: 'Utenti', description: `${profiles.length} profili, VIP e blocchi`, icon: Users, count: profiles.length, tone: 'text-violet-100 bg-violet-300/10' },
-    { key: 'cleanup' as const, title: 'Svuotamenti', description: 'Pulizia controllata del database', icon: Eraser, tone: 'text-rose-100 bg-rose-400/10' },
-    { key: 'info' as const, title: 'Info', description: 'Database, cron e configurazione', icon: Info, tone: 'text-emerald-100 bg-emerald-300/10' },
+  const adminSectionGroups = [
+    {
+      label: 'Community',
+      sections: [
+        { key: 'users' as const, title: 'Utenti', description: `${profiles.length} profili, ruoli, nickname e blocchi`, icon: Users, count: profiles.length, tone: 'text-violet-100 bg-violet-300/10' },
+        { key: 'reports' as const, title: 'Segnalazioni', description: 'Bug segnalati e richieste di carte mancanti', icon: Bug, count: bugReports.length + requests.length, tone: 'text-rose-200 bg-rose-300/10' },
+        { key: 'communications' as const, title: 'Comunicazioni', description: 'Popup, aggiornamenti e annunci agli utenti', icon: Megaphone, count: announcements.filter(item => item.is_active).length, tone: 'text-amber-100 bg-amber-300/10' },
+      ],
+    },
+    {
+      label: 'Contenuti',
+      sections: [
+        { key: 'catalog' as const, title: 'Catalogo e prezzi', description: 'Carte, varianti, importazioni e prezzi sincronizzati', icon: Tags, tone: 'text-cyan-100 bg-cyan-300/10' },
+        { key: 'binderKits' as const, title: 'Kit raccoglitori', description: 'Copertine e grafiche disponibili nei raccoglitori', icon: BookOpen, tone: 'text-violet-100 bg-violet-300/10' },
+      ],
+    },
+    {
+      label: 'Sistema',
+      sections: [
+        { key: 'google' as const, title: 'Google Vision', description: 'Consumi OCR, disponibilita e limite mensile', icon: ScanLine, tone: 'text-amber-100 bg-amber-300/10' },
+        { key: 'database' as const, title: 'Database e storage', description: 'Supabase, tabelle, catalogo e immagini Cloudflare', icon: Database, tone: 'text-emerald-100 bg-emerald-300/10' },
+        { key: 'analytics' as const, title: 'Statistiche', description: 'Utilizzo, pagine, ricerche e scannerizzazioni', icon: BarChart3, tone: 'text-cyan-100 bg-cyan-300/10' },
+        { key: 'maintenance' as const, title: 'Manutenzione', description: 'Pulizia dati, retention e operazioni controllate', icon: Wrench, tone: 'text-rose-100 bg-rose-400/10' },
+        { key: 'status' as const, title: 'Stato sistema', description: 'Salute di API, database, hosting e storage', icon: Activity, tone: 'text-emerald-100 bg-emerald-300/10' },
+      ],
+    },
   ]
 
   if (loading) {
@@ -1124,42 +1137,46 @@ export default function AdminPage() {
         )}
 
         {activeSection === 'home' ? (
-          <div className="mt-6">
-            <div className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-300">
-              <Settings size={17} className="text-cyan-100" />
-              Seleziona una sezione
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {adminSections.map(section => {
-                const Icon = section.icon
-                return (
-                  <button
-                    key={section.key}
-                    type="button"
-                    onClick={() => openSection(section.key)}
-                    className="group flex min-h-28 items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 p-4 text-left transition hover:border-cyan-300/30 hover:bg-slate-900 active:scale-[0.985]"
-                  >
-                    <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${section.tone}`}>
-                      <Icon size={22} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="text-base font-black text-white">{section.title}</span>
-                        {'count' in section && typeof section.count === 'number' ? (
-                          <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] font-black text-slate-300">{section.count}</span>
-                        ) : null}
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-slate-400">{section.description}</span>
-                    </span>
-                    <ChevronRight size={18} className="shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-100" />
-                  </button>
-                )
-              })}
-            </div>
+          <div className="mt-6 space-y-7">
+            {adminSectionGroups.map(group => (
+              <section key={group.label}>
+                <div className="mb-3 flex items-center gap-2 px-1">
+                  <span className="h-px w-5 bg-cyan-200/50" />
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{group.label}</h2>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.sections.map(section => {
+                    const Icon = section.icon
+                    return (
+                      <button
+                        key={section.key}
+                        type="button"
+                        onClick={() => openSection(section.key)}
+                        className="group flex min-h-28 items-center gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 p-4 text-left transition hover:border-cyan-300/30 hover:bg-slate-900 active:scale-[0.985]"
+                      >
+                        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${section.tone}`}>
+                          <Icon size={22} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="text-base font-black text-white">{section.title}</span>
+                            {'count' in section && typeof section.count === 'number' ? (
+                              <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] font-black text-slate-300">{section.count}</span>
+                            ) : null}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-400">{section.description}</span>
+                        </span>
+                        <ChevronRight size={18} className="shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-cyan-100" />
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         ) : null}
 
-        {activeSection === 'announcements' ? (
+        {activeSection === 'communications' ? (
           <div className="mt-6 space-y-4">
             <section className="rounded-[1.75rem] border border-amber-200/20 bg-slate-900/90 p-5">
               <div className="flex items-start gap-3">
@@ -1285,7 +1302,7 @@ export default function AdminPage() {
 
         {activeSection === 'binderKits' ? <BinderKitManager /> : null}
 
-        {activeSection === 'data' ? <AdminDatabaseManager /> : null}
+        {activeSection === 'database' ? <AdminDatabaseManager /> : null}
 
         <div className={activeSection === 'reports' ? 'mt-6' : 'hidden'}>
         <section className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-900/90 p-5">
@@ -1610,7 +1627,7 @@ export default function AdminPage() {
           ) : null}
         </div>
 
-        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5' : 'hidden'}>
+        <div className={activeSection === 'google' ? 'mt-6 rounded-[1.75rem] border border-amber-400/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Google Vision</h2>
@@ -1674,7 +1691,7 @@ export default function AdminPage() {
           </p>
         </div>
 
-        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-violet-300/25 bg-slate-900/90 p-5' : 'hidden'}>
+        <div className={activeSection === 'database' ? 'mt-6 rounded-[1.75rem] border border-violet-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -1811,7 +1828,7 @@ export default function AdminPage() {
             ))}
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
             <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cloudflare R2</p>
               <p className="mt-2 text-sm font-black text-white">
@@ -1830,19 +1847,10 @@ export default function AdminPage() {
                 {systemHealth?.prices?.latestSync ? new Date(systemHealth.prices.latestSync).toLocaleString('it-IT') : 'Nessun sync trovato'}
               </p>
             </div>
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/75 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cron e retention</p>
-              <div className="mt-2 space-y-1 text-xs font-bold text-slate-300">
-                <p>CRON_SECRET: {systemHealth?.config?.cronSecretConfigured ? 'OK' : 'manca'}</p>
-                <p>CARDMARKET_SYNC_SECRET: {systemHealth?.config?.cardmarketSyncSecretConfigured ? 'OK' : 'manca'}</p>
-                <p>MAINTENANCE_SECRET: {systemHealth?.config?.maintenanceSecretConfigured ? 'OK' : 'manca'}</p>
-                <p>Analytics retention: {systemHealth?.config?.analyticsRetentionDays ?? 180} giorni</p>
-              </div>
-            </div>
           </div>
         </div>
 
-        <div className={activeSection === 'services' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
+        <div className={activeSection === 'catalog' ? 'mt-6 rounded-[1.75rem] border border-cyan-300/25 bg-slate-900/90 p-5' : 'hidden'}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Aggiorna prezzi</h2>
@@ -1867,7 +1875,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {activeSection === 'cleanup' ? (
+        {activeSection === 'maintenance' ? (
           <div className="mt-6 space-y-4">
             <section className="rounded-[1.75rem] border border-rose-300/20 bg-slate-900/90 p-5">
               <div className="flex items-start gap-3">
@@ -1943,25 +1951,23 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {activeSection === 'info' ? (
+        {activeSection === 'maintenance' ? (
           <section className="mt-4 rounded-[1.75rem] border border-white/10 bg-slate-900/90 p-5">
             <div className="flex items-center gap-3">
               <Info size={20} className="text-cyan-100" />
               <div>
-                <h2 className="text-lg font-black text-white">Informazioni operative</h2>
-                <p className="mt-1 text-xs text-slate-400">Riepilogo della configurazione che mantiene attiva l’app.</p>
+                <h2 className="text-lg font-black text-white">Automazioni e conservazione</h2>
+                <p className="mt-1 text-xs text-slate-400">Processi periodici, retention e protezioni operative.</p>
               </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
-                ['Ambiente', 'Produzione Vercel'],
-                ['Database', 'Supabase PostgreSQL'],
-                ['Autenticazione', 'Supabase Auth + Google'],
-                ['OCR', 'Google Cloud Vision'],
-                ['Prezzi', 'Catalogo Cardmarket sincronizzato'],
-                ['Carte', 'Catalogo OPV su Supabase'],
-                ['Immagini', 'Cloudflare R2 con blocco a 9 GB'],
+                ['Pulizia automatica', systemHealth?.config?.maintenanceSecretConfigured ? 'Configurata' : 'Da configurare'],
+                ['Catalogo e prezzi', systemHealth?.config?.cardmarketSyncSecretConfigured ? 'Sincronizzazione configurata' : 'Da configurare'],
+                ['Cron protetti', systemHealth?.config?.cronSecretConfigured ? 'Configurati' : 'Da configurare'],
+                ['Analytics', `${systemHealth?.config?.analyticsRetentionDays ?? 180} giorni di conservazione`],
                 ['Chat', 'Conservazione 24 ore'],
+                ['Immagini', 'Blocco Cloudflare R2 a 9 GB'],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
                   <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
