@@ -774,6 +774,22 @@ export default function AdminPage() {
         return
       }
 
+      const accessToken = data.session?.access_token
+      if (!accessToken) {
+        router.replace('/')
+        return
+      }
+
+      const accessResponse = await fetch('/api/admin/access', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store',
+      }).catch(() => null)
+
+      if (!accessResponse?.ok) {
+        router.replace('/dashboard')
+        return
+      }
+
       const { data: adminProfile } = await supabase
         .from('profiles')
         .select('username')
