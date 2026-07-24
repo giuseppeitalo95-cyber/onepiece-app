@@ -23,6 +23,8 @@ const LanguageContext = createContext<LanguageContextValue>({
 
 const textOriginals = new WeakMap<Text, string>()
 const attributeOriginals = new WeakMap<Element, Map<string, string>>()
+const textRenderedValues = new WeakMap<Text, string>()
+const attributeRenderedValues = new WeakMap<Element, Map<string, string>>()
 const TRANSLATED_ATTRIBUTES = ['placeholder', 'aria-label', 'title']
 const SKIPPED_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE'])
 
@@ -35,44 +37,48 @@ const translateTextNode = (node: Text, locale: AppLocale) => {
   const parent = node.parentElement
   if (shouldSkip(parent)) return
 
-  const previousOriginal = textOriginals.get(node)
-  const previousTranslation = previousOriginal
-    ? translateUiText(previousOriginal, 'en')
-    : undefined
   const current = node.nodeValue || ''
+  const lastRendered = textRenderedValues.get(node)
 
-  if (!previousOriginal || (locale === 'en' && current !== previousTranslation)) {
+  // A value different from the last one written by the translator came from
+  // React (for example Free -> Admin or a new scan status). Treat it as the
+  // new source text instead of restoring stale content.
+  if (!textOriginals.has(node) || (lastRendered !== undefined && current !== lastRendered)) {
     textOriginals.set(node, current)
   }
 
   const original = textOriginals.get(node) || current
   const next = translateUiText(original, locale)
   if (current !== next) node.nodeValue = next
+  textRenderedValues.set(node, next)
 }
 
 const translateAttributes = (element: Element, locale: AppLocale) => {
   if (shouldSkip(element)) return
   let originals = attributeOriginals.get(element)
+  let renderedValues = attributeRenderedValues.get(element)
   if (!originals) {
     originals = new Map()
     attributeOriginals.set(element, originals)
+  }
+  if (!renderedValues) {
+    renderedValues = new Map()
+    attributeRenderedValues.set(element, renderedValues)
   }
 
   TRANSLATED_ATTRIBUTES.forEach(attribute => {
     const current = element.getAttribute(attribute)
     if (!current) return
-    const previousOriginal = originals?.get(attribute)
-    const previousTranslation = previousOriginal
-      ? translateUiText(previousOriginal, 'en')
-      : undefined
+    const lastRendered = renderedValues?.get(attribute)
 
-    if (!previousOriginal || (locale === 'en' && current !== previousTranslation)) {
+    if (!originals?.has(attribute) || (lastRendered !== undefined && current !== lastRendered)) {
       originals?.set(attribute, current)
     }
 
     const original = originals?.get(attribute) || current
     const next = translateUiText(original, locale)
     if (current !== next) element.setAttribute(attribute, next)
+    renderedValues?.set(attribute, next)
   })
 }
 

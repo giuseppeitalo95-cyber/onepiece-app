@@ -4,18 +4,11 @@ export const ADMIN_ACCOUNT = {
   username: 'peppitalo'
 }
 
-const clean = (value?: string | null) => (value || '').trim().toLowerCase()
-
 export const isAdminAccount = (
   user?: { id?: string | null; email?: string | null } | null,
-  profile?: { username?: string | null } | null
+  _profile?: { username?: string | null } | null
 ) => {
-  if (!user) return false
-
-  const emailMatches = clean(user.email) === ADMIN_ACCOUNT.email
-  const idMatches = user.id === ADMIN_ACCOUNT.id
-  const username = clean(profile?.username)
-  const usernameMatches = username === ADMIN_ACCOUNT.username
-
-  return emailMatches || (idMatches && (usernameMatches || !username))
+  // The immutable Supabase Auth UUID is the only admin credential. Email,
+  // nickname and editable profile fields must never grant admin access.
+  return Boolean(user?.id && user.id === ADMIN_ACCOUNT.id)
 }
