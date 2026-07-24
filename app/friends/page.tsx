@@ -511,7 +511,7 @@ export default function FriendsPage() {
 
       <main className="mx-auto max-w-6xl px-3 pb-32 pt-4 sm:px-6 sm:pb-36 sm:pt-8 lg:px-8">
         <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900/72 p-3 shadow-2xl shadow-slate-950/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
-          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="grid gap-6">
             <section className="space-y-5">
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                 <div className="relative min-w-0">
@@ -523,12 +523,74 @@ export default function FriendsPage() {
                       className="w-full rounded-2xl border border-slate-700 bg-slate-900/90 px-10 py-3 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                     />
                 </div>
+
+                {searchTerm.trim().length === 1 ? (
+                  <p className="px-1 pt-3 text-xs text-slate-500">Scrivi almeno due caratteri.</p>
+                ) : null}
+
+                {searchTerm.trim().length >= 2 ? (
+                  <div className="mt-3 border-t border-white/10 pt-3">
+                    <div className="mb-3 flex items-center justify-between px-1">
+                      <h2 className="text-sm font-semibold text-white">Risultati</h2>
+                      <span className="text-xs text-slate-500">{peopleToShow.length}</span>
+                    </div>
+                    {peopleToShow.length > 0 ? (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {peopleToShow.slice(0, 12).map((profile) => {
+                          const status = resolvedRequests.get(profile.id)
+                          const tier = getPremiumTier(profile, { id: profile.id })
+                          const label = premiumLabel(tier)
+                          return (
+                            <div key={profile.id} className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-800/70 bg-slate-900/90 p-2.5">
+                              <button onClick={() => openProfile(profile)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-amber-300">
+                                  {profile.avatar_url ? (
+                                    <img src={profile.avatar_url} alt={profile.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                                  ) : (
+                                    <span>{(profile.username || 'U').charAt(0).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <p className={`truncate text-sm font-semibold text-white ${premiumClassName(tier)}`}>{profile.username || 'Giocatore'}</p>
+                                    {label ? <span className="shrink-0 rounded-full border border-white/15 bg-white/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase text-cyan-100">{label}</span> : null}
+                                  </div>
+                                  <p className="truncate text-[11px] font-semibold text-slate-500">
+                                    {status === 'friend' ? 'Già tuo amico' : status === 'sent' ? 'Richiesta inviata' : status === 'incoming' ? 'Richiesta ricevuta' : 'Apri il profilo'}
+                                  </p>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => status === 'incoming' ? openProfile(profile) : sendFriendRequest(profile.id)}
+                                disabled={busy || status === 'friend' || status === 'sent'}
+                                aria-label={status === 'incoming' ? 'Apri richiesta' : 'Aggiungi amico'}
+                                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-400 text-slate-950 transition active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                              >
+                                {status === 'friend' ? <Check size={17} /> : status === 'sent' || status === 'incoming' ? <Inbox size={17} /> : <UserPlus size={17} />}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-700/70 bg-slate-900/80 p-4 text-sm text-slate-400">
+                        Nessun giocatore trovato.
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {actionMessage ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                    {actionMessage}
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-white">Amici</h3>
+                    <h2 className="text-lg font-semibold text-white">La tua lista</h2>
                     <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-amber-200">
                       <Users size={14} />
                       {friendProfiles.length}
@@ -637,7 +699,7 @@ export default function FriendsPage() {
               </div>
             </section>
 
-            <aside className="min-w-0 space-y-5 rounded-2xl border border-slate-800/80 bg-slate-950/90 p-4 sm:rounded-[1.75rem] sm:p-5">
+            <aside className="hidden">
               <h3 className="text-lg font-semibold text-white">Giocatori</h3>
 
               <div className="space-y-4">
