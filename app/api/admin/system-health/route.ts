@@ -225,6 +225,14 @@ export async function GET(request: Request) {
       latencyMs: visionProbe.latencyMs,
     },
     {
+      key: 'email',
+      label: 'Email',
+      status: process.env.RESEND_API_KEY && process.env.EMAIL_FROM ? 'online' : 'offline',
+      message: process.env.RESEND_API_KEY && process.env.EMAIL_FROM
+        ? 'Benvenuto utenti e riepilogo registrazioni configurati'
+        : 'Configura RESEND_API_KEY e EMAIL_FROM',
+    },
+    {
       key: 'cardmarket',
       label: 'Prezzi',
       status: !latestPriceSyncAt ? 'offline' : isFresh(latestPriceSyncAt, 36) ? 'online' : 'degraded',
@@ -264,6 +272,7 @@ export async function GET(request: Request) {
       cronSecretConfigured: Boolean(process.env.CRON_SECRET),
       cardmarketSyncSecretConfigured: Boolean(process.env.CARDMARKET_SYNC_SECRET),
       maintenanceSecretConfigured: Boolean(process.env.MAINTENANCE_SECRET),
+      emailConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
       r2Configured: isR2Configured(),
       analyticsRetentionDays: Math.max(30, Number(process.env.ANALYTICS_RETENTION_DAYS || 180)),
       adminId: ADMIN_ACCOUNT.id,
