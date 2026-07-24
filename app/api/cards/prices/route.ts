@@ -1,4 +1,5 @@
 import { getLiveCardPrice } from '@/lib/cardPrices'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 type PriceRequestCard = {
   cardId?: string | null
@@ -14,6 +15,9 @@ const priceValue = (price: Awaited<ReturnType<typeof getLiveCardPrice>>) =>
 
 export async function POST(req: Request) {
   try {
+    const rateLimit = checkRateLimit(req, { scope: 'card-prices', limit: 60, windowMs: 60_000 })
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
     const body = await req.json()
     const cards = Array.isArray(body?.cards) ? body.cards.slice(0, 160) as PriceRequestCard[] : []
 

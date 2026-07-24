@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getAllCards } from './cardData'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
@@ -92,15 +92,20 @@ const getSupabaseUrl = () => {
   }
 }
 
+let cachedAdminClient: SupabaseClient | null = null
+
 const adminClient = () => {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!key) return null
-  return createClient(getSupabaseUrl(), key, {
+  if (cachedAdminClient) return cachedAdminClient
+
+  cachedAdminClient = createClient(getSupabaseUrl(), key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false
     }
   })
+  return cachedAdminClient
 }
 
 const normalize = (value?: string | null) =>

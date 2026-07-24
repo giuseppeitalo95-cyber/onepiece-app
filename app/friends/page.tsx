@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Check, Crown, Heart, Inbox, LibraryBig, MessageCircle, Search, UserPlus, Users, X } from 'lucide-react'
@@ -9,7 +9,6 @@ import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import BinderCover from '@/app/components/BinderCover'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
-import { isProfileOnline } from '@/lib/onlineStatus'
 import { getRarityLabel } from '@/lib/rarity'
 import { normalizeBinder, type BinderRecord } from '@/lib/binders'
 
@@ -21,7 +20,6 @@ type ProfileItem = {
   premium_until?: string | null
   is_vip?: boolean | null
   vip_note?: string | null
-  last_seen_at?: string | null
 }
 
 type UserCard = {
@@ -92,6 +90,7 @@ export default function FriendsPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [openedProfileFromQuery, setOpenedProfileFromQuery] = useState('')
+  const profileSearchRunRef = useRef(0)
 
   useEffect(() => {
     const load = async () => {
@@ -104,16 +103,12 @@ export default function FriendsPage() {
       const user = session.user
       setUserId(user.id)
 
-      const [{ data: profileData }, { data: profileListData }, { data: requestData }] = await Promise.all([
+      const [{ data: profileData }, { data: requestData }] = await Promise.all([
         supabase
           .from('profiles')
           .select('username')
           .eq('id', user.id)
           .single(),
-        supabase
-          .from('profiles')
-          .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note, last_seen_at')
-          .neq('id', user.id),
         supabase
           .from('friend_requests')
           .select('id, requester_id, receiver_id, status, created_at')
@@ -124,13 +119,29 @@ export default function FriendsPage() {
       setUsername(profileData?.username ?? '')
       setRequests(requestData ?? [])
 
-      let profiles: ProfileItem[] = (profileListData ?? []) as ProfileItem[]
-      if (!profileListData) {
-        const { data: fallbackProfiles } = await supabase
+      const profileFromQuery = typeof window === 'undefined'
+        ? ''
+        : new URLSearchParams(window.location.search).get('profile') || ''
+      const relatedIds = [...new Set((requestData || [])
+        .flatMap(request => [request.requester_id, request.receiver_id])
+        .concat(profileFromQuery)
+        .filter(id => id && id !== user.id))]
+
+      let profiles: ProfileItem[] = []
+      if (relatedIds.length > 0) {
+        const { data: relatedProfiles, error: relatedError } = await supabase
           .from('profiles')
-          .select('id, username, avatar_url')
-          .neq('id', user.id)
-        profiles = (fallbackProfiles ?? []) as ProfileItem[]
+          .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note')
+          .in('id', relatedIds)
+        profiles = (relatedProfiles ?? []) as ProfileItem[]
+
+        if (relatedError) {
+          const { data: fallbackProfiles } = await supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .in('id', relatedIds)
+          profiles = (fallbackProfiles ?? []) as ProfileItem[]
+        }
       }
       const resolvedProfiles = await Promise.all(
         profiles.map(async (profile: ProfileItem) => {
@@ -147,34 +158,37 @@ export default function FriendsPage() {
   }, [router])
 
   useEffect(() => {
-    if (allProfiles.length === 0) return
-
-    const refreshOnlineStatus = async () => {
-      const ids = allProfiles.map(profile => profile.id)
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, last_seen_at')
-        .in('id', ids)
-
-      if (error || !data) return
-
-      const lastSeenById = new Map((data as Array<{ id: string; last_seen_at?: string | null }>).map(profile => [profile.id, profile.last_seen_at ?? null]))
-      setAllProfiles(current => current.map(profile => (
-        lastSeenById.has(profile.id)
-          ? { ...profile, last_seen_at: lastSeenById.get(profile.id) ?? null }
-          : profile
-      )))
-      setSelectedProfile(current => (
-        current && lastSeenById.has(current.id)
-          ? { ...current, last_seen_at: lastSeenById.get(current.id) ?? null }
-          : current
-      ))
+    const query = searchTerm.trim().replace(/[%_]/g, '')
+    if (query.length < 2) {
+      profileSearchRunRef.current += 1
+      return
     }
 
-    const timer = window.setInterval(refreshOnlineStatus, 30000)
-    void refreshOnlineStatus()
-    return () => window.clearInterval(timer)
-  }, [allProfiles.length])
+    const timer = window.setTimeout(async () => {
+      const runId = ++profileSearchRunRef.current
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note')
+        .ilike('username', `%${query}%`)
+        .neq('id', userId || '')
+        .limit(20)
+
+      if (error || runId !== profileSearchRunRef.current) return
+      const resolved = await Promise.all(((data || []) as ProfileItem[]).map(async profile => ({
+        ...profile,
+        avatar_url: await getAvatarPublicUrl(profile.avatar_url)
+      })))
+      if (runId !== profileSearchRunRef.current) return
+
+      setAllProfiles(current => {
+        const merged = new Map(current.map(profile => [profile.id, profile]))
+        resolved.forEach(profile => merged.set(profile.id, profile))
+        return [...merged.values()]
+      })
+    }, 250)
+
+    return () => window.clearTimeout(timer)
+  }, [searchTerm, userId])
 
   const getAvatarPublicUrl = async (avatarPath: string | null) => {
     if (!avatarPath) return ''
@@ -219,7 +233,7 @@ export default function FriendsPage() {
 
   const friendProfiles = allProfiles.filter((profile) => friendIds.includes(profile.id))
   const peopleToShow = allProfiles.filter((profile) => {
-    if (!searchTerm.trim()) return true
+    if (!searchTerm.trim()) return false
     return profile.username?.toLowerCase().includes(searchTerm.trim().toLowerCase())
   })
 
@@ -541,7 +555,7 @@ export default function FriendsPage() {
                           >
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-2xl text-amber-300 overflow-hidden">
                               {friend.avatar_url ? (
-                                <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" />
+                                <img src={friend.avatar_url} alt={friend.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                               ) : (
                                 <span>{(friend.username || 'U').charAt(0).toUpperCase()}</span>
                               )}
@@ -551,10 +565,7 @@ export default function FriendsPage() {
                                 <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</p>
                                 {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                               </div>
-                              <p className={`text-xs font-semibold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                                <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
-                                {isProfileOnline(friend) ? 'Ora online' : 'Tuo Amico'}
-                              </p>
+                              <p className="text-xs font-semibold text-slate-500">Tuo amico</p>
                             </div>
                           </button>
                         )
@@ -587,7 +598,7 @@ export default function FriendsPage() {
                               <div className="flex min-w-0 items-center gap-3">
                                 <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                                   {sender?.avatar_url ? (
-                                    <img src={sender.avatar_url} alt={sender.username || 'Avatar'} className="h-full w-full object-cover" />
+                                    <img src={sender.avatar_url} alt={sender.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                                   ) : (
                                     <span>{(sender?.username || 'U').charAt(0).toUpperCase()}</span>
                                   )}
@@ -597,10 +608,7 @@ export default function FriendsPage() {
                                     <p className={`truncate font-semibold text-white ${premiumClassName(tier)}`}>{sender?.username || 'Giocatore'}</p>
                                     {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                                   </div>
-                                  <p className={`text-xs font-semibold ${isProfileOnline(sender) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                                    <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(sender) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
-                                    {isProfileOnline(sender) ? 'Ora online' : 'Ti ha inviato una richiesta di amicizia.'}
-                                  </p>
+                                  <p className="text-xs font-semibold text-slate-500">Ti ha inviato una richiesta di amicizia.</p>
                                 </div>
                               </div>
                               <div className="flex shrink-0 gap-2">
@@ -645,7 +653,7 @@ export default function FriendsPage() {
                       >
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-amber-300 overflow-hidden">
                           {profile.avatar_url ? (
-                            <img src={profile.avatar_url} alt={profile.username || 'Avatar'} className="h-full w-full object-cover" />
+                            <img src={profile.avatar_url} alt={profile.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                           ) : (
                             <span>{(profile.username || 'U').charAt(0).toUpperCase()}</span>
                           )}
@@ -655,17 +663,14 @@ export default function FriendsPage() {
                             <p className={`font-semibold text-white truncate ${premiumClassName(tier)}`}>{profile.username || 'Giocatore'}</p>
                             {label ? <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-0.5 text-[9px] font-black uppercase text-cyan-100">{label}</span> : null}
                           </div>
-                          <p className={`text-[11px] font-semibold truncate ${isProfileOnline(profile) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                            <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${isProfileOnline(profile) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
-                            {isProfileOnline(profile)
-                              ? 'Ora online'
-                              : status === 'friend'
+                          <p className="truncate text-[11px] font-semibold text-slate-500">
+                            {status === 'friend'
                               ? 'Già tuo amico'
                               : status === 'sent'
                               ? 'Richiesta inviata'
                               : status === 'incoming'
                               ? 'Richiesta in arrivo'
-                              : 'Disponibile per un saluto'}
+                              : 'Profilo OPV'}
                           </p>
                         </div>
                       </button>
@@ -744,9 +749,8 @@ export default function FriendsPage() {
                       <span>{(selectedProfile.username || 'U').charAt(0).toUpperCase()}</span>
                     )}
                   </div>
-                  <p className={`text-sm uppercase tracking-[0.25em] ${isProfileOnline(selectedProfile) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                    <span className={`mr-2 inline-block h-2 w-2 rounded-full ${isProfileOnline(selectedProfile) ? 'bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.8)]' : 'bg-slate-600'}`} />
-                    {isProfileOnline(selectedProfile) ? 'Ora online' : isFriend ? 'Amico' : 'Profilo pubblico'}
+                  <p className="text-sm uppercase tracking-[0.25em] text-slate-500">
+                    {isFriend ? 'Amico' : 'Profilo pubblico'}
                   </p>
                   <div className="inline-flex items-center gap-2 rounded-full bg-slate-800/80 px-3 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">
                     <Heart size={14} />

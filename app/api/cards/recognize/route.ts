@@ -1,5 +1,6 @@
 import { getAllCards } from '@/lib/cardData'
-import { rankCardsByVisibleText, selectCardsByVisibleText } from '@/lib/cardTextRecognition'
+import { rankCardsByVisibleText, selectCardsFromVisibleTextRanking } from '@/lib/cardTextRecognition'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 const normalize = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -11,6 +12,33 @@ const baseCode = (value: string) => {
   return withoutUnderscoreVariant
     .replace(/[^a-z0-9]/g, '')
     .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
+}
+
+const RECOGNITION_CACHE_MS = 10 * 60 * 1000
+const RECOGNITION_CACHE_MAX = 1000
+const recognitionCache = new Map<string, { expiresAt: number; payload: unknown }>()
+
+const readRecognitionCache = (text: string) => {
+  const key = normalize(text).slice(0, 6000)
+  const cached = recognitionCache.get(key)
+  if (!cached || cached.expiresAt <= Date.now()) {
+    if (cached) recognitionCache.delete(key)
+    return { key, payload: null }
+  }
+  return { key, payload: cached.payload }
+}
+
+const writeRecognitionCache = (key: string, payload: unknown) => {
+  if (recognitionCache.size >= RECOGNITION_CACHE_MAX) {
+    const now = Date.now()
+    for (const [cacheKey, entry] of recognitionCache) {
+      if (entry.expiresAt <= now || recognitionCache.size >= RECOGNITION_CACHE_MAX) {
+        recognitionCache.delete(cacheKey)
+      }
+      if (recognitionCache.size < RECOGNITION_CACHE_MAX) break
+    }
+  }
+  recognitionCache.set(key, { expiresAt: Date.now() + RECOGNITION_CACHE_MS, payload })
 }
 
 const tokenSimilarity = (a: string, b: string) => {
@@ -76,14 +104,20 @@ const toResponseCard = (card: any) => ({
 
 export async function POST(req: Request) {
   try {
+    const rateLimit = checkRateLimit(req, { scope: 'card-recognize', limit: 60, windowMs: 60_000 })
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
     const body = await req.json()
     const text = String(body?.text || '')
     if (!text.trim()) return Response.json({ card: null, candidates: [] })
 
-    const cards = await getAllCards()
     if (body?.mode === 'photo') {
+      const cachedRecognition = readRecognitionCache(text)
+      if (cachedRecognition.payload) return Response.json(cachedRecognition.payload)
+
+      const cards = await getAllCards()
       const ranked = rankCardsByVisibleText(text, cards)
-      const visibleTextCandidates = selectCardsByVisibleText(text, cards)
+      const visibleTextCandidates = selectCardsFromVisibleTextRanking(ranked, cards)
       const rankedFamilies = ranked.reduce<typeof ranked>((families, match) => {
         if (!match.confident) return families
 
@@ -123,7 +157,7 @@ export async function POST(req: Request) {
         (strongEffect || allPrintedValuesMatch || strongNoEffectIdentity)
       )
 
-      return Response.json({
+      const payload = {
         card: visibleTextCandidates[0] ? toResponseCard(visibleTextCandidates[0]) : null,
         candidates: visibleTextCandidates.slice(0, 64).map(toResponseCard),
         textMatch: bestTextMatch
@@ -141,11 +175,14 @@ export async function POST(req: Request) {
               powerMatch: bestTextMatch.powerMatch,
               counterMatch: bestTextMatch.counterMatch,
               scoreGap
-            }
+          }
           : null
-      })
+      }
+      writeRecognitionCache(cachedRecognition.key, payload)
+      return Response.json(payload)
     }
 
+    const cards = await getAllCards()
     const code = extractCardCode(text)
 
     if (code) {

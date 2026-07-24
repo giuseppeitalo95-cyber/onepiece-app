@@ -12,6 +12,7 @@ let cardCache: {
   expiresAt: number
   cards: RawCard[]
 } | null = null
+let cardLoadPromise: Promise<RawCard[]> | null = null
 
 const OPTCG_ENDPOINTS = [
   'https://www.optcgapi.com/api/allSetCards/',
@@ -306,33 +307,41 @@ export const getCatalogCardsByVariantIds = async (values: string[]) => {
 
 export const clearCardCache = () => {
   cardCache = null
+  cardLoadPromise = null
 }
 
 export const getAllCards = async () => {
   if (cardCache && cardCache.expiresAt > Date.now()) return cardCache.cards
+  if (cardLoadPromise) return cardLoadPromise
 
-  try {
-    const cards = await loadCatalogCards()
-    cardCache = { expiresAt: Date.now() + CACHE_DURATION_MS, cards }
-    return cards
-  } catch (error) {
-    if (cardCache?.cards.length) return cardCache.cards
-
-    if (process.env.CARD_CATALOG_SOURCE_FALLBACK !== 'false') {
-      const sourceCards = await fetchSourceCards()
-      const unique = new Map<string, RawCard>()
-      for (const raw of sourceCards) {
-        const card = normalizeSourceCard(raw)
-        const existing = unique.get(card.card_id)
-        if (!existing || (card.source === 'official' && existing.source !== 'official')) {
-          unique.set(card.card_id, card)
-        }
-      }
-      const cards = [...unique.values()]
+  cardLoadPromise = (async () => {
+    try {
+      const cards = await loadCatalogCards()
       cardCache = { expiresAt: Date.now() + CACHE_DURATION_MS, cards }
       return cards
-    }
+    } catch (error) {
+      if (cardCache?.cards.length) return cardCache.cards
 
-    throw error
-  }
+      if (process.env.CARD_CATALOG_SOURCE_FALLBACK !== 'false') {
+        const sourceCards = await fetchSourceCards()
+        const unique = new Map<string, RawCard>()
+        for (const raw of sourceCards) {
+          const card = normalizeSourceCard(raw)
+          const existing = unique.get(card.card_id)
+          if (!existing || (card.source === 'official' && existing.source !== 'official')) {
+            unique.set(card.card_id, card)
+          }
+        }
+        const cards = [...unique.values()]
+        cardCache = { expiresAt: Date.now() + CACHE_DURATION_MS, cards }
+        return cards
+      }
+
+      throw error
+    } finally {
+      cardLoadPromise = null
+    }
+  })()
+
+  return cardLoadPromise
 }

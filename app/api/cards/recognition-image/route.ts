@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { assertSafeRemoteImageUrl, isR2Configured, isR2PublicUrl, mirrorCardImage } from '@/lib/r2Storage'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,10 +21,10 @@ const imageResponse = async (url: string, fallbackContentType = 'image/webp') =>
     && sourceContentType === 'multerS3.AUTO_CONTENT_TYPE'
   const contentType = cardmarketImage ? 'image/jpeg' : sourceContentType || fallbackContentType
   if (!contentType.startsWith('image/')) throw new Error('La sorgente non contiene una immagine')
-  const buffer = Buffer.from(await response.arrayBuffer())
-  if (buffer.length > 15_000_000) throw new Error('Immagine troppo grande')
+  const contentLength = Number(response.headers.get('content-length') || 0)
+  if (contentLength > 15_000_000) throw new Error('Immagine troppo grande')
 
-  return new Response(buffer, {
+  return new Response(response.body, {
     status: 200,
     headers: {
       'Content-Type': contentType,
@@ -33,6 +34,9 @@ const imageResponse = async (url: string, fallbackContentType = 'image/webp') =>
 }
 
 export async function GET(request: NextRequest) {
+  const rateLimit = checkRateLimit(request, { scope: 'recognition-image', limit: 1200, windowMs: 60_000 })
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
   const target = request.nextUrl.searchParams.get('url')
   const variantId = request.nextUrl.searchParams.get('id')
   if (!target) return new Response('Missing url', { status: 400 })

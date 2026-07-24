@@ -8,8 +8,8 @@ type AnalyticsEventType =
   | 'deck_search'
   | 'board_post'
 
-let lastEventKey = ''
-let lastEventAt = 0
+const recentEvents = new Map<string, number>()
+const MAX_RECENT_EVENTS = 200
 
 export const trackAnalyticsEvent = async (
   eventType: AnalyticsEventType,
@@ -20,10 +20,17 @@ export const trackAnalyticsEvent = async (
     const path = pagePath || (typeof window !== 'undefined' ? window.location.pathname : '')
     const key = `${eventType}:${path}:${JSON.stringify(metadata).slice(0, 120)}`
     const now = Date.now()
+    const minimumInterval = eventType === 'page_view' ? 60_000 : 5_000
+    const previousAt = recentEvents.get(key) || 0
 
-    if (key === lastEventKey && now - lastEventAt < 5000) return
-    lastEventKey = key
-    lastEventAt = now
+    if (now - previousAt < minimumInterval) return
+    recentEvents.set(key, now)
+    if (recentEvents.size > MAX_RECENT_EVENTS) {
+      for (const [eventKey, eventAt] of recentEvents) {
+        if (now - eventAt > 60_000 || recentEvents.size > MAX_RECENT_EVENTS) recentEvents.delete(eventKey)
+        if (recentEvents.size <= MAX_RECENT_EVENTS) break
+      }
+    }
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) return

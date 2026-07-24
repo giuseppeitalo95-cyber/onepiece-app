@@ -110,6 +110,49 @@ const bigramSet = (tokens: string[]) => {
   return result
 }
 
+type CardTextFeatures = {
+  normalizedName: string
+  compactName: string
+  nameWords: string[]
+  effectTokens: string[]
+  uniqueEffectTokens: string[]
+  effectBigrams: Set<string>
+  metadataTokens: string[]
+  cost: string
+  power: string
+  counter: string
+}
+
+const cardTextFeatureCache = new WeakMap<object, CardTextFeatures>()
+
+const getCardTextFeatures = <T extends VisibleTextCard>(card: T): CardTextFeatures => {
+  const cached = cardTextFeatureCache.get(card)
+  if (cached) return cached
+
+  const name = String(card.name || '')
+  const effectTokens = significantWords(String(card.card_text || ''))
+  const rawCounter = card.card_counter ?? card.counter_amount
+  const features: CardTextFeatures = {
+    normalizedName: normalize(name),
+    compactName: compact(name),
+    nameWords: words(name),
+    effectTokens,
+    uniqueEffectTokens: [...new Set(effectTokens)],
+    effectBigrams: bigramSet(effectTokens),
+    metadataTokens: [...new Set(significantWords([
+      card.card_color,
+      card.card_type,
+      card.sub_types,
+      card.attribute
+    ].filter(Boolean).join(' ')))],
+    cost: card.card_cost == null ? '' : String(Number(card.card_cost)),
+    power: card.card_power == null ? '' : String(Number(card.card_power)),
+    counter: rawCounter == null ? '' : String(Number(rawCounter)),
+  }
+  cardTextFeatureCache.set(card, features)
+  return features
+}
+
 export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: string, cards: T[]) => {
   const normalizedOcr = normalize(ocrText)
   const compactOcr = compact(ocrText)
@@ -122,18 +165,15 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
 
   return cards
     .map((card, index): VisibleTextMatch<T> & { index: number } => {
-      const name = String(card.name || '')
-      const normalizedName = normalize(name)
-      const compactName = compact(name)
-      const nameWords = words(name)
-      const exactName = compactName.length >= 4 && (
-        normalizedOcr.includes(normalizedName) || compactOcr.includes(compactName)
+      const features = getCardTextFeatures(card)
+      const exactName = features.compactName.length >= 4 && (
+        normalizedOcr.includes(features.normalizedName) || compactOcr.includes(features.compactName)
       )
 
       let nameMatchedWeight = 0
       let nameTotalWeight = 0
       let nameMatches = 0
-      for (const token of nameWords) {
+      for (const token of features.nameWords) {
         const weight = Math.max(2, token.length)
         nameTotalWeight += weight
         if (nameTokenMatches(token, ocrWords, ocrWordSet)) {
@@ -143,30 +183,17 @@ export const rankCardsByVisibleText = <T extends VisibleTextCard>(ocrText: strin
       }
       const nameCoverage = nameTotalWeight > 0 ? nameMatchedWeight / nameTotalWeight : 0
 
-      const effectTokens = significantWords(String(card.card_text || ''))
-      const uniqueEffectTokens = [...new Set(effectTokens)]
-      const hasEffect = uniqueEffectTokens.length > 0
-      const effectMatches = uniqueEffectTokens.filter(token => ocrSignificantSet.has(token)).length
-      const effectCoverage = uniqueEffectTokens.length > 0
-        ? effectMatches / uniqueEffectTokens.length
+      const hasEffect = features.uniqueEffectTokens.length > 0
+      const effectMatches = features.uniqueEffectTokens.filter(token => ocrSignificantSet.has(token)).length
+      const effectCoverage = features.uniqueEffectTokens.length > 0
+        ? effectMatches / features.uniqueEffectTokens.length
         : 0
-      const effectBigrams = [...bigramSet(effectTokens)].filter(value => ocrBigrams.has(value)).length
+      const effectBigrams = [...features.effectBigrams].filter(value => ocrBigrams.has(value)).length
+      const metadataMatches = features.metadataTokens.filter(token => ocrSignificantSet.has(token)).length
 
-      const metadataTokens = [...new Set(significantWords([
-        card.card_color,
-        card.card_type,
-        card.sub_types,
-        card.attribute
-      ].filter(Boolean).join(' ')))]
-      const metadataMatches = metadataTokens.filter(token => ocrSignificantSet.has(token)).length
-
-      const cost = card.card_cost == null ? '' : String(Number(card.card_cost))
-      const power = card.card_power == null ? '' : String(Number(card.card_power))
-      const rawCounter = card.card_counter ?? card.counter_amount
-      const counter = rawCounter == null ? '' : String(Number(rawCounter))
-      const costMatch = Boolean(cost && cost !== 'NaN' && ocrNumbers.has(cost))
-      const powerMatch = Boolean(power && power !== 'NaN' && ocrNumbers.has(power))
-      const counterMatch = Boolean(counter && counter !== 'NaN' && ocrNumbers.has(counter))
+      const costMatch = Boolean(features.cost && features.cost !== 'NaN' && ocrNumbers.has(features.cost))
+      const powerMatch = Boolean(features.power && features.power !== 'NaN' && ocrNumbers.has(features.power))
+      const counterMatch = Boolean(features.counter && features.counter !== 'NaN' && ocrNumbers.has(features.counter))
       const printedValueMatches = Number(costMatch) + Number(powerMatch) + Number(counterMatch)
       const strongNameIdentity = exactName || (nameCoverage >= 0.72 && nameMatches > 0)
       const noEffectIdentityBonus = !hasEffect && strongNameIdentity
@@ -224,8 +251,10 @@ const baseCardKey = (value: string) => {
     .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
 }
 
-export const selectCardsByVisibleText = <T extends VisibleTextCard>(ocrText: string, cards: T[]) => {
-  const ranked = rankCardsByVisibleText(ocrText, cards)
+export const selectCardsFromVisibleTextRanking = <T extends VisibleTextCard>(
+  ranked: Array<VisibleTextMatch<T> & { index: number }>,
+  cards: T[]
+) => {
   const best = ranked.find(item => item.confident)
   if (!best) return []
 
@@ -260,3 +289,6 @@ export const selectCardsByVisibleText = <T extends VisibleTextCard>(ocrText: str
       (familyOrder.get(baseCardKey(String(left.card_id || left.id || ''))) ?? 0) -
       (familyOrder.get(baseCardKey(String(right.card_id || right.id || ''))) ?? 0))
 }
+
+export const selectCardsByVisibleText = <T extends VisibleTextCard>(ocrText: string, cards: T[]) =>
+  selectCardsFromVisibleTextRanking(rankCardsByVisibleText(ocrText, cards), cards)

@@ -622,6 +622,7 @@ export default function ScanPage() {
   const cardImageSrc = (url?: string | null) => {
     if (!url) return ''
     if (url.startsWith('/')) return url
+    if (url.includes('.r2.dev/')) return url
     return `/api/cards/recognition-image?url=${encodeURIComponent(url)}`
   }
 

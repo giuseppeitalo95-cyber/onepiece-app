@@ -8,7 +8,6 @@ import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { supabase } from '@/lib/supabase'
 import { getPremiumTier, premiumClassName, premiumLabel } from '@/lib/premium'
-import { isProfileOnline } from '@/lib/onlineStatus'
 import { validateUserText } from '@/lib/textModeration'
 
 type ProfileItem = {
@@ -19,7 +18,6 @@ type ProfileItem = {
   premium_until?: string | null
   is_vip?: boolean | null
   vip_note?: string | null
-  last_seen_at?: string | null
 }
 
 type ChatMessage = {
@@ -62,6 +60,9 @@ const timeLabel = (value: string) => {
 export default function ChatPage() {
   const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const messagesRef = useRef<ChatMessage[]>([])
+  const contactCacheRef = useRef(new Map<string, ProfileItem>())
+  const refreshInFlightRef = useRef(false)
   const [userId, setUserId] = useState('')
   const [friends, setFriends] = useState<ProfileItem[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -92,65 +93,95 @@ export default function ChatPage() {
       return []
     }
 
+    const missingIds = uniqueIds.filter(id => !contactCacheRef.current.has(id))
+    if (missingIds.length === 0) {
+      const cachedFriends = uniqueIds
+        .map(id => contactCacheRef.current.get(id))
+        .filter((profile): profile is ProfileItem => Boolean(profile))
+      setFriends(cachedFriends)
+      return cachedFriends
+    }
+
     const { data: profileData, error } = await supabase
       .from('profiles')
-        .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note, last_seen_at')
-      .in('id', uniqueIds)
+      .select('id, username, avatar_url, is_premium, premium_until, is_vip, vip_note')
+      .in('id', missingIds)
 
     if (error) {
       const { data: fallback } = await supabase
         .from('profiles')
         .select('id, username, avatar_url')
-        .in('id', uniqueIds)
+        .in('id', missingIds)
 
       const fallbackFriends = ((fallback || []) as ProfileItem[]).map(profile => ({
         ...profile,
         avatar_url: getAvatarPublicUrl(profile.avatar_url)
       }))
-      setFriends(fallbackFriends)
-      return fallbackFriends
+      fallbackFriends.forEach(profile => contactCacheRef.current.set(profile.id, profile))
+    } else {
+      const resolvedFriends = ((profileData || []) as ProfileItem[]).map(profile => ({
+        ...profile,
+        avatar_url: getAvatarPublicUrl(profile.avatar_url)
+      }))
+      resolvedFriends.forEach(profile => contactCacheRef.current.set(profile.id, profile))
     }
 
-    const resolvedFriends = ((profileData || []) as ProfileItem[]).map(profile => ({
-      ...profile,
-      avatar_url: getAvatarPublicUrl(profile.avatar_url)
-    }))
-    setFriends(resolvedFriends)
-    return resolvedFriends
+    const allFriends = uniqueIds
+      .map(id => contactCacheRef.current.get(id))
+      .filter((profile): profile is ProfileItem => Boolean(profile))
+    setFriends(allFriends)
+    return allFriends
   }
 
-  const loadMessages = async (uid: string) => {
-    const query = supabase
+  const loadMessages = async (uid: string, incremental = false) => {
+    const latestCreatedAt = incremental
+      ? messagesRef.current[messagesRef.current.length - 1]?.created_at
+      : null
+    let query = supabase
       .from('chat_messages')
       .select('id, post_id, sender_id, receiver_id, body, read_at, created_at')
       .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
       .gte('created_at', cutoffIso())
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: Boolean(latestCreatedAt) })
       .limit(300)
+    if (latestCreatedAt) query = query.gt('created_at', latestCreatedAt)
 
     let { data, error } = await query
 
     if (error && error.message.toLowerCase().includes('post_id')) {
-      const fallback = await supabase
+      const fallback = supabase
         .from('chat_messages')
         .select('id, sender_id, receiver_id, body, read_at, created_at')
         .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
         .gte('created_at', cutoffIso())
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: Boolean(latestCreatedAt) })
         .limit(300)
+      const fallbackQuery = latestCreatedAt
+        ? fallback.gt('created_at', latestCreatedAt)
+        : fallback
 
-      data = (fallback.data || []).map(message => ({ ...message, post_id: null }))
-      error = fallback.error
+      const fallbackResult = await fallbackQuery
+      data = (fallbackResult.data || []).map(message => ({ ...message, post_id: null }))
+      error = fallbackResult.error
     }
 
     if (error) {
       setChatReady(false)
-      setMessages([])
-      return []
+      if (!incremental) {
+        messagesRef.current = []
+        setMessages([])
+      }
+      return messagesRef.current
     }
 
     setChatReady(true)
-    const loadedMessages = (data || []) as ChatMessage[]
+    const incomingMessages = ((data || []) as ChatMessage[])
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    const loadedMessages = incremental
+      ? [...new Map([...messagesRef.current, ...incomingMessages].map(message => [message.id, message])).values()]
+          .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+      : incomingMessages
+    messagesRef.current = loadedMessages
     setMessages(loadedMessages)
     return loadedMessages
   }
@@ -205,11 +236,13 @@ export default function ChatPage() {
       .is('read_at', null)
       .gte('created_at', cutoffIso())
 
-    setMessages(current => current.map(message =>
+    const nextMessages = messagesRef.current.map(message =>
       message.sender_id === friendId && message.receiver_id === uid && !message.read_at
         ? { ...message, read_at: new Date().toISOString() }
         : message
-    ))
+    )
+    messagesRef.current = nextMessages
+    setMessages(nextMessages)
     window.dispatchEvent(new CustomEvent('opv:chat-unread-changed'))
   }
 
@@ -223,7 +256,6 @@ export default function ChatPage() {
 
       const uid = session.user.id
       setUserId(uid)
-      void fetch('/api/chat/cleanup', { method: 'POST' }).catch(() => undefined)
 
       const params = typeof window === 'undefined'
         ? new URLSearchParams()
@@ -266,18 +298,44 @@ export default function ChatPage() {
   useEffect(() => {
     if (!userId || !chatReady) return
 
-    const timer = window.setInterval(() => {
-      void (async () => {
-        const loadedMessages = await loadMessages(userId)
+    const refreshChat = async () => {
+      if (refreshInFlightRef.current) return
+      refreshInFlightRef.current = true
+      try {
+        const loadedMessages = await loadMessages(userId, true)
         const contactIds = loadedMessages.map(message =>
           message.sender_id === userId ? message.receiver_id : message.sender_id
         )
         if (selectedFriendId) contactIds.push(selectedFriendId)
         await loadContacts(contactIds)
-      })()
-    }, 8000)
+      } finally {
+        refreshInFlightRef.current = false
+      }
+    }
 
-    return () => window.clearInterval(timer)
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void refreshChat()
+    }
+    const onVisibilityChanged = () => {
+      if (document.visibilityState === 'visible') void refreshChat()
+    }
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'opv:push' && String(event.data?.url || '').startsWith('/chat')) {
+        void refreshChat()
+      }
+    }
+
+    const timer = window.setInterval(refreshIfVisible, 60_000)
+    window.addEventListener('focus', refreshIfVisible)
+    document.addEventListener('visibilitychange', onVisibilityChanged)
+    navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshIfVisible)
+      document.removeEventListener('visibilitychange', onVisibilityChanged)
+      navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
+    }
   }, [userId, chatReady, selectedFriendId])
 
   useEffect(() => {
@@ -398,7 +456,17 @@ export default function ChatPage() {
     }
 
     setText('')
-    await loadMessages(userId)
+    if (data.message?.id) {
+      const nextMessages = [...new Map(
+        [...messagesRef.current, data.message as ChatMessage].map(message => [message.id, message])
+      ).values()].sort((left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      )
+      messagesRef.current = nextMessages
+      setMessages(nextMessages)
+    } else {
+      await loadMessages(userId, true)
+    }
     setSending(false)
   }
 
@@ -482,19 +550,15 @@ export default function ChatPage() {
                     }`}
                   >
                     <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/20 bg-slate-800 text-sm font-black text-cyan-100">
-                      {friend.avatar_url ? <img src={friend.avatar_url} alt={friend.username || 'Avatar'} className="h-full w-full object-cover" /> : (friend.username || 'U').charAt(0).toUpperCase()}
+                      {friend.avatar_url ? <img src={friend.avatar_url} alt={friend.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : (friend.username || 'U').charAt(0).toUpperCase()}
                     </div>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className={`truncate text-sm font-black text-white ${premiumClassName(tier)}`}>{friend.username || 'Giocatore'}</span>
                         {label ? <span className="rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[8px] font-black uppercase text-cyan-100">{label}</span> : null}
                       </span>
-                      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-xs">
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isProfileOnline(friend) ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]' : 'bg-slate-600'}`} />
-                        <span className={`shrink-0 font-semibold ${isProfileOnline(friend) ? 'text-emerald-300' : 'text-slate-500'}`}>
-                          {isProfileOnline(friend) ? 'Ora online' : 'Offline'}
-                        </span>
-                        <span className="truncate text-slate-400">- {last?.body}</span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-400">
+                        {last?.body}
                       </span>
                     </span>
                     {unread > 0 ? (
@@ -538,17 +602,8 @@ export default function ChatPage() {
                         {selectedFriend.username || 'Giocatore'}
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-[11px] text-cyan-100/76 sm:text-xs">
-                        {isProfileOnline(selectedFriend) ? (
-                          <>
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.75)]" />
-                            <span className="font-bold text-emerald-300">Ora online</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck size={13} />
-                            Chat temporanea - 24H
-                          </>
-                        )}
+                        <ShieldCheck size={13} />
+                        Chat temporanea - 24H
                       </span>
                       {activePost ? (
                         <span className="mt-1 block max-w-[56vw] truncate rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-50 sm:max-w-[420px]">

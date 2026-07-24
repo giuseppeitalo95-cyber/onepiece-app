@@ -24,6 +24,15 @@ const imageProxy = (url: string, cardId?: string | null) => {
 const isOwnedImage = (url: string) => url.startsWith('/') || url.includes('.r2.dev/')
 
 const failedImageSources = new Set<string>()
+const FAILED_IMAGE_CACHE_MAX = 500
+
+const rememberFailedImage = (source: string) => {
+  if (failedImageSources.size >= FAILED_IMAGE_CACHE_MAX) {
+    const oldest = failedImageSources.values().next().value
+    if (oldest) failedImageSources.delete(oldest)
+  }
+  failedImageSources.add(source)
+}
 
 const getCardIds = (cardId?: string | null, src?: string | null) => {
   const values = [cardId || '', src || '']
@@ -96,7 +105,7 @@ export default function CardImage({
           fetchPriority={fetchPriority}
           referrerPolicy="no-referrer"
           onError={() => {
-            failedImageSources.add(current)
+            rememberFailedImage(current)
             setIndex(prev => prev + 1)
           }}
         />

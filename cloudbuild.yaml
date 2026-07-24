@@ -31,9 +31,9 @@ steps:
       - --min
       - '0'
       - --max
-      - '2'
+      - '8'
       - --concurrency
-      - '40'
+      - '60'
       - --cpu
       - '1'
       - --memory

@@ -19,7 +19,7 @@ export default function BinderCover({ binder, className = '', compact = false, s
       style={{ backgroundColor: binder.cover_color }}
     >
       {coverImage ? (
-        <img src={coverImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={coverImage} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       ) : null}
       <div className="absolute inset-y-0 left-0 w-[10%] border-r border-black/30 bg-black/20 shadow-[6px_0_12px_rgba(0,0,0,0.22)]" />
       <div className="absolute inset-[8%] border border-white/18 bg-black/12" />

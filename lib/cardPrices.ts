@@ -463,7 +463,7 @@ const scoreProduct = (product: TcgProduct, input: PriceLookupInput) => {
   return score
 }
 
-export const getLiveCardPrice = async (input: PriceLookupInput) => {
+const loadLiveCardPrice = async (input: PriceLookupInput) => {
   const enrichedInput = await enrichLookupInput(input)
   const cardmarketExportPrice = await getCardmarketExportPrice(enrichedInput)
   if (cardmarketExportPrice) return cardmarketExportPrice
@@ -537,4 +537,46 @@ export const getLiveCardPrice = async (input: PriceLookupInput) => {
     priceType: price?.subTypeName || null,
     modifiedOn: best.group.modifiedOn || null
   }
+}
+
+type LiveCardPriceResult = Awaited<ReturnType<typeof loadLiveCardPrice>>
+
+const LIVE_PRICE_RESULT_CACHE_MS = 5 * 60 * 1000
+const LIVE_PRICE_RESULT_CACHE_MAX = 4000
+const livePriceResultCache = new Map<string, {
+  expiresAt: number
+  promise: Promise<LiveCardPriceResult>
+}>()
+
+const livePriceCacheKey = (input: PriceLookupInput) => [
+  compact(input.cardId),
+  normalize(input.name),
+  normalize(input.setName),
+].join('|')
+
+export const getLiveCardPrice = (input: PriceLookupInput): Promise<LiveCardPriceResult> => {
+  const key = livePriceCacheKey(input)
+  const cached = livePriceResultCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.promise
+  if (cached) livePriceResultCache.delete(key)
+
+  if (livePriceResultCache.size >= LIVE_PRICE_RESULT_CACHE_MAX) {
+    const now = Date.now()
+    for (const [cacheKey, entry] of livePriceResultCache) {
+      if (entry.expiresAt <= now || livePriceResultCache.size >= LIVE_PRICE_RESULT_CACHE_MAX) {
+        livePriceResultCache.delete(cacheKey)
+      }
+      if (livePriceResultCache.size < LIVE_PRICE_RESULT_CACHE_MAX) break
+    }
+  }
+
+  const promise = loadLiveCardPrice(input).catch(error => {
+    livePriceResultCache.delete(key)
+    throw error
+  })
+  livePriceResultCache.set(key, {
+    expiresAt: Date.now() + LIVE_PRICE_RESULT_CACHE_MS,
+    promise,
+  })
+  return promise
 }

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { validateUserText } from '@/lib/textModeration'
 import { sendPushToUsers } from '@/lib/pushNotifications'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -9,6 +10,9 @@ const db = () => SERVICE_ROLE_KEY
   : null
 
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(request, { scope: 'chat-send', limit: 30, windowMs: 60_000 })
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
   const client = db()
   if (!client) return Response.json({ ok: false, error: 'Missing SUPABASE_SERVICE_ROLE_KEY' }, { status: 503 })
 

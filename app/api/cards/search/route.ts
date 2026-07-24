@@ -1,7 +1,8 @@
 import { getAllCards, getCatalogCardsByBaseIds, getCatalogCardsByVariantIds, type RawCard } from '@/lib/cardData'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 const CACHE_HEADERS = {
-  'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+  'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
 }
 
 const normalize = (value: string) => value
@@ -44,6 +45,28 @@ type SearchIndexRow = {
 }
 
 let searchIndexCache: { source: RawCard[]; rows: SearchIndexRow[] } | null = null
+const searchResultCache = new Map<string, { expiresAt: number; cards: RawCard[] }>()
+const SEARCH_RESULT_CACHE_MS = 5 * 60 * 1000
+const SEARCH_RESULT_CACHE_MAX = 2000
+
+const getCachedSearch = (key: string) => {
+  const cached = searchResultCache.get(key)
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    searchResultCache.delete(key)
+    return null
+  }
+  return cached.cards
+}
+
+const cacheSearch = (key: string, cards: RawCard[]) => {
+  if (searchResultCache.size >= SEARCH_RESULT_CACHE_MAX) {
+    const oldest = searchResultCache.keys().next().value
+    if (oldest) searchResultCache.delete(oldest)
+  }
+  searchResultCache.set(key, { expiresAt: Date.now() + SEARCH_RESULT_CACHE_MS, cards })
+  return cards
+}
 
 const getSearchIndex = (cards: RawCard[]) => {
   if (searchIndexCache?.source === cards) return searchIndexCache.rows
@@ -80,7 +103,7 @@ const getSearchIndex = (cards: RawCard[]) => {
   return rows
 }
 
-const uniqueCards = (cards: RawCard[], limit = 80) => {
+const uniqueCards = (cards: RawCard[], limit = 48) => {
   const seen = new Set<string>()
   return cards.filter(card => {
     const id = cardId(card)
@@ -100,6 +123,9 @@ const loadCardsByBaseIds = async (baseIds: string[]) => {
 }
 
 export async function GET(req: Request) {
+  const rateLimit = checkRateLimit(req, { scope: 'card-search', limit: 240, windowMs: 60_000 })
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q')?.trim() || ''
 
@@ -108,6 +134,9 @@ export async function GET(req: Request) {
   try {
     const query = normalize(q)
     const compactQuery = compact(q)
+    const cacheKey = compactQuery.slice(0, 120)
+    const cached = getCachedSearch(cacheKey)
+    if (cached) return Response.json(cached, { headers: CACHE_HEADERS })
     const queryTokens = query.split(' ').filter(token => token.length >= 2)
     const exactBaseId = canonicalBaseId(q)
     const cards = exactBaseId
@@ -139,7 +168,7 @@ export async function GET(req: Request) {
             || left.index - right.index
         })
 
-      return Response.json(uniqueCards(variants.map(item => item.card)), { headers: CACHE_HEADERS })
+      return Response.json(cacheSearch(cacheKey, uniqueCards(variants.map(item => item.card))), { headers: CACHE_HEADERS })
     }
 
     const scoredCards = getSearchIndex(cards)
@@ -165,7 +194,7 @@ export async function GET(req: Request) {
       .sort((left, right) => right.score - left.score || left.index - right.index)
       .map(item => item.card)
 
-    return Response.json(uniqueCards(scoredCards), { headers: CACHE_HEADERS })
+    return Response.json(cacheSearch(cacheKey, uniqueCards(scoredCards)), { headers: CACHE_HEADERS })
   } catch (error) {
     console.error('Card search error:', error)
     return Response.json({ error: 'API error' }, { status: 500 })
@@ -174,6 +203,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const rateLimit = checkRateLimit(req, { scope: 'card-search-batch', limit: 120, windowMs: 60_000 })
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
     const body = await req.json()
     const ids: string[] = Array.isArray(body?.ids)
       ? body.ids.slice(0, 160).map((value: unknown) => String(value || ''))

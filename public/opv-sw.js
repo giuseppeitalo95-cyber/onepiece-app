@@ -27,7 +27,17 @@ self.addEventListener('push', event => {
     }
   }
 
-  event.waitUntil(self.registration.showNotification(title, options))
+  const notify = self.registration.showNotification(title, options)
+  const updateOpenClients = clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then(openClients => Promise.all(openClients.map(client => client.postMessage({
+      type: 'opv:push',
+      title,
+      body: options.body,
+      url: options.data.url
+    }))))
+
+  event.waitUntil(Promise.all([notify, updateOpenClients]))
 })
 
 self.addEventListener('notificationclick', event => {

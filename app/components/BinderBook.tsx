@@ -136,7 +136,11 @@ export default function BinderBook({ binder, spreadIndex, onSpreadChange, editab
     const urls = new Set<string>(['/rewards/opv-card-back.jpeg'])
     pageIndexes.forEach(index => binder.pages[index]?.slots.forEach(card => {
       if (!card?.image_url) return
-      urls.add(card.image_url.startsWith('/') ? card.image_url : `/api/cards/recognition-image?url=${encodeURIComponent(card.image_url)}`)
+      urls.add(
+        card.image_url.startsWith('/') || card.image_url.includes('.r2.dev/')
+          ? card.image_url
+          : `/api/cards/recognition-image?url=${encodeURIComponent(card.image_url)}`
+      )
     }))
     urls.forEach(url => {
       const image = new Image()

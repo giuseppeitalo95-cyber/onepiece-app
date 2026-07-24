@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { FREE_DAILY_SCAN_LIMIT, getPremiumTier } from '@/lib/premium'
 import { DEFAULT_MONTHLY_SCAN_LIMIT, readMonthlyScanLimit } from '@/lib/scanLimit'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 export const runtime = 'edge'
 export const preferredRegion = 'fra1'
@@ -264,6 +265,22 @@ async function reserveMonthlyScan() {
   }
 }
 
+async function reserveMonthlyScans(units: number) {
+  let result = {
+    allowed: true,
+    used: 0,
+    limit: DEFAULT_MONTHLY_SCAN_LIMIT,
+    error: null as string | null,
+  }
+
+  for (let index = 0; index < Math.max(1, units); index += 1) {
+    result = await reserveMonthlyScan()
+    if (!result.allowed) return result
+  }
+
+  return result
+}
+
 const wait = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds))
 
 async function getGoogleCloudAccessToken() {
@@ -493,6 +510,9 @@ async function checkDailyUserScan(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(req, { scope: 'card-ocr', limit: 30, windowMs: 60_000 })
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
     const body = await req.json()
     const ocrMode = body?.mode === 'photo'
       ? 'photo'
@@ -553,7 +573,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const usage = await reserveMonthlyScan()
+    const usage = await reserveMonthlyScans(images.length)
     if (!usage.allowed) {
       return Response.json(
         {

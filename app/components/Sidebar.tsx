@@ -38,6 +38,31 @@ const getPageKey = (pathname: string) => {
 }
 
 const badgeLabel = (value: number) => value > 9 ? '9+' : String(value)
+const BADGE_CACHE_MS = 60_000
+
+type BadgeCache = {
+  userId: string
+  expiresAt: number
+  badges: Record<string, number>
+}
+
+const readBadgeCache = (userId: string): BadgeCache | null => {
+  try {
+    const raw = window.sessionStorage.getItem('opv_nav_badges')
+    const cached = raw ? JSON.parse(raw) as BadgeCache : null
+    return cached?.userId === userId && cached.expiresAt > Date.now() ? cached : null
+  } catch {
+    return null
+  }
+}
+
+const writeBadgeCache = (value: BadgeCache) => {
+  try {
+    window.sessionStorage.setItem('opv_nav_badges', JSON.stringify(value))
+  } catch {
+    // La navigazione resta operativa anche con storage disabilitato.
+  }
+}
 
 export default function Sidebar({ activePage }: { activePage?: string }) {
   const pathname = usePathname()
@@ -52,6 +77,11 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
       const uid = session?.user?.id
       if (!uid) {
         if (!cancelled) setBadges({})
+        return
+      }
+      const cached = readBadgeCache(uid)
+      if (cached) {
+        if (!cancelled) setBadges(cached.badges)
         return
       }
 
@@ -90,10 +120,12 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
       }
 
       if (!cancelled) {
-        setBadges({
+        const nextBadges = {
           amici: friendRequestsCount || 0,
           bacheca: boardCount
-        })
+        }
+        setBadges(nextBadges)
+        writeBadgeCache({ userId: uid, expiresAt: Date.now() + BADGE_CACHE_MS, badges: nextBadges })
       }
     }
 
@@ -114,6 +146,8 @@ export default function Sidebar({ activePage }: { activePage?: string }) {
 
       window.localStorage.setItem(`opv_bacheca_seen_${uid}`, new Date().toISOString())
       setBadges(current => ({ ...current, bacheca: 0 }))
+      const cached = readBadgeCache(uid)
+      if (cached) writeBadgeCache({ ...cached, badges: { ...cached.badges, bacheca: 0 } })
     }
 
     markBoardSeen()

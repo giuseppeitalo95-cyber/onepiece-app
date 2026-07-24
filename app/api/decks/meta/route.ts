@@ -1,4 +1,5 @@
 import { getAllCards } from '@/lib/cardData'
+import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 type MetaDeckCard = {
   card_id: string
@@ -13,6 +14,9 @@ type MetaDeckCard = {
 }
 
 const LIMITLESS_BASE = 'https://onepiece.limitlesstcg.com'
+const META_CACHE_MS = 15 * 60 * 1000
+let metaCache: { expiresAt: number; decks: unknown[] } | null = null
+let metaLoadPromise: Promise<unknown[]> | null = null
 
 const decodeHtml = (value: string) =>
   value
@@ -96,8 +100,11 @@ const parseDeckDetail = (
   }
 }
 
-export async function GET() {
-  try {
+const loadMetaDecks = async () => {
+  if (metaCache && metaCache.expiresAt > Date.now()) return metaCache.decks
+  if (metaLoadPromise) return metaLoadPromise
+
+  metaLoadPromise = (async () => {
     const listRes = await fetch(`${LIMITLESS_BASE}/decks/lists`, {
       headers: { 'User-Agent': 'OnePieceVault/1.0' },
       next: { revalidate: 900 }
@@ -120,7 +127,23 @@ export async function GET() {
         return parseDeckDetail(await detailRes.text(), summary, catalogById)
       })
     )
+    metaCache = { expiresAt: Date.now() + META_CACHE_MS, decks }
+    return decks
+  })()
 
+  try {
+    return await metaLoadPromise
+  } finally {
+    metaLoadPromise = null
+  }
+}
+
+export async function GET(req: Request) {
+  const rateLimit = checkRateLimit(req, { scope: 'meta-decks', limit: 30, windowMs: 60_000 })
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit.retryAfterSeconds)
+
+  try {
+    const decks = await loadMetaDecks()
     return Response.json({ decks })
   } catch (error) {
     console.error('Meta decks error:', error)

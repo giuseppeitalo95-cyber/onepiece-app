@@ -734,7 +734,7 @@ export default function BachecaPage() {
                         className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-slate-800 text-sm font-black text-cyan-100 transition hover:border-cyan-200 hover:brightness-110 active:scale-95"
                         aria-label={`Apri profilo di ${profile?.username || 'Giocatore'}`}
                       >
-                        {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.username || 'Avatar'} className="h-full w-full object-cover" /> : avatarInitial(profile)}
+                        {profile?.avatar_url ? <img src={profile.avatar_url} alt={profile.username || 'Avatar'} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : avatarInitial(profile)}
                       </button>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -789,7 +789,7 @@ export default function BachecaPage() {
                                   {item.binder ? (
                                     <BinderCover binder={item.binder} compact showDetails={false} className="h-full w-full border-0 shadow-none" />
                                   ) : item.card_image_url ? (
-                                    <img src={item.card_image_url} alt="" className="h-full w-full object-cover" />
+                                    <img src={item.card_image_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                                   ) : (
                                     <BookOpen size={18} />
                                   )}

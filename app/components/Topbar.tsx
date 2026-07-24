@@ -29,6 +29,18 @@ type TopbarProfile = PremiumProfile & {
   avatar_url?: string | null
 }
 
+type CachedTopbarProfile = {
+  userId: string
+  expiresAt: number
+  profile: TopbarProfile
+}
+
+const PROFILE_CACHE_KEY = 'opv:topbar-profile'
+const PROFILE_CACHE_MS = 5 * 60 * 1000
+const ACTIVITY_THROTTLE_MS = 10 * 60 * 1000
+const UNREAD_FALLBACK_MS = 5 * 60 * 1000
+const ADMIN_FALLBACK_MS = 60 * 1000
+
 const readAdminNotices = (payload: unknown, kind: AdminNotice['kind']) => {
   if (!payload || typeof payload !== 'object') return []
   const reports = (payload as { reports?: unknown }).reports
@@ -57,6 +69,7 @@ export default function Topbar() {
   const [bugSending, setBugSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const bugUnreadRef = useRef<number | null>(null)
+  const isAdminRef = useRef(false)
   const tierLabel =
     premiumTier === 'admin'
       ? 'Admin'
@@ -100,6 +113,45 @@ export default function Topbar() {
   useEffect(() => {
     let cancelled = false
 
+    const readCachedProfile = (userId: string) => {
+      try {
+        const raw = window.sessionStorage.getItem(PROFILE_CACHE_KEY)
+        if (!raw) return null
+        const cached = JSON.parse(raw) as CachedTopbarProfile
+        return cached.userId === userId && cached.expiresAt > Date.now()
+          ? cached.profile
+          : null
+      } catch {
+        return null
+      }
+    }
+
+    const cacheProfile = (userId: string, profile: TopbarProfile) => {
+      try {
+        window.sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+          userId,
+          expiresAt: Date.now() + PROFILE_CACHE_MS,
+          profile,
+        } satisfies CachedTopbarProfile))
+      } catch {
+      }
+    }
+
+    const touchActivity = async (uid: string) => {
+      const key = `opv:last-activity:${uid}`
+      try {
+        const lastTouch = Number(window.localStorage.getItem(key) || 0)
+        if (Date.now() - lastTouch < ACTIVITY_THROTTLE_MS) return
+        window.localStorage.setItem(key, String(Date.now()))
+      } catch {
+      }
+
+      await supabase
+        .from('profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', uid)
+    }
+
     const loadProfile = async () => {
       const {
         data: { session },
@@ -110,20 +162,24 @@ export default function Topbar() {
         return
       }
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('username, avatar_url, is_premium, premium_until, is_vip, vip_note')
-        .eq('id', session.user.id)
-        .maybeSingle()
-      let profileData = data as TopbarProfile | null
-
-      if (error) {
-        const fallback = await supabase
+      let profileData = readCachedProfile(session.user.id)
+      if (!profileData) {
+        const { data, error } = await supabase
           .from('profiles')
-          .select('username, avatar_url')
+          .select('username, avatar_url, is_premium, premium_until, is_vip, vip_note')
           .eq('id', session.user.id)
           .maybeSingle()
-        profileData = fallback.data as TopbarProfile | null
+        profileData = data as TopbarProfile | null
+
+        if (error) {
+          const fallback = await supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', session.user.id)
+            .maybeSingle()
+          profileData = fallback.data as TopbarProfile | null
+        }
+        if (profileData) cacheProfile(session.user.id, profileData)
       }
 
       if (!profileData?.username && pathname !== '/complete-profile') {
@@ -131,7 +187,7 @@ export default function Topbar() {
         return
       }
 
-      await touchLastSeen(session.user.id)
+      void touchActivity(session.user.id)
 
       if (cancelled) return
 
@@ -139,6 +195,7 @@ export default function Topbar() {
       setAvatarUrl(profileData?.avatar_url || '')
       const nextTier = getPremiumTier(profileData, session.user)
       setPremiumTier(nextTier)
+      isAdminRef.current = nextTier === 'admin'
       await loadChatUnread(session.user.id)
       if (nextTier === 'admin') {
         await loadBugUnread()
@@ -158,13 +215,6 @@ export default function Topbar() {
         .gte('created_at', cutoff)
 
       if (!cancelled) setChatUnread(count || 0)
-    }
-
-    const touchLastSeen = async (uid: string) => {
-      await supabase
-        .from('profiles')
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq('id', uid)
     }
 
     const loadBugUnread = async () => {
@@ -210,50 +260,53 @@ export default function Topbar() {
 
     loadProfile()
 
-    const timer = window.setInterval(async () => {
+    const refreshVisibleState = async () => {
+      if (document.visibilityState !== 'visible') return
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        await Promise.all([
-          loadChatUnread(session.user.id),
-          touchLastSeen(session.user.id),
-        ])
+        await loadChatUnread(session.user.id)
+        void touchActivity(session.user.id)
       }
-    }, 30000)
+    }
 
-    const bugTimer = window.setInterval(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('username, is_premium, premium_until, is_vip, vip_note')
-        .eq('id', session.user.id)
-        .maybeSingle()
-
-      if (getPremiumTier(profileData as TopbarProfile | null, session.user) === 'admin') {
-        await loadBugUnread()
-      }
-    }, 15000)
+    const unreadTimer = window.setInterval(refreshVisibleState, UNREAD_FALLBACK_MS)
+    const bugTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && isAdminRef.current) void loadBugUnread()
+    }, ADMIN_FALLBACK_MS)
 
     const onChatChanged = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) await loadChatUnread(session.user.id)
     }
 
+    const onVisibilityChanged = () => {
+      if (document.visibilityState === 'visible') void refreshVisibleState()
+    }
+
     window.addEventListener('opv:chat-unread-changed', onChatChanged)
+    window.addEventListener('focus', refreshVisibleState)
+    document.addEventListener('visibilitychange', onVisibilityChanged)
 
     const onServiceWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type === 'opv:navigate' && event.data?.url) {
         router.push(event.data.url)
+        return
+      }
+      if (event.data?.type === 'opv:push') {
+        const url = String(event.data?.url || '')
+        if (url.startsWith('/chat')) void onChatChanged()
+        if (url.startsWith('/admin') && isAdminRef.current) void loadBugUnread()
       }
     }
     navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
 
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      window.clearInterval(unreadTimer)
       window.clearInterval(bugTimer)
       window.removeEventListener('opv:chat-unread-changed', onChatChanged)
+      window.removeEventListener('focus', refreshVisibleState)
+      document.removeEventListener('visibilitychange', onVisibilityChanged)
       navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
     }
   }, [pathname, router])
