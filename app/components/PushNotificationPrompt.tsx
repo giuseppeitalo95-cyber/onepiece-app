@@ -34,7 +34,11 @@ export default function PushNotificationPrompt({
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() =>
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
   )
-  const [registered, setRegistered] = useState(false)
+  const [registered, setRegistered] = useState(() =>
+    typeof window !== 'undefined'
+      && Notification.permission === 'granted'
+      && window.localStorage.getItem('opv_push_registered') === '1'
+  )
   const [installRequired, setInstallRequired] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -156,7 +160,9 @@ export default function PushNotificationPrompt({
 
   if (permission === 'unsupported') return null
   if (silent) return null
-  if (hideWhenGranted && permission === 'granted' && registered) return null
+  // The compact collection prompt must not flash on every navigation while
+  // the existing subscription is being checked and repaired in background.
+  if (hideWhenGranted && permission === 'granted') return null
 
   const isDenied = permission === 'denied'
   const isActive = permission === 'granted' && registered
