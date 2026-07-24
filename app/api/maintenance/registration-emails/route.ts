@@ -62,21 +62,75 @@ export async function GET(request: NextRequest) {
   })
   const maxPerRun = Math.min(5000, Math.max(1, Number(process.env.EMAIL_MAX_WELCOMES_PER_RUN || 1000)))
 
-  const { data: pendingRows, error: pendingError } = await client
+  const { data: digestRows, error: digestError } = await client
     .from('analytics_events')
-    .select('id, metadata')
+    .select('id, page_path, metadata')
     .eq('event_type', 'registration_email')
-    .eq('page_path', 'pending')
+    .in('page_path', ['pending', 'welcome_sent'])
+    .order('created_at', { ascending: true })
+    .limit(5000)
+
+  if (digestError) {
+    return Response.json({ ok: false, error: digestError.message }, { status: 500 })
+  }
+
+  const digestItems = (digestRows || [])
+    .map(row => ({ row, recipient: toRecipient(row.metadata) }))
+    .filter((item): item is { row: NonNullable<typeof digestRows>[number]; recipient: RegistrationEmailRecipient } => Boolean(item.recipient))
+  const invalidDigestIds = (digestRows || []).filter(row => !toRecipient(row.metadata)).map(row => row.id)
+  if (invalidDigestIds.length > 0) {
+    await client.from('analytics_events').update({ page_path: 'invalid_email' }).in('id', invalidDigestIds)
+  }
+
+  let adminDigestSent = false
+  if (digestItems.length > 0) {
+    const digestIds = digestItems.map(item => item.row.id)
+    const adminDelivery = await sendEmailBatch(
+      [adminRegistrationDigestMessage(digestItems.map(item => item.recipient))],
+      shortKey('opv-admin-digest', digestIds),
+    )
+    if (!adminDelivery.ok) {
+      return Response.json({
+        ok: false,
+        welcomeSent: 0,
+        digestQueued: digestItems.length,
+        error: adminDelivery.error,
+      }, { status: 502 })
+    }
+    adminDigestSent = true
+    const pendingDigestIds = digestItems.filter(item => item.row.page_path === 'pending').map(item => item.row.id)
+    const welcomedDigestIds = digestItems.filter(item => item.row.page_path === 'welcome_sent').map(item => item.row.id)
+    if (pendingDigestIds.length > 0) {
+      const { error } = await client
+        .from('analytics_events')
+        .update({ page_path: 'admin_notified' })
+        .in('id', pendingDigestIds)
+      if (error) return Response.json({ ok: false, adminDigestSent, error: error.message }, { status: 500 })
+    }
+    if (welcomedDigestIds.length > 0) {
+      const { error } = await client
+        .from('analytics_events')
+        .update({ page_path: 'complete' })
+        .in('id', welcomedDigestIds)
+      if (error) return Response.json({ ok: false, adminDigestSent, error: error.message }, { status: 500 })
+    }
+  }
+
+  const { data: welcomeRows, error: welcomeError } = await client
+    .from('analytics_events')
+    .select('id, page_path, metadata')
+    .eq('event_type', 'registration_email')
+    .in('page_path', ['pending', 'admin_notified'])
     .order('created_at', { ascending: true })
     .limit(maxPerRun)
 
-  if (pendingError) {
-    return Response.json({ ok: false, error: pendingError.message }, { status: 500 })
+  if (welcomeError) {
+    return Response.json({ ok: false, adminDigestSent, error: welcomeError.message }, { status: 500 })
   }
 
   let welcomeSent = 0
-  const pendingGroups = chunk(pendingRows || [], BATCH_SIZE)
-  for (const rows of pendingGroups) {
+  const welcomeGroups = chunk(welcomeRows || [], BATCH_SIZE)
+  for (const rows of welcomeGroups) {
     const validRows = rows
       .map(row => ({ row, recipient: toRecipient(row.metadata) }))
       .filter((item): item is { row: typeof rows[number]; recipient: RegistrationEmailRecipient } => Boolean(item.recipient))
@@ -92,67 +146,31 @@ export async function GET(request: NextRequest) {
       return Response.json({
         ok: false,
         configured: delivery.configured,
+        adminDigestSent,
         welcomeSent,
-        queued: pendingRows?.length || 0,
+        queued: welcomeRows?.length || 0,
         error: delivery.error,
       }, { status: 502 })
     }
     welcomeSent += delivery.sent
-    const { error: markError } = await client
-      .from('analytics_events')
-      .update({ page_path: 'welcome_sent' })
-      .in('id', ids)
-    if (markError) {
-      return Response.json({ ok: false, welcomeSent, error: markError.message }, { status: 500 })
+
+    const adminNotifiedIds = validRows.filter(item => item.row.page_path === 'admin_notified').map(item => item.row.id)
+    const pendingIds = validRows.filter(item => item.row.page_path === 'pending').map(item => item.row.id)
+    if (adminNotifiedIds.length > 0) {
+      const { error } = await client.from('analytics_events').update({ page_path: 'complete' }).in('id', adminNotifiedIds)
+      if (error) return Response.json({ ok: false, welcomeSent, error: error.message }, { status: 500 })
+    }
+    if (pendingIds.length > 0) {
+      const { error } = await client.from('analytics_events').update({ page_path: 'welcome_sent' }).in('id', pendingIds)
+      if (error) return Response.json({ ok: false, welcomeSent, error: error.message }, { status: 500 })
     }
     await new Promise(resolve => setTimeout(resolve, 250))
-  }
-
-  const { data: digestRows, error: digestError } = await client
-    .from('analytics_events')
-    .select('id, metadata')
-    .eq('event_type', 'registration_email')
-    .eq('page_path', 'welcome_sent')
-    .order('created_at', { ascending: true })
-    .limit(5000)
-
-  if (digestError) {
-    return Response.json({ ok: false, welcomeSent, error: digestError.message }, { status: 500 })
-  }
-
-  const digestItems = (digestRows || [])
-    .map(row => ({ row, recipient: toRecipient(row.metadata) }))
-    .filter((item): item is { row: NonNullable<typeof digestRows>[number]; recipient: RegistrationEmailRecipient } => Boolean(item.recipient))
-
-  let adminDigestSent = false
-  if (digestItems.length > 0) {
-    const digestIds = digestItems.map(item => item.row.id)
-    const adminDelivery = await sendEmailBatch(
-      [adminRegistrationDigestMessage(digestItems.map(item => item.recipient))],
-      shortKey('opv-admin-digest', digestIds),
-    )
-    if (!adminDelivery.ok) {
-      return Response.json({
-        ok: false,
-        welcomeSent,
-        digestQueued: digestItems.length,
-        error: adminDelivery.error,
-      }, { status: 502 })
-    }
-    adminDigestSent = true
-    const { error: digestMarkError } = await client
-      .from('analytics_events')
-      .update({ page_path: 'admin_notified' })
-      .in('id', digestIds)
-    if (digestMarkError) {
-      return Response.json({ ok: false, welcomeSent, adminDigestSent, error: digestMarkError.message }, { status: 500 })
-    }
   }
 
   return Response.json({
     ok: true,
     configured: true,
-    queued: pendingRows?.length || 0,
+    queued: welcomeRows?.length || 0,
     welcomeSent,
     adminDigestUsers: digestItems.length,
     adminDigestSent,
