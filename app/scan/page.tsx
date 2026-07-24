@@ -2842,7 +2842,7 @@ export default function ScanPage() {
                       <span>
                         <span className="flex items-center gap-2 text-base font-black text-white">
                           Scansiona più carte
-                          <span className="rounded-full border border-amber-200/25 bg-amber-300/10 px-2 py-0.5 text-[8px] uppercase tracking-[0.16em] text-amber-100">Nuovo</span>
+                          <span className="rounded-full border border-amber-200/25 bg-amber-300/10 px-2 py-0.5 text-[8px] uppercase tracking-[0.16em] text-amber-100">New · Beta</span>
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-slate-300">Trova fino a 12 carte con una sola foto.</span>
                       </span>
