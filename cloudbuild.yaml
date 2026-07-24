@@ -32,6 +32,8 @@ steps:
       - '0'
       - --max
       - '8'
+      - --max-instances
+      - '8'
       - --concurrency
       - '60'
       - --cpu
