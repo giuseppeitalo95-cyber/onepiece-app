@@ -42,6 +42,7 @@ export default function Home() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
   const [authMessage, setAuthMessage] = useState('')
   const [authError, setAuthError] = useState('')
 
@@ -139,6 +140,32 @@ export default function Home() {
     }
 
     router.replace('/auth/callback')
+  }
+
+  const handlePasswordReset = async () => {
+    if (authBusy || resetBusy) return
+
+    const cleanEmail = email.trim().toLowerCase()
+    setAuthError('')
+    setAuthMessage('')
+
+    if (!cleanEmail) {
+      setAuthError('Inserisci la tua email e poi premi Password dimenticata.')
+      return
+    }
+
+    setResetBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: `${window.location.origin}/auth/reset-password`
+    })
+    setResetBusy(false)
+
+    if (error) {
+      setAuthError('Non sono riuscito a inviare la mail di recupero. Riprova tra poco.')
+      return
+    }
+
+    setAuthMessage('Ti abbiamo inviato la mail per reimpostare la password. Aprila e scegli una nuova password.')
   }
 
   if (checkingSession) {
@@ -251,9 +278,21 @@ export default function Home() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-300">
-                <LockKeyhole size={14} />
-                Password
+              <span className="mb-1.5 flex items-center justify-between gap-3 text-xs font-bold text-slate-300">
+                <span className="flex items-center gap-2">
+                  <LockKeyhole size={14} />
+                  Password
+                </span>
+                {mode === 'login' ? (
+                  <button
+                    type="button"
+                    onClick={handlePasswordReset}
+                    disabled={authBusy || resetBusy}
+                    className="text-[11px] font-black text-cyan-200 transition hover:text-white disabled:opacity-50"
+                  >
+                    {resetBusy ? 'Invio...' : 'Password dimenticata?'}
+                  </button>
+                ) : null}
               </span>
               <div className="relative">
                 <input
