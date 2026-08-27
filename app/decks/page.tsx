@@ -187,6 +187,7 @@ export default function DeckBuilderPage() {
   const [metaQuery, setMetaQuery] = useState('')
   const [metaLoading, setMetaLoading] = useState(false)
   const [deckValues, setDeckValues] = useState<Record<string, number | null>>({})
+  const [deckPricesReady, setDeckPricesReady] = useState(false)
   const [liveCardPrices, setLiveCardPrices] = useState<Record<string, number | null>>({})
   const [deckStoreReady, setDeckStoreReady] = useState(true)
   const [collectionSavingDeckId, setCollectionSavingDeckId] = useState<string | null>(null)
@@ -380,10 +381,14 @@ export default function DeckBuilderPage() {
     const decksToPrice = [...savedDecks, ...metaDecks]
     if (decksToPrice.length === 0) {
       setDeckValues({})
+      setDeckPricesReady(true)
       return
     }
 
     let cancelled = false
+    setDeckPricesReady(false)
+    setDeckValues({})
+    setLiveCardPrices({})
 
     const loadDeckValues = async () => {
       const uniqueCards = new Map<string, DeckCard>()
@@ -411,9 +416,13 @@ export default function DeckBuilderPage() {
         if (!cancelled) {
           setLiveCardPrices(prev => ({ ...prev, ...liveMap }))
           setDeckValues(valueMap)
+          setDeckPricesReady(true)
         }
       } catch {
-        if (!cancelled) setDeckValues({})
+        if (!cancelled) {
+          setDeckValues({})
+          setDeckPricesReady(true)
+        }
       }
     }
 
@@ -463,6 +472,7 @@ export default function DeckBuilderPage() {
       const chunk = [...uniqueCards.values()].slice(index, index + 120)
       const res = await fetch('/api/cards/prices', {
         method: 'POST',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cards: chunk.map(card => ({
@@ -818,6 +828,7 @@ export default function DeckBuilderPage() {
   }
 
   const getDeckValue = (deck: SavedDeck) => {
+    if (!deckPricesReady) return null
     const liveValue = deckValues[deck.id]
     if (liveValue != null) return liveValue
     const storedValue = deck.cards.reduce((sum, card) => {
@@ -828,7 +839,9 @@ export default function DeckBuilderPage() {
   }
 
   const getDeckCardDisplayPrice = (card: DeckCard) =>
-    liveCardPrices[card.card_id] ?? card.market_price ?? card.inventory_price ?? null
+    deckPricesReady
+      ? liveCardPrices[card.card_id] ?? card.market_price ?? card.inventory_price ?? null
+      : null
 
   const filteredMetaDecks = metaDecks.filter(deck => {
     const query = metaQuery.trim().toLowerCase()

@@ -1,8 +1,9 @@
 import { getLiveCardPrice } from '@/lib/cardPrices'
+import { getCatalogCardsByVariantIds } from '@/lib/cardData'
 import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 const CACHE_HEADERS = {
-  'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=1800',
+  'Cache-Control': 'private, no-store, max-age=0',
 }
 
 export async function GET(req: Request) {
@@ -19,7 +20,19 @@ export async function GET(req: Request) {
   }
 
   try {
-    const price = await getLiveCardPrice({ cardId, name, setName })
+    const catalogCard = cardId
+      ? (await getCatalogCardsByVariantIds([cardId]).catch(() => []))[0]
+      : null
+    const price = await getLiveCardPrice({
+      cardId,
+      name: name || catalogCard?.name || catalogCard?.card_name,
+      setName: setName || catalogCard?.set_name,
+      referencePrice: catalogCard?.market_price ?? catalogCard?.inventory_price ?? null,
+      catalogResolved: Boolean(catalogCard),
+      cardmarketProductId: catalogCard?.cardmarket_product_id ?? null,
+      manualPriceOverride: catalogCard?.manual_price_override ?? null,
+      manualPriceUpdatedAt: catalogCard?.manual_price_updated_at ?? null,
+    })
     return Response.json({ price }, { headers: CACHE_HEADERS })
   } catch (error) {
     console.error('Live card price error:', error)

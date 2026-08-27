@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isAdminAccount } from '@/lib/admin'
 import { clearCardCache } from '@/lib/cardData'
+import { clearLiveCardPriceCache } from '@/lib/cardPrices'
 import { refreshCatalogSyncState } from '@/lib/cardCatalogSync'
 import { mirrorCardImage } from '@/lib/r2Storage'
 import { requireServiceClient } from '@/lib/serverSupabase'
@@ -504,6 +505,7 @@ const save = async (body: Record<string, unknown>, adminId: string) => {
   }, { onConflict: 'source_key' })
 
   clearCardCache()
+  clearLiveCardPriceCache()
   await refreshCatalogSyncState({ last_error: null })
 
   return Response.json({
@@ -708,6 +710,7 @@ const updateCard = async (body: Record<string, unknown>, adminId: string) => {
   }).eq('card_id', variantId)
 
   clearCardCache()
+  clearLiveCardPriceCache()
   await refreshCatalogSyncState({ last_error: null })
 
   return Response.json({

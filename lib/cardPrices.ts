@@ -563,10 +563,18 @@ const livePriceCacheKey = (input: PriceLookupInput) => [
   compact(input.cardId),
   normalize(input.name),
   normalize(input.setName),
+  String(input.cardmarketProductId || ''),
+  String(input.manualPriceOverride ?? ''),
+  String(input.manualPriceUpdatedAt || ''),
 ].join('|')
 
-export const getLiveCardPrice = (input: PriceLookupInput): Promise<LiveCardPriceResult> => {
-  const key = livePriceCacheKey(input)
+export const clearLiveCardPriceCache = () => {
+  livePriceResultCache.clear()
+}
+
+export const getLiveCardPrice = async (input: PriceLookupInput): Promise<LiveCardPriceResult> => {
+  const enrichedInput = await enrichLookupInput(input)
+  const key = livePriceCacheKey(enrichedInput)
   const cached = livePriceResultCache.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.promise
   if (cached) livePriceResultCache.delete(key)
@@ -581,7 +589,7 @@ export const getLiveCardPrice = (input: PriceLookupInput): Promise<LiveCardPrice
     }
   }
 
-  const promise = loadLiveCardPrice(input).catch(error => {
+  const promise = loadLiveCardPrice(enrichedInput).catch(error => {
     livePriceResultCache.delete(key)
     throw error
   })
