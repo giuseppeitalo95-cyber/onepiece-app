@@ -114,8 +114,30 @@ const nullableNumber = (value: unknown) => {
   return Number.isFinite(number) ? number : null
 }
 
-const priceValue = (row: PriceRow) =>
-  row.price_trend ?? row.price_avg_7 ?? row.price_avg_30 ?? row.price_avg ?? row.price_low ?? null
+const median = (values: number[]) => {
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+const priceValue = (row: PriceRow) => {
+  const trend = nullableNumber(row.price_trend)
+  const averages = [row.price_avg, row.price_avg_1, row.price_avg_7, row.price_avg_30]
+    .map(nullableNumber)
+    .filter((value): value is number => value != null && value > 0)
+
+  if (trend != null && trend > 0 && averages.length >= 3) {
+    const consensus = median(averages)
+    const spread = Math.max(...averages) / Math.min(...averages)
+    const trendDistance = Math.max(trend / consensus, consensus / trend)
+    if (spread <= 3 && trendDistance > 3) return Number(consensus.toFixed(2))
+  }
+
+  return trend ?? nullableNumber(row.price_avg_7) ?? nullableNumber(row.price_avg_30)
+    ?? nullableNumber(row.price_avg) ?? nullableNumber(row.price_low)
+}
 
 const buildPriceCandidates = async (priceRows: PriceRow[], folders: string[], preferredVersion?: number) => {
   const imageUrls = await Promise.all(priceRows.map(row => probeImage(row, folders)))
@@ -570,6 +592,7 @@ const loadCard = async (body: Record<string, unknown>) => {
       market_price: automaticPrice,
       manual_price_enabled: row.manual_price_override != null,
       manual_price_override: row.manual_price_override ?? '',
+      price_mapping_locked: Boolean(row.cardmarket_product_id),
     },
   }
 }
@@ -603,12 +626,17 @@ const updateCard = async (body: Record<string, unknown>, adminId: string) => {
   const productId = nullableNumber(input.cardmarket_product_id)
   let automaticPrice = existing.market_price
   if (productId && Number.isInteger(productId)) {
-    const { data: price } = await client
+    const { data: price, error: priceError } = await client
       .from('cardmarket_prices')
       .select('*')
       .eq('product_id', productId)
       .maybeSingle()
-    if (price) automaticPrice = priceValue(price as PriceRow)
+    if (priceError) throw new Error(priceError.message)
+    if (!price) throw new Error('Il prodotto prezzo selezionato non esiste piu nel database.')
+    if (String(price.card_id || '').toUpperCase() !== baseCode) {
+      throw new Error(`Il prodotto selezionato appartiene a ${price.card_id}, non a ${baseCode}.`)
+    }
+    automaticPrice = priceValue(price as PriceRow)
   }
 
   const sourceImageUrl = String(input.source_image_url).trim()
@@ -652,6 +680,10 @@ const updateCard = async (body: Record<string, unknown>, adminId: string) => {
     raw_data: {
       ...(existing.raw_data || {}),
       variant_label: nullableText(input.variant_label, 120),
+      price_mapping_locked: Boolean(productId && Number.isInteger(productId)),
+      price_mapping_locked_at: productId && Number.isInteger(productId) ? now : null,
+      price_mapping_locked_by: productId && Number.isInteger(productId) ? adminId : null,
+      cardmarket_product_id: productId && Number.isInteger(productId) ? productId : null,
       last_admin_edit_by: adminId,
       last_admin_edit_at: now,
     },
@@ -686,6 +718,8 @@ const updateCard = async (body: Record<string, unknown>, adminId: string) => {
       image_url: mirrored.publicUrl,
       market_price: update.market_price,
       manual_price_override: manualPrice,
+      cardmarket_product_id: update.cardmarket_product_id,
+      price_mapping_locked: Boolean(update.cardmarket_product_id),
     },
   })
 }

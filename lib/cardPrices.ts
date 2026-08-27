@@ -5,28 +5,38 @@ type PriceLookupInput = {
   cardId?: string | null
   name?: string | null
   setName?: string | null
+  referencePrice?: number | null
+  catalogResolved?: boolean
+  cardmarketProductId?: number | null
+  manualPriceOverride?: number | null
+  manualPriceUpdatedAt?: string | null
 }
 
 const compactCardId = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
 const enrichLookupInput = async (input: PriceLookupInput): Promise<PriceLookupInput> => {
-  if (input.setName && input.name) return input
+  if (input.catalogResolved) return input
 
   try {
     const wanted = compactCardId(input.cardId)
-    if (!wanted) return input
+    if (!wanted) return { ...input, catalogResolved: true }
 
     const cards = await getAllCards()
     const match = cards.find((card: any) => compactCardId(card.card_id || card.id) === wanted)
-    if (!match) return input
+    if (!match) return { ...input, catalogResolved: true }
 
     return {
       ...input,
       name: input.name || match.card_name || match.name || null,
-      setName: input.setName || match.set_name || null
+      setName: input.setName || match.set_name || null,
+      referencePrice: toNumberOrNull(match.market_price) ?? toNumberOrNull(match.inventory_price),
+      catalogResolved: true,
+      cardmarketProductId: toNumberOrNull(match.cardmarket_product_id),
+      manualPriceOverride: toNumberOrNull(match.manual_price_override),
+      manualPriceUpdatedAt: match.manual_price_updated_at || null,
     }
   } catch {
-    return input
+    return { ...input, catalogResolved: true }
   }
 }
 
@@ -198,6 +208,7 @@ const convertUsdToEur = (value?: number | null, rate = 1) =>
   value == null ? null : Number((value * rate).toFixed(2))
 
 const toNumberOrNull = (value?: number | string | null) => {
+  if (value == null || value === '') return null
   const number = Number(value)
   return Number.isFinite(number) ? number : null
 }

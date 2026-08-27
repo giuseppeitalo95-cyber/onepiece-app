@@ -135,6 +135,34 @@ const compactCardCode = (value?: string | null) =>
 const priceCache = new Map<string, LivePriceResult | null>()
 const priceCacheKey = (card: { card_id: string; name?: string | null; set_name?: string | null }) =>
   [card.card_id, card.name || '', card.set_name || ''].join('|').toLowerCase()
+const COLLECTION_PRICE_STORAGE_KEY = 'opv-collection-live-prices-v1'
+const COLLECTION_PRICE_STORAGE_MS = 12 * 60 * 60 * 1000
+
+const readStoredCollectionPrices = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COLLECTION_PRICE_STORAGE_KEY) || 'null') as {
+      savedAt?: number
+      prices?: Record<string, number | null>
+    } | null
+    if (!parsed?.savedAt || !parsed.prices || Date.now() - parsed.savedAt > COLLECTION_PRICE_STORAGE_MS) return null
+    return parsed.prices
+  } catch {
+    return null
+  }
+}
+
+const storeCollectionPrices = (prices: Record<string, number | null>) => {
+  if (typeof window === 'undefined') return
+  try {
+    const previous = readStoredCollectionPrices() || {}
+    window.localStorage.setItem(COLLECTION_PRICE_STORAGE_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      prices: { ...previous, ...prices },
+    }))
+  } catch {
+  }
+}
 
 const parseCollectionSet = (cardId: string) => {
   const normalized = (cardId || '').toUpperCase().replace(/_/g, '-')
@@ -206,6 +234,11 @@ export default function Dashboard() {
   const [restoringSoldId, setRestoringSoldId] = useState<string | null>(null)
   const [saleMessage, setSaleMessage] = useState('')
   const detailRunRef = useRef(0)
+
+  useEffect(() => {
+    const stored = readStoredCollectionPrices()
+    if (stored) setAnalyticsLivePrices(stored)
+  }, [])
 
  useEffect(() => {
   if (selectedCard || catalogOpen || analyticsOpen || soldOpen || sellingCard) {
@@ -450,6 +483,7 @@ export default function Dashboard() {
       cardsToSync.map(card => [card.card_id, getLivePriceNumber(prices[card.card_id])] as const)
     )
     setAnalyticsLivePrices(prev => ({ ...prev, ...liveMap }))
+    storeCollectionPrices(liveMap)
     setPricesReady(true)
 
     const missingSavedPrices = cardsToSync
@@ -1019,6 +1053,8 @@ export default function Dashboard() {
   const getAnalyticsPrice = (card: UserCard) => {
     const saved = getSavedPrice(card)
     const live = analyticsLivePrices[card.card_id]
+    const hasLiveResult = Object.prototype.hasOwnProperty.call(analyticsLivePrices, card.card_id)
+    if (!pricesReady && !hasLiveResult) return null
     if (isPriceAnomaly(saved, live)) return live
     return live ?? saved
   }

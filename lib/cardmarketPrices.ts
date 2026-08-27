@@ -71,6 +71,11 @@ type LookupInput = {
   cardId?: string | null
   name?: string | null
   setName?: string | null
+  referencePrice?: number | null
+  catalogResolved?: boolean
+  cardmarketProductId?: number | null
+  manualPriceOverride?: number | null
+  manualPriceUpdatedAt?: string | null
 }
 
 // Cardmarket exports share one metacard across these visually distinct promos.
@@ -106,6 +111,76 @@ const adminClient = () => {
     }
   })
   return cachedAdminClient
+}
+
+const PRICE_ROWS_CACHE_MS = 15 * 60 * 1000
+type PriceRowsCache = {
+  expiresAt: number
+  rows: PriceRow[]
+  byProductId: Map<number, PriceRow>
+  byCardId: Map<string, PriceRow[]>
+}
+let priceRowsCache: PriceRowsCache | null = null
+let priceRowsLoadPromise: Promise<PriceRowsCache> | null = null
+
+const loadPriceRows = async () => {
+  if (priceRowsCache && priceRowsCache.expiresAt > Date.now()) return priceRowsCache
+  if (priceRowsLoadPromise) return priceRowsLoadPromise
+
+  priceRowsLoadPromise = (async () => {
+    const supabase = adminClient()
+    if (!supabase) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+
+    const first = await supabase
+      .from('cardmarket_prices')
+      .select('*', { count: 'exact' })
+      .order('product_id', { ascending: true })
+      .range(0, 999)
+    if (first.error) throw first.error
+
+    const total = first.count ?? first.data?.length ?? 0
+    const pageStarts = Array.from(
+      { length: Math.max(0, Math.ceil(total / 1000) - 1) },
+      (_, index) => (index + 1) * 1000,
+    )
+    const remainingPages = await Promise.all(pageStarts.map(async from => {
+      const { data, error } = await supabase
+        .from('cardmarket_prices')
+        .select('*')
+        .order('product_id', { ascending: true })
+        .range(from, from + 999)
+      if (error) throw error
+      return (data || []) as PriceRow[]
+    }))
+    const rows = [
+      ...((first.data || []) as PriceRow[]),
+      ...remainingPages.flat(),
+    ]
+
+    const byProductId = new Map<number, PriceRow>()
+    const byCardId = new Map<string, PriceRow[]>()
+    for (const row of rows) {
+      byProductId.set(Number(row.product_id), row)
+      byCardId.set(row.card_id, [...(byCardId.get(row.card_id) || []), row])
+    }
+
+    priceRowsCache = {
+      expiresAt: Date.now() + PRICE_ROWS_CACHE_MS,
+      rows,
+      byProductId,
+      byCardId,
+    }
+    return priceRowsCache
+  })().finally(() => {
+    priceRowsLoadPromise = null
+  })
+
+  return priceRowsLoadPromise
+}
+
+export const clearCardmarketPriceCache = () => {
+  priceRowsCache = null
+  priceRowsLoadPromise = null
 }
 
 const normalize = (value?: string | null) =>
@@ -163,8 +238,32 @@ const fetchJson = async <T>(url: string): Promise<T> => {
   return res.json() as Promise<T>
 }
 
-const rowMarketPrice = (row: Pick<PriceRow, 'price_trend' | 'price_avg_7' | 'price_avg_30' | 'price_avg'>) =>
-  row.price_trend ?? row.price_avg_7 ?? row.price_avg_30 ?? row.price_avg ?? null
+const median = (values: number[]) => {
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
+// Cardmarket occasionally publishes a stale TREND value while all recent
+// averages agree on a very different price. Keep TREND in normal cases and
+// replace it only when at least three averages form a tight consensus.
+export const rowMarketPrice = (row: Pick<PriceRow, 'price_trend' | 'price_avg_1' | 'price_avg_7' | 'price_avg_30' | 'price_avg'>) => {
+  const trend = toNumber(row.price_trend)
+  const averages = [row.price_avg, row.price_avg_1, row.price_avg_7, row.price_avg_30]
+    .map(toNumber)
+    .filter((value): value is number => value != null && value > 0)
+
+  if (trend != null && trend > 0 && averages.length >= 3) {
+    const consensus = median(averages)
+    const spread = Math.max(...averages) / Math.min(...averages)
+    const trendDistance = Math.max(trend / consensus, consensus / trend)
+    if (spread <= 3 && trendDistance > 3) return Number(consensus.toFixed(2))
+  }
+
+  return trend ?? toNumber(row.price_avg_7) ?? toNumber(row.price_avg_30) ?? toNumber(row.price_avg) ?? null
+}
 
 const rowReferencePrice = (row: PriceRow) =>
   rowMarketPrice(row) ?? row.price_low ?? null
@@ -209,15 +308,37 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   if (!wantedCardId && !wantedName) return null
 
   let rows: PriceRow[] = []
+  let lookupInput = input
   const exactVariantId = String(input.cardId || '').trim()
   if (exactVariantId) {
-    const { data: mappedCard } = await supabase
-      .from('card_catalog')
-      .select('cardmarket_product_id,manual_price_override,manual_price_updated_at')
-      .eq('variant_id', exactVariantId)
-      .maybeSingle()
+    let mappedCard: {
+      cardmarket_product_id?: number | null
+      manual_price_override?: number | null
+      manual_price_updated_at?: string | null
+      market_price?: number | null
+      inventory_price?: number | null
+    } | null = input.catalogResolved ? {
+      cardmarket_product_id: input.cardmarketProductId,
+      manual_price_override: input.manualPriceOverride,
+      manual_price_updated_at: input.manualPriceUpdatedAt,
+      market_price: input.referencePrice,
+      inventory_price: null,
+    } : null
+
+    if (!input.catalogResolved) {
+      const { data } = await supabase
+        .from('card_catalog')
+        .select('cardmarket_product_id,manual_price_override,manual_price_updated_at,market_price,inventory_price')
+        .ilike('variant_id', exactVariantId)
+        .limit(1)
+        .maybeSingle()
+      mappedCard = data
+    }
+
     const mappedProductId = Number(mappedCard?.cardmarket_product_id || 0)
     const manualPrice = toNumber(mappedCard?.manual_price_override)
+    const storedPrice = toNumber(mappedCard?.market_price) ?? toNumber(mappedCard?.inventory_price)
+    lookupInput = { ...input, referencePrice: storedPrice }
     if (manualPrice != null) {
       return {
         source: 'OPV',
@@ -247,37 +368,52 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
       }
     }
     if (mappedProductId > 0) {
-      const { data: exactPrice } = await supabase
-        .from('cardmarket_prices')
-        .select('*')
-        .eq('product_id', mappedProductId)
-        .maybeSingle()
-      if (exactPrice) rows = [exactPrice as PriceRow]
+      const priceIndex = await loadPriceRows()
+      const exactPrice = priceIndex.byProductId.get(mappedProductId) || null
+      if (exactPrice) rows = [exactPrice]
+
+      // An Admin mapping is authoritative. If a product is temporarily absent
+      // from a new export, never fall through to another variant automatically.
+      if (!exactPrice) {
+        if (storedPrice == null) return null
+        return {
+          source: 'OPV',
+          provider: 'Collegamento prezzo OPV',
+          currency: 'EUR',
+          originalCurrency: 'EUR',
+          exchangeRate: 1,
+          productId: mappedProductId,
+          productUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${mappedProductId}`,
+          productImageUrl: null,
+          productName: input.name || exactVariantId,
+          groupName: input.setName || null,
+          marketPrice: storedPrice,
+          lowPrice: storedPrice,
+          midPrice: storedPrice,
+          highPrice: null,
+          directLowPrice: storedPrice,
+          originalMarketPrice: storedPrice,
+          originalLowPrice: storedPrice,
+          originalMidPrice: storedPrice,
+          originalHighPrice: null,
+          originalDirectLowPrice: storedPrice,
+          priceType: 'Collegamento Admin',
+          modifiedOn: mappedCard?.manual_price_updated_at || new Date().toISOString(),
+        }
+      }
     }
   }
 
   if (rows.length === 0 && wantedCardId) {
-    const { data, error } = await supabase
-      .from('cardmarket_prices')
-      .select('*')
-      .eq('card_id', wantedCardId)
-      .order('product_date_added', { ascending: true, nullsFirst: false })
-      .order('product_id', { ascending: true })
-      .limit(80)
-
-    if (!error && Array.isArray(data)) rows = data as PriceRow[]
+    const priceIndex = await loadPriceRows()
+    rows = [...(priceIndex.byCardId.get(wantedCardId) || [])]
   }
 
   if (rows.length === 0 && wantedName) {
-    const { data, error } = await supabase
-      .from('cardmarket_prices')
-      .select('*')
-      .ilike('clean_name', `%${wantedName}%`)
-      .order('product_date_added', { ascending: true, nullsFirst: false })
-      .order('product_id', { ascending: true })
-      .limit(80)
-
-    if (!error && Array.isArray(data)) rows = data as PriceRow[]
+    const priceIndex = await loadPriceRows()
+    rows = priceIndex.rows
+      .filter(row => normalize(row.clean_name).includes(wantedName))
+      .slice(0, 80)
   }
 
   const wantedVariant = variantRank(input.cardId)
@@ -286,12 +422,18 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     ? rows.find(row => row.product_id === exactProductId)
     : null
   const scoredBest = rows
-    .map(row => ({ row, score: scoreRow(row, input) }))
+    .map(row => ({ row, score: scoreRow(row, lookupInput) }))
     .filter(item => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
       if (a.row.variant_rank !== b.row.variant_rank) {
         return Math.abs(a.row.variant_rank - wantedVariant) - Math.abs(b.row.variant_rank - wantedVariant)
+      }
+      const referencePrice = toNumber(lookupInput.referencePrice)
+      if (referencePrice != null && referencePrice > 0) {
+        const aDistance = priceDistance(rowReferencePrice(a.row), referencePrice)
+        const bDistance = priceDistance(rowReferencePrice(b.row), referencePrice)
+        if (aDistance !== bDistance) return aDistance - bDistance
       }
       const aDate = new Date(a.row.product_date_added || 0).getTime()
       const bDate = new Date(b.row.product_date_added || 0).getTime()
@@ -523,6 +665,8 @@ export const syncCardmarketExports = async () => {
     if (error) throw error
     saved += chunk.length
   }
+
+  clearCardmarketPriceCache()
 
   return {
     saved,

@@ -1,4 +1,5 @@
 import { getLiveCardPrice } from '@/lib/cardPrices'
+import { getCatalogCardsByVariantIds } from '@/lib/cardData'
 import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
 type PriceRequestCard = {
@@ -21,6 +22,15 @@ export async function POST(req: Request) {
     const body = await req.json()
     const cards = Array.isArray(body?.cards) ? body.cards.slice(0, 160) as PriceRequestCard[] : []
 
+    const requestedIds = cards
+      .map(card => String(card.cardId || card.card_id || card.id || '').trim())
+      .filter(Boolean)
+    const catalogCards = await getCatalogCardsByVariantIds(requestedIds).catch(() => [])
+    const catalogById = new Map(catalogCards.map(card => [
+      String(card.card_id || card.id || '').toUpperCase(),
+      card,
+    ]))
+
     const prices: Record<string, Awaited<ReturnType<typeof getLiveCardPrice>> | null> = {}
 
     for (let index = 0; index < cards.length; index += 8) {
@@ -28,11 +38,17 @@ export async function POST(req: Request) {
       const results = await Promise.all(chunk.map(async (card) => {
         const cardId = card.cardId || card.card_id || card.id || ''
         if (!cardId) return [cardId, null] as const
+        const catalogCard = catalogById.get(String(cardId).toUpperCase())
 
         const price = await getLiveCardPrice({
           cardId,
-          name: card.name,
-          setName: card.setName || card.set_name
+          name: card.name || catalogCard?.name || catalogCard?.card_name,
+          setName: card.setName || card.set_name || catalogCard?.set_name,
+          referencePrice: catalogCard?.market_price ?? catalogCard?.inventory_price ?? null,
+          catalogResolved: true,
+          cardmarketProductId: catalogCard?.cardmarket_product_id ?? null,
+          manualPriceOverride: catalogCard?.manual_price_override ?? null,
+          manualPriceUpdatedAt: catalogCard?.manual_price_updated_at ?? null,
         })
 
         return [cardId, priceValue(price) == null ? null : price] as const

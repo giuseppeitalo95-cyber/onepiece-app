@@ -53,6 +53,7 @@ type CardDraft = {
   market_price: number | null
   manual_price_enabled: boolean
   manual_price_override: number | string
+  price_mapping_locked?: boolean
 }
 
 const fieldClass = 'w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3.5 py-3 text-sm text-white outline-none transition focus:border-cyan-200'
@@ -140,6 +141,7 @@ export default function CatalogCardEditor() {
       market_price: candidate.price,
       manual_price_enabled: false,
       manual_price_override: '',
+      price_mapping_locked: true,
     } : current)
     setMessage(`Prodotto Cardmarket ${candidate.product_id} selezionato. Salva per collegarlo alla carta.`)
   }
@@ -163,6 +165,8 @@ export default function CatalogCardEditor() {
         ...current,
         preview_image_url: data.card.image_url || current.preview_image_url,
         market_price: data.card.market_price,
+        cardmarket_product_id: data.card.cardmarket_product_id ?? current.cardmarket_product_id,
+        price_mapping_locked: Boolean(data.card.price_mapping_locked),
       } : current)
       setMessage(`Carta ${data.card.variant_id} aggiornata correttamente.`)
     } catch (error) {
@@ -247,10 +251,16 @@ export default function CatalogCardEditor() {
               <p className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-3 text-sm text-amber-100">Nessuna variante di prezzo trovata per questo codice.</p>
             )}
             {card.cardmarket_product_id ? (
-              <a href={candidates.find(candidate => candidate.product_id === Number(card.cardmarket_product_id))?.product_url || card.cardmarket_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-100 hover:text-white">
-                Apri prodotto selezionato <ExternalLink size={13} />
-              </a>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <a href={candidates.find(candidate => candidate.product_id === Number(card.cardmarket_product_id))?.product_url || card.cardmarket_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-100 hover:text-white">
+                  Apri prodotto selezionato <ExternalLink size={13} />
+                </a>
+                <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-1 text-[10px] font-black uppercase text-emerald-100">
+                  Collegamento fisso ID {card.cardmarket_product_id}
+                </span>
+              </div>
             ) : null}
+            {card.cardmarket_product_id ? <p className="mt-2 text-xs text-slate-400">Gli aggiornamenti cambieranno il prezzo, ma non il prodotto o la variante selezionata.</p> : null}
           </section>
 
         <section className="rounded-[1.75rem] border border-white/10 bg-slate-900/90 p-5">
