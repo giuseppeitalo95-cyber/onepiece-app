@@ -288,7 +288,10 @@ export const getCatalogCardsByBaseIds = async (values: string[]) => {
 export const getCatalogCardsByVariantIds = async (values: string[]) => {
   const client = requireServiceClient()
   const variantIds = [...new Set(values
-    .map(value => String(value || '').trim().toUpperCase())
+    .map(value => String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/_P(\d+)$/i, '_p$1'))
     .filter(Boolean))]
   const rows: RawCard[] = []
 

@@ -47,7 +47,7 @@ export async function POST(req: Request) {
           name: card.name || catalogCard?.name || catalogCard?.card_name,
           setName: card.setName || card.set_name || catalogCard?.set_name,
           referencePrice: catalogCard?.market_price ?? catalogCard?.inventory_price ?? null,
-          catalogResolved: true,
+          catalogResolved: Boolean(catalogCard),
           cardmarketProductId: catalogCard?.cardmarket_product_id ?? null,
           manualPriceOverride: catalogCard?.manual_price_override ?? null,
           manualPriceUpdatedAt: catalogCard?.manual_price_updated_at ?? null,
