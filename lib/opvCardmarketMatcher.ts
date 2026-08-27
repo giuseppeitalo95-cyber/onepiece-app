@@ -1,4 +1,4 @@
-export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.0.0'
+export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.1.0'
 
 export type OpvCardmarketCandidate = {
   product_id: number
@@ -39,9 +39,39 @@ export const OPV_CARDMARKET_REGRESSION_CASES = [
   {
     id: 'st10-006-english-base',
     cardId: 'ST10-006',
+    name: 'Monkey.D.Luffy',
     setName: '-The Three Captains-[ST-10]',
+    referencePrice: 2.75,
     expectedProductId: 744752,
     lesson: 'Select the English ST10 expansion before Cardmarket version order.',
+  },
+  {
+    id: 'eb03-013-base-when-english-expansion-only-has-alt',
+    cardId: 'EB03-013',
+    name: 'Carrot',
+    setName: '-ONE PIECE HEROINES EDITION- [EB-03]',
+    referencePrice: 0.18,
+    expectedProductId: 858289,
+    expansionLesson: {
+      expansionId: 6449,
+      language: 'en',
+      evidence: 'archivio immagini Cardmarket EB03',
+    },
+    lesson: 'Do not relabel the only English alternate product as V.1 when the base version is absent.',
+  },
+  {
+    id: 'eb03-013-alt-in-english-expansion',
+    cardId: 'EB03-013_p1',
+    name: 'Carrot',
+    setName: '-ONE PIECE HEROINES EDITION- [EB-03]',
+    referencePrice: 5.37,
+    expectedProductId: 871978,
+    expansionLesson: {
+      expansionId: 6449,
+      language: 'en',
+      evidence: 'archivio immagini Cardmarket EB03',
+    },
+    lesson: 'Keep the English alternate mapped to Cardmarket V.2.',
   },
 ] as const
 
@@ -188,7 +218,10 @@ const priceDistance = (left?: number | null, right?: number | null) => {
   return Math.abs(Math.log(left / right))
 }
 
-const expansionVersions = (rows: OpvCardmarketCandidate[]) => {
+const expansionVersions = (
+  rows: OpvCardmarketCandidate[],
+  trustedCompleteExpansionId?: number | null,
+) => {
   const versionByProduct = new Map<number, number>()
   const grouped = new Map<number, OpvCardmarketCandidate[]>()
 
@@ -197,7 +230,19 @@ const expansionVersions = (rows: OpvCardmarketCandidate[]) => {
     grouped.set(row.expansion_id, [...(grouped.get(row.expansion_id) || []), row])
   }
 
-  for (const expansionRows of grouped.values()) {
+  for (const [expansionId, expansionRows] of grouped) {
+    // Some Cardmarket language expansions contain only an alternate printing.
+    // Its stored rank still carries the missing V.1 information; resetting a
+    // lone rank-1 product to V.1 would make the alternate price become the base.
+    if (
+      expansionRows.length === 1
+      && expansionRows[0].variant_rank > 0
+      && expansionId !== trustedCompleteExpansionId
+    ) {
+      versionByProduct.set(expansionRows[0].product_id, expansionRows[0].variant_rank + 1)
+      continue
+    }
+
     expansionRows
       .sort((left, right) => {
         const leftDate = new Date(left.product_date_added || 0).getTime()
@@ -237,7 +282,18 @@ export const selectOpvCardmarketCandidate = ({
   const lesson = expansionLesson || (isStandardSetPrinting(input, wantedSetCode)
     ? OPV_CARDMARKET_EXPANSION_LESSONS[wantedSetCode]
     : null)
-  const versionByProduct = expansionVersions(candidates)
+  const verifiedLesson = OPV_CARDMARKET_EXPANSION_LESSONS[wantedSetCode]
+  const trustedCompleteExpansionId = verifiedLesson?.expansionId === lesson?.expansionId
+    ? verifiedLesson.expansionId
+    : null
+  const versionByProduct = expansionVersions(candidates, trustedCompleteExpansionId)
+  const wantedVersion = wantedVariant + 1
+  const lessonHasWantedVersion = lesson
+    ? candidates.some(candidate => (
+        candidate.expansion_id === lesson.expansionId
+        && versionByProduct.get(candidate.product_id) === wantedVersion
+      ))
+    : false
 
   const ranked = candidates
     .map(candidate => {
@@ -259,16 +315,21 @@ export const selectOpvCardmarketCandidate = ({
       }
 
       if (lesson) {
-        if (candidate.expansion_id === lesson.expansionId) {
+        if (candidate.expansion_id === lesson.expansionId && lessonHasWantedVersion) {
           score += 240
           reasons.push(`espansione inglese verificata: ${lesson.evidence}`)
-          const wantedVersion = wantedVariant + 1
           if (expansionVersion === wantedVersion) {
             score += 100
             reasons.push(`versione Cardmarket V.${wantedVersion} esatta nell'espansione`)
           } else if (expansionVersion != null) {
             score -= Math.abs(expansionVersion - wantedVersion) * 45
           }
+        } else if (candidate.expansion_id === lesson.expansionId) {
+          score -= 120
+          reasons.push(`espansione inglese priva della V.${wantedVersion} richiesta`)
+        } else if (expansionVersion === wantedVersion || candidate.variant_rank === wantedVariant) {
+          score += 90
+          reasons.push(`V.${wantedVersion} recuperata da un'altra espansione Cardmarket`)
         } else {
           score -= 90
           reasons.push('espansione o lingua differente')
