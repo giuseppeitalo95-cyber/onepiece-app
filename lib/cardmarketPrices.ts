@@ -1,5 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getAllCards } from './cardData'
+import {
+  discoverOpvEnglishExpansion,
+  OPV_CARDMARKET_MATCHER_VERSION,
+  selectOpvCardmarketCandidate,
+} from './opvCardmarketMatcher'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const PRODUCT_CATALOG_URL = 'https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_18.json'
@@ -209,14 +214,6 @@ const variantRank = (value?: string | null) => {
 const variantHintText = (value?: string | null) =>
   /\b(alternate|parallel|special|manga|treasure|wanted|winner|judge|super\s*parallel|anniversary|don!!)\b/i.test(value || '')
 
-const specialVariantKind = (input: LookupInput) => {
-  const text = normalize([input.cardId, input.name, input.setName].filter(Boolean).join(' '))
-  if (/\bwinner\b/.test(text)) return 'winner'
-  if (/\bjudge\b/.test(text)) return 'judge'
-  if (/\bdon\b/.test(text)) return 'don'
-  return null
-}
-
 const parseProductCardId = (name?: string | null) =>
   (name || '').match(/\(((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3})\)/i)?.[1]?.toUpperCase() || ''
 
@@ -250,6 +247,9 @@ const median = (values: number[]) => {
 // averages agree on a very different price. Keep TREND in normal cases and
 // replace it only when at least three averages form a tight consensus.
 export const rowMarketPrice = (row: Pick<PriceRow, 'price_trend' | 'price_avg_1' | 'price_avg_7' | 'price_avg_30' | 'price_avg'>) => {
+  const sevenDayAverage = toNumber(row.price_avg_7)
+  if (sevenDayAverage != null && sevenDayAverage > 0) return sevenDayAverage
+
   const trend = toNumber(row.price_trend)
   const averages = [row.price_avg, row.price_avg_1, row.price_avg_7, row.price_avg_30]
     .map(toNumber)
@@ -262,7 +262,7 @@ export const rowMarketPrice = (row: Pick<PriceRow, 'price_trend' | 'price_avg_1'
     if (spread <= 3 && trendDistance > 3) return Number(consensus.toFixed(2))
   }
 
-  return trend ?? toNumber(row.price_avg_7) ?? toNumber(row.price_avg_30) ?? toNumber(row.price_avg) ?? null
+  return trend ?? toNumber(row.price_avg_30) ?? toNumber(row.price_avg) ?? null
 }
 
 const rowReferencePrice = (row: PriceRow) =>
@@ -271,32 +271,6 @@ const rowReferencePrice = (row: PriceRow) =>
 const priceDistance = (left: number | null, right: number | null) => {
   if (left == null || right == null || left <= 0 || right <= 0) return Number.POSITIVE_INFINITY
   return Math.abs(Math.log(left / right))
-}
-
-const scoreRow = (row: PriceRow, input: LookupInput) => {
-  const wantedCardId = baseCardId(input.cardId)
-  const specialKind = specialVariantKind(input)
-  const wantedVariant = specialKind ? 0 : variantRank(input.cardId)
-  const wantedName = normalize(input.name)
-  const rowName = normalize(row.clean_name || row.product_name)
-  let score = 0
-
-  if (wantedCardId && row.card_id === wantedCardId) score += 120
-  if (wantedName && rowName === wantedName) score += 40
-  else if (wantedName && rowName.includes(wantedName)) score += 18
-
-  if (row.variant_rank === wantedVariant) score += wantedVariant > 0 ? 70 : 55
-  else if (wantedVariant > 0) score -= Math.abs(row.variant_rank - wantedVariant) * 28
-  else if (row.variant_rank > 0) score -= specialKind ? 6 + row.variant_rank * 2 : 35 + row.variant_rank * 10
-
-  const price = rowReferencePrice(row)
-  if (price != null && price > 0) score += 12
-  if (specialKind && price != null && price > 0) {
-    score += Math.min(90, Math.log10(price + 1) * 58)
-  }
-  if (specialKind && rowName.includes(specialKind)) score += 80
-
-  return score
 }
 
 export const getCardmarketExportPrice = async (input: LookupInput) => {
@@ -416,37 +390,22 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
       .slice(0, 80)
   }
 
-  const wantedVariant = variantRank(input.cardId)
   const exactProductId = PRODUCT_OVERRIDES[(input.cardId || '').trim().toUpperCase()]
   const exactRow = exactProductId
     ? rows.find(row => row.product_id === exactProductId)
     : null
-  const scoredBest = rows
-    .map(row => ({ row, score: scoreRow(row, lookupInput) }))
-    .filter(item => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score
-      if (a.row.variant_rank !== b.row.variant_rank) {
-        return Math.abs(a.row.variant_rank - wantedVariant) - Math.abs(b.row.variant_rank - wantedVariant)
-      }
-      const referencePrice = toNumber(lookupInput.referencePrice)
-      if (referencePrice != null && referencePrice > 0) {
-        const aDistance = priceDistance(rowReferencePrice(a.row), referencePrice)
-        const bDistance = priceDistance(rowReferencePrice(b.row), referencePrice)
-        if (aDistance !== bDistance) return aDistance - bDistance
-      }
-      const aDate = new Date(a.row.product_date_added || 0).getTime()
-      const bDate = new Date(b.row.product_date_added || 0).getTime()
-      if (aDate !== bDate) return bDate - aDate
-      return a.row.product_id - b.row.product_id
-    })[0]
-  const best = exactRow
-    ? { row: exactRow, score: Number.MAX_SAFE_INTEGER }
-    : scoredBest
+  const expansionLesson = exactRow ? null : await discoverOpvEnglishExpansion(lookupInput, rows)
+  const matched = exactRow ? null : selectOpvCardmarketCandidate({
+    input: lookupInput,
+    candidates: rows,
+    priceOf: candidate => rowReferencePrice(candidate as PriceRow),
+    expansionLesson,
+  })
+  const best = exactRow || (matched?.candidate as PriceRow | undefined)
 
   if (!best) return null
 
-  const marketPrice = rowMarketPrice(best.row) ?? best.row.price_low
+  const marketPrice = rowMarketPrice(best) ?? best.price_low
   if (marketPrice == null) return null
 
   return {
@@ -455,23 +414,26 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     currency: 'EUR',
     originalCurrency: 'EUR',
     exchangeRate: 1,
-    productId: best.row.product_id,
-    productUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${best.row.product_id}`,
+    productId: best.product_id,
+    productUrl: `https://www.cardmarket.com/en/OnePiece/Products/Singles?idProduct=${best.product_id}`,
     productImageUrl: null,
-    productName: best.row.product_name,
-    groupName: best.row.expansion_id ? `Cardmarket expansion ${best.row.expansion_id}` : input.setName || null,
+    productName: best.product_name,
+    groupName: best.expansion_id ? `Cardmarket expansion ${best.expansion_id}` : input.setName || null,
     marketPrice,
-    lowPrice: best.row.price_low,
-    midPrice: best.row.price_avg,
+    lowPrice: best.price_low,
+    midPrice: best.price_avg,
     highPrice: null,
-    directLowPrice: best.row.price_low_ex_plus ?? best.row.price_low,
+    directLowPrice: best.price_low_ex_plus ?? best.price_low,
     originalMarketPrice: marketPrice,
-    originalLowPrice: best.row.price_low,
-    originalMidPrice: best.row.price_avg,
+    originalLowPrice: best.price_low,
+    originalMidPrice: best.price_avg,
     originalHighPrice: null,
-    originalDirectLowPrice: best.row.price_low_ex_plus ?? best.row.price_low,
-    priceType: best.row.variant_rank > 0 ? `Variant ${best.row.variant_rank}` : 'Base',
-    modifiedOn: best.row.source_created_at || best.row.synced_at
+    originalDirectLowPrice: best.price_low_ex_plus ?? best.price_low,
+    priceType: matched?.expansionVersion ? `Cardmarket V.${matched.expansionVersion}` : best.variant_rank > 0 ? `Variant ${best.variant_rank}` : 'Base',
+    modifiedOn: best.source_created_at || best.synced_at,
+    matchMethod: exactRow ? 'OPV product override' : OPV_CARDMARKET_MATCHER_VERSION,
+    matchConfidence: exactRow ? 'high' : matched?.confidence || 'low',
+    matchReasons: exactRow ? ['override OPV verificato'] : matched?.reasons || [],
   }
 }
 

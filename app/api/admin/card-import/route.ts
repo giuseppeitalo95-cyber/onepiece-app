@@ -5,6 +5,7 @@ import { clearLiveCardPriceCache } from '@/lib/cardPrices'
 import { refreshCatalogSyncState } from '@/lib/cardCatalogSync'
 import { mirrorCardImage } from '@/lib/r2Storage'
 import { requireServiceClient } from '@/lib/serverSupabase'
+import { rowMarketPrice } from '@/lib/cardmarketPrices'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -115,30 +116,7 @@ const nullableNumber = (value: unknown) => {
   return Number.isFinite(number) ? number : null
 }
 
-const median = (values: number[]) => {
-  const sorted = [...values].sort((left, right) => left - right)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 0
-    ? (sorted[middle - 1] + sorted[middle]) / 2
-    : sorted[middle]
-}
-
-const priceValue = (row: PriceRow) => {
-  const trend = nullableNumber(row.price_trend)
-  const averages = [row.price_avg, row.price_avg_1, row.price_avg_7, row.price_avg_30]
-    .map(nullableNumber)
-    .filter((value): value is number => value != null && value > 0)
-
-  if (trend != null && trend > 0 && averages.length >= 3) {
-    const consensus = median(averages)
-    const spread = Math.max(...averages) / Math.min(...averages)
-    const trendDistance = Math.max(trend / consensus, consensus / trend)
-    if (spread <= 3 && trendDistance > 3) return Number(consensus.toFixed(2))
-  }
-
-  return trend ?? nullableNumber(row.price_avg_7) ?? nullableNumber(row.price_avg_30)
-    ?? nullableNumber(row.price_avg) ?? nullableNumber(row.price_low)
-}
+const priceValue = (row: PriceRow) => rowMarketPrice(row) ?? nullableNumber(row.price_low)
 
 const buildPriceCandidates = async (priceRows: PriceRow[], folders: string[], preferredVersion?: number) => {
   const imageUrls = await Promise.all(priceRows.map(row => probeImage(row, folders)))

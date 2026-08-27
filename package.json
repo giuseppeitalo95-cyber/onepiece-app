@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync:catalog": "tsx scripts/sync-card-catalog.ts"
+    "sync:catalog": "tsx scripts/sync-card-catalog.ts",
+    "test:price-matcher": "tsx scripts/test-price-matcher.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1088.0",
