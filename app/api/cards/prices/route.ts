@@ -27,7 +27,9 @@ export async function POST(req: Request) {
       .filter(Boolean)
     const catalogCards = await getCatalogCardsByVariantIds(requestedIds).catch(() => [])
     const catalogById = new Map(catalogCards.map(card => [
-      String(card.card_id || card.id || '').toUpperCase(),
+      // card_id is the shared base code; id is the exact catalog variant_id.
+      // Indexing variants by card_id made _p1/_p2/_p3 overwrite each other.
+      String(card.id || card.card_id || '').toUpperCase(),
       card,
     ]))
 
