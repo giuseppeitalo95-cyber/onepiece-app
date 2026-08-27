@@ -283,7 +283,7 @@ export const selectOpvCardmarketCandidate = ({
     ? OPV_CARDMARKET_EXPANSION_LESSONS[wantedSetCode]
     : null)
   const verifiedLesson = OPV_CARDMARKET_EXPANSION_LESSONS[wantedSetCode]
-  const trustedCompleteExpansionId = verifiedLesson?.expansionId === lesson?.expansionId
+  const trustedCompleteExpansionId = verifiedLesson && lesson && verifiedLesson.expansionId === lesson.expansionId
     ? verifiedLesson.expansionId
     : null
   const versionByProduct = expansionVersions(candidates, trustedCompleteExpansionId)

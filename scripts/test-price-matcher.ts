@@ -43,4 +43,18 @@ for (const regression of OPV_CARDMARKET_REGRESSION_CASES) {
   }
 }
 
-console.log(`OPV price matcher: ${OPV_CARDMARKET_REGRESSION_CASES.length} regressione verificata.`)
+const lessonlessMatch = selectOpvCardmarketCandidate({
+  input: {
+    cardId: 'EB03-013',
+    name: 'Carrot',
+    referencePrice: 0.18,
+  },
+  candidates: candidates.filter(candidate => candidate.card_id === 'EB03-013'),
+  priceOf: candidate => sevenDayPrice.get(candidate.product_id) ?? null,
+})
+
+if (lessonlessMatch?.candidate.product_id !== 858289) {
+  throw new Error(`fallback senza espansione: atteso 858289, ricevuto ${lessonlessMatch?.candidate.product_id || 'null'}`)
+}
+
+console.log(`OPV price matcher: ${OPV_CARDMARKET_REGRESSION_CASES.length + 1} regressioni verificate.`)
