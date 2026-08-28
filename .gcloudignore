@@ -1,6 +1,7 @@
 .git
 .gitignore
 .next
+.optimizer
 .vercel
 node_modules
 npm-debug.log*
