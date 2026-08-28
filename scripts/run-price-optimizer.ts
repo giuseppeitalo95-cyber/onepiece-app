@@ -104,17 +104,34 @@ const foldersFor = (cardId: string, setName?: string | null) => {
   const code = cardId.split('-')[0].toUpperCase()
   const starter = code.match(/^ST(\d{2})$/)
   const standard = starter ? `ST-${starter[1]}` : code
-  const text = (setName || '').toLowerCase()
+  const rawSetName = setName || ''
+  const text = rawSetName.toLowerCase()
+  const namedFolders = [...rawSetName.matchAll(/\[([a-z0-9-]+)\]/gi)]
+    .flatMap(match => {
+      const folder = match[1].toUpperCase()
+      return [folder, folder.replaceAll('-', ''), ...folder.split('-')]
+    })
+  const starterSet = rawSetName.match(/starter deck\s*(\d{1,2})/i)
+  if (starterSet) {
+    const number = starterSet[1].padStart(2, '0')
+    namedFolders.push(`ST${number}`, `ST-${number}`)
+  }
+  const premiumBooster = rawSetName.match(/premium booster\s*-?the best-?(?:\s*vol\.?\s*(\d+))?/i)
+  if (premiumBooster) {
+    const number = (premiumBooster[1] || '1').padStart(2, '0')
+    namedFolders.push(`PRB${number}`, `PRB-${number}`)
+  }
   const specialFirst = /promo|winner|judge|regional|anniversary|tournament|premium|one piece day/.test(text)
   const folders = specialFirst
-    ? [...SPECIAL_FOLDERS, standard, code]
-    : [standard, code, `${standard}-JP`, `${code}-JP`, ...SPECIAL_FOLDERS]
+    ? [...namedFolders, ...SPECIAL_FOLDERS, standard, code]
+    : [standard, code, ...namedFolders, `${standard}-JP`, `${code}-JP`, ...SPECIAL_FOLDERS]
   return [...new Set(folders)]
 }
 
-const imageUrlCache = new Map<number, Promise<string | null>>()
+const imageUrlCache = new Map<string, Promise<string | null>>()
 const resolveCardmarketImage = (row: PriceRow, folders: string[]) => {
-  const cached = imageUrlCache.get(row.product_id)
+  const cacheKey = `${row.product_id}:${folders.join(',')}`
+  const cached = imageUrlCache.get(cacheKey)
   if (cached) return cached
 
   const promise = (async () => {
@@ -144,7 +161,7 @@ const resolveCardmarketImage = (row: PriceRow, folders: string[]) => {
     return null
   })()
 
-  imageUrlCache.set(row.product_id, promise)
+  imageUrlCache.set(cacheKey, promise)
   return promise
 }
 
@@ -268,14 +285,25 @@ const main = async () => {
 
   for (let groupIndex = 0; groupIndex < riskyGroups.length; groupIndex += 1) {
     const group = riskyGroups[groupIndex]
-    const folders = foldersFor(group.code, group.cards[0]?.set_name)
-    const candidateImages = await mapLimit(group.candidates, concurrency, async candidate => {
-      const imageUrl = await resolveCardmarketImage(candidate, folders)
-      const signature = imageUrl ? await imageSignature(imageUrl) : null
-      return { candidate, imageUrl, signature }
-    })
+    const candidateImagesByFolders = new Map<string, Promise<Array<{
+      candidate: PriceRow
+      imageUrl: string | null
+      signature: ImageSignature | null
+    }>>>()
 
     for (const card of group.cards) {
+      const folders = foldersFor(group.code, card.set_name)
+      const foldersKey = folders.join(',')
+      let candidateImagesPromise = candidateImagesByFolders.get(foldersKey)
+      if (!candidateImagesPromise) {
+        candidateImagesPromise = mapLimit(group.candidates, concurrency, async candidate => {
+          const imageUrl = await resolveCardmarketImage(candidate, folders)
+          const signature = imageUrl ? await imageSignature(imageUrl) : null
+          return { candidate, imageUrl, signature }
+        })
+        candidateImagesByFolders.set(foldersKey, candidateImagesPromise)
+      }
+      const candidateImages = await candidateImagesPromise
       const sourceImageUrl = card.r2_image_url || card.source_image_url
       const sourceSignature = sourceImageUrl ? await imageSignature(sourceImageUrl) : null
       const visualCandidates: VisualCandidate[] = sourceSignature
