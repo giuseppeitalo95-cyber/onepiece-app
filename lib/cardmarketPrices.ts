@@ -5,6 +5,7 @@ import {
   OPV_CARDMARKET_MATCHER_VERSION,
   selectOpvCardmarketCandidate,
 } from './opvCardmarketMatcher'
+import { getOpvOptimizerLesson } from './opvCardmarketOptimizerLessons'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const PRODUCT_CATALOG_URL = 'https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_18.json'
@@ -282,6 +283,7 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
   if (!wantedCardId && !wantedName) return null
 
   let rows: PriceRow[] = []
+  let mappedPriceRow: PriceRow | null = null
   let lookupInput = input
   const exactVariantId = String(input.cardId || '').trim()
   if (exactVariantId) {
@@ -344,7 +346,10 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     if (mappedProductId > 0) {
       const priceIndex = await loadPriceRows()
       const exactPrice = priceIndex.byProductId.get(mappedProductId) || null
-      if (exactPrice) rows = [exactPrice]
+      if (exactPrice) {
+        rows = [exactPrice]
+        mappedPriceRow = exactPrice
+      }
 
       // An Admin mapping is authoritative. If a product is temporarily absent
       // from a new export, never fall through to another variant automatically.
@@ -390,10 +395,12 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
       .slice(0, 80)
   }
 
+  const optimizerLesson = getOpvOptimizerLesson(input.cardId)
   const exactProductId = PRODUCT_OVERRIDES[(input.cardId || '').trim().toUpperCase()]
-  const exactRow = exactProductId
-    ? rows.find(row => row.product_id === exactProductId)
-    : null
+    || optimizerLesson?.productId
+  const exactRow = mappedPriceRow || (exactProductId
+    ? rows.find(row => row.product_id === exactProductId) || null
+    : null)
   const expansionLesson = exactRow ? null : await discoverOpvEnglishExpansion(lookupInput, rows)
   const matched = exactRow ? null : selectOpvCardmarketCandidate({
     input: lookupInput,
@@ -431,9 +438,21 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     originalDirectLowPrice: best.price_low_ex_plus ?? best.price_low,
     priceType: matched?.expansionVersion ? `Cardmarket V.${matched.expansionVersion}` : best.variant_rank > 0 ? `Variant ${best.variant_rank}` : 'Base',
     modifiedOn: best.source_created_at || best.synced_at,
-    matchMethod: exactRow ? 'OPV product override' : OPV_CARDMARKET_MATCHER_VERSION,
+    matchMethod: exactRow
+      ? optimizerLesson?.productId === exactRow.product_id
+        ? `OPV ${optimizerLesson.group}`
+        : mappedPriceRow
+          ? 'Collegamento prodotto OPV'
+          : 'OPV product override'
+      : OPV_CARDMARKET_MATCHER_VERSION,
     matchConfidence: exactRow ? 'high' : matched?.confidence || 'low',
-    matchReasons: exactRow ? ['override OPV verificato'] : matched?.reasons || [],
+    matchReasons: exactRow
+      ? optimizerLesson?.productId === exactRow.product_id
+        ? [`immagine Cardmarket verificata (${optimizerLesson.evidence}, ${optimizerLesson.similarity.toFixed(4)})`]
+        : mappedPriceRow
+          ? ['prodotto selezionato e bloccato nel catalogo OPV']
+          : ['override OPV verificato']
+      : matched?.reasons || [],
   }
 }
 

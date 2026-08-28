@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "optimizer:apply": "tsx scripts/apply-price-optimizer-lessons.ts",
+    "optimizer:prices": "tsx scripts/run-price-optimizer.ts",
+    "optimizer:render": "tsx scripts/render-price-optimizer.ts",
     "sync:catalog": "tsx scripts/sync-card-catalog.ts",
     "test:price-matcher": "tsx scripts/test-price-matcher.ts"
   },
