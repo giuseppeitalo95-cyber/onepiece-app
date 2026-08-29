@@ -73,9 +73,9 @@ if (lessonlessMatch?.candidate.product_id !== 858289) {
 // Every reviewed optimizer row is a regression guard: a future catalog sync
 // may refresh prices, but it must not silently replace the verified printing.
 const latestOptimizerLessons = Object.values(OPV_CARDMARKET_OPTIMIZER_LESSONS)
-  .filter(lesson => /^optimizer-(1[3-7])-critical$/.test(lesson.group))
-if (latestOptimizerLessons.length !== 171) {
-  throw new Error(`optimizer 13-17: attese 171 lezioni, ricevute ${latestOptimizerLessons.length}`)
+  .filter(lesson => /^optimizer-(1[3-9]|2[0-2])-critical$/.test(lesson.group))
+if (latestOptimizerLessons.length !== 334) {
+  throw new Error(`optimizer 13-22: attese 334 lezioni, ricevute ${latestOptimizerLessons.length}`)
 }
 
 console.log(`OPV price matcher: ${OPV_CARDMARKET_REGRESSION_CASES.length + 1} casi dinamici e ${latestOptimizerLessons.length} lezioni verificate.`)

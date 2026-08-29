@@ -1,4 +1,4 @@
-export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.0'
+export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.1'
 
 export type OpvCardmarketCandidate = {
   product_id: number
@@ -43,6 +43,8 @@ export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson
   OP13: { expansionId: 6187, language: 'en', evidence: 'CARRYING ON HIS WILL (English)' },
   OP15: { expansionId: 6456, language: 'en', evidence: "ADVENTURE ON KAMI'S ISLAND (English)" },
   OP16: { expansionId: 6457, language: 'en', evidence: 'THE TIME OF BATTLE (English)' },
+  // Verified from the English OP17 artwork archive in optimizer group 22.
+  OP17: { expansionId: 6492, language: 'en', evidence: "THE WORLD'S STRONGEST WARRIORS (English)" },
   EB01: { expansionId: 5585, language: 'en', evidence: 'MEMORIAL COLLECTION (English)' },
   EB02: { expansionId: 6028, language: 'en', evidence: 'ANIME 25TH COLLECTION (English)' },
   ST10: {
