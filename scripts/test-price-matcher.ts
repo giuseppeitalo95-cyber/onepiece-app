@@ -3,6 +3,7 @@ import {
   selectOpvCardmarketCandidate,
   type OpvCardmarketCandidate,
 } from '../lib/opvCardmarketMatcher'
+import { OPV_CARDMARKET_OPTIMIZER_LESSONS } from '../lib/opvCardmarketOptimizerLessons'
 
 const candidates: OpvCardmarketCandidate[] = [
   { product_id: 744752, card_id: 'ST10-006', product_name: 'Monkey.D.Luffy (ST10-006)', clean_name: 'Monkey.D.Luffy', expansion_id: 5380, variant_rank: 2, product_date_added: '2023-11-10T05:06:21+01:00' },
@@ -69,4 +70,12 @@ if (lessonlessMatch?.candidate.product_id !== 858289) {
   throw new Error(`fallback senza espansione: atteso 858289, ricevuto ${lessonlessMatch?.candidate.product_id || 'null'}`)
 }
 
-console.log(`OPV price matcher: ${OPV_CARDMARKET_REGRESSION_CASES.length + 1} regressioni verificate.`)
+// Every reviewed optimizer row is a regression guard: a future catalog sync
+// may refresh prices, but it must not silently replace the verified printing.
+const latestOptimizerLessons = Object.values(OPV_CARDMARKET_OPTIMIZER_LESSONS)
+  .filter(lesson => /^optimizer-(1[3-7])-critical$/.test(lesson.group))
+if (latestOptimizerLessons.length !== 171) {
+  throw new Error(`optimizer 13-17: attese 171 lezioni, ricevute ${latestOptimizerLessons.length}`)
+}
+
+console.log(`OPV price matcher: ${OPV_CARDMARKET_REGRESSION_CASES.length + 1} casi dinamici e ${latestOptimizerLessons.length} lezioni verificate.`)

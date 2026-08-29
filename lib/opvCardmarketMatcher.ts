@@ -1,4 +1,4 @@
-export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.1.0'
+export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.0'
 
 export type OpvCardmarketCandidate = {
   product_id: number
@@ -31,6 +31,7 @@ export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson
   OP01: { expansionId: 5229, language: 'en', evidence: 'ROMANCE DAWN (English)' },
   OP02: { expansionId: 5263, language: 'en', evidence: 'PARAMOUNT WAR (English)' },
   OP03: { expansionId: 5364, language: 'en', evidence: 'PILLARS OF STRENGTH (English)' },
+  OP04: { expansionId: 5365, language: 'en', evidence: 'KINGDOMS OF INTRIGUE (English)' },
   OP05: { expansionId: 5426, language: 'en', evidence: 'AWAKENING OF THE NEW ERA (English)' },
   OP06: { expansionId: 5524, language: 'en', evidence: 'WINGS OF THE CAPTAIN (English)' },
   OP07: { expansionId: 5586, language: 'en', evidence: '500 YEARS IN THE FUTURE (English)' },
@@ -38,6 +39,11 @@ export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson
   OP09: { expansionId: 5755, language: 'en', evidence: 'EMPERORS IN THE NEW WORLD (English)' },
   OP10: { expansionId: 5974, language: 'en', evidence: 'ROYAL BLOOD (English)' },
   OP11: { expansionId: 6033, language: 'en', evidence: 'A FIST OF DIVINE SPEED (English)' },
+  OP12: { expansionId: 6186, language: 'en', evidence: 'LEGACY OF THE MASTER (English)' },
+  OP13: { expansionId: 6187, language: 'en', evidence: 'CARRYING ON HIS WILL (English)' },
+  OP15: { expansionId: 6456, language: 'en', evidence: "ADVENTURE ON KAMI'S ISLAND (English)" },
+  OP16: { expansionId: 6457, language: 'en', evidence: 'THE TIME OF BATTLE (English)' },
+  EB01: { expansionId: 5585, language: 'en', evidence: 'MEMORIAL COLLECTION (English)' },
   EB02: { expansionId: 6028, language: 'en', evidence: 'ANIME 25TH COLLECTION (English)' },
   ST10: {
     expansionId: 5380,
