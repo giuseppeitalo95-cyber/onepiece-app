@@ -872,6 +872,79 @@ export const OPV_CARDMARKET_OPTIMIZER_LESSONS: Record<string, OpvOptimizerLesson
     'OP10-111_P1': [817134, 0.9903],
     'OP13-043': [857239, 0.9919],
   }),
+  // Groups 23-24 confirm that Cardmarket set identity is stronger than a
+  // similar-looking product: Anime 25, PRB foil/plain and tournament releases
+  // often reuse the same rules text while belonging to separate products.
+  ...reviewedOptimizerLessons('optimizer-23-critical', {
+    // Anime 25 leaders and Kyros match the EB02 archive, not their older products.
+    'OP05-001_P2': [823518, 0.9897],
+    'OP05-004_P2': [823245, 0.8669],
+    'EB02-006_P2': [888104, 0.9902],
+    'OP06-001_P2': [823523, 0.9946],
+    'EB01-040_P2': [823422, 0.9928],
+    'OP05-001_P1': [747438, 0.9860],
+    'OP05-001': [747437, 0.9889],
+    // Cardmarket splits the same Ivankov art into PRB foil and plain products.
+    'OP05-004_P1': [852345, 0.9860],
+    'OP05-004_R1': [852344, 0.9920],
+    'EB02-006': [823429, 0.9904],
+    'EB02-006_P1': [823430, 0.9897],
+    'OP06-001': [760315, 0.9956],
+    'OP06-001_P1': [760316, 0.9893],
+    'OP15-060_P1': [879981, 0.9882],
+    'OP15-060': [879980, 0.9922],
+    'OP09-005_P1': [827265, 0.9881],
+    // The PRB2 set row wins over a visually identical product from another set.
+    'OP09-005_R1': [852429, 0.9919],
+    'OP16-001': [890525, 0.9931],
+    'OP16-001_P1': [890526, 0.9911],
+    'OP09-001_P2': [829097, 0.9915],
+    'OP09-001_P1': [802859, 0.9895],
+    'OP09-001': [802858, 0.9929],
+    'EB01-040_P1': [768004, 0.9929],
+    'EB01-040': [768003, 0.9943],
+    // These three rows also establish OP14 expansion 6432 as the English set.
+    'OP14-112': [865536, 0.9901],
+    'OP14-112_P2': [865538, 0.9892],
+    'OP14-112_P1': [865537, 0.9908],
+  }),
+  ...reviewedOptimizerLessons('optimizer-24-critical', {
+    // Anime 25 and tournament products have unique artwork and product IDs.
+    'OP08-098_P2': [823540, 0.9920],
+    'OP05-006_P1': [747445, 0.9887],
+    'OP05-006_P3': [799296, 0.9900],
+    'EB03_OP05-006_P1': [873873, 0.9908],
+    'OP11-010_P2': [854476, 0.9912],
+    'OP05-022_P2': [823520, 0.9929],
+    'OP05-002_P2': [823519, 0.9905],
+    'OP08-057_P2': [823538, 0.9923],
+    'OP08-098': [788003, 0.9919],
+    'OP08-098_P1': [788004, 0.9912],
+    'OP05-006_R1': [799295, 0.9902],
+    'OP05-006_P4': [873873, 0.9908],
+    'ST13-014_P1': [766241, 0.9933],
+    // PRB2 foil/plain are separate despite sharing Luffy's artwork.
+    'ST13-014_R1': [852577, 0.9910],
+    'ST13-014_P2': [852578, 0.9882],
+    'OP11-010_P1': [827090, 0.9887],
+    'OP11-010': [827089, 0.9900],
+    'OP05-022': [747465, 0.9890],
+    'OP05-022_P1': [747466, 0.9864],
+    'OP05-002_P1': [747440, 0.9827],
+    'OP05-002': [747439, 0.9877],
+    'OP08-057_P1': [787944, 0.9903],
+    'OP08-057': [787943, 0.9920],
+    'OP13-083_P1': [857290, 0.9913],
+    'OP13-083': [857289, 0.9913],
+    'OP13-083_P2': [857291, 0.9902],
+    'OP08-074_P1': [787973, 0.9886],
+    'OP08-074_R1': [852419, 0.9894],
+    'OP05-115_P4': [799342, 0.9867],
+    // PRB1 reuses Amaru artwork; texture/foil metadata separates the products.
+    'OP05-115_R1': [818042, 0.9878],
+    'OP05-115_P2': [818042, 0.9878],
+    'OP05-115_P3': [799341, 0.9793],
+  }),
 }
 
 export const getOpvOptimizerLesson = (variantId?: string | null) => (

@@ -1,4 +1,4 @@
-export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.1'
+export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.2'
 
 export type OpvCardmarketCandidate = {
   product_id: number
@@ -41,6 +41,8 @@ export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson
   OP11: { expansionId: 6033, language: 'en', evidence: 'A FIST OF DIVINE SPEED (English)' },
   OP12: { expansionId: 6186, language: 'en', evidence: 'LEGACY OF THE MASTER (English)' },
   OP13: { expansionId: 6187, language: 'en', evidence: 'CARRYING ON HIS WILL (English)' },
+  // Verified from the English OP14 product archive in optimizer group 23.
+  OP14: { expansionId: 6432, language: 'en', evidence: "THE AZURE SEA'S SEVEN (English)" },
   OP15: { expansionId: 6456, language: 'en', evidence: "ADVENTURE ON KAMI'S ISLAND (English)" },
   OP16: { expansionId: 6457, language: 'en', evidence: 'THE TIME OF BATTLE (English)' },
   // Verified from the English OP17 artwork archive in optimizer group 22.
