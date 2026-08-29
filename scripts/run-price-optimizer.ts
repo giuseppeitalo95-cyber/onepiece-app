@@ -48,7 +48,7 @@ type VisualCandidate = {
 
 const CATALOG_FIELDS = 'variant_id,base_card_id,name,set_name,rarity,market_price,source_image_url,r2_image_url,cardmarket_product_id,manual_price_override'
 const PRICE_FIELDS = 'product_id,card_id,product_name,clean_name,category_id,expansion_id,variant_rank,product_date_added,price_low,price_trend,price_avg,price_avg_1,price_avg_7,price_avg_30'
-const SPECIAL_FOLDERS = ['UP', 'P', 'JDG', 'STP', 'R', 'OPPR', 'PB-XX', 'MINI', 'DEMO']
+const SPECIAL_FOLDERS = ['UP', 'P', 'JDG', 'STP', 'STR', 'WC', 'R', 'OPPR', 'PB-XX', 'MINI', 'DEMO']
 
 const argumentValue = (name: string) => {
   const inline = process.argv.find(value => value.startsWith(`--${name}=`))
