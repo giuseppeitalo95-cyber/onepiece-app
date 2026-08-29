@@ -12,6 +12,12 @@ const candidates: OpvCardmarketCandidate[] = [
   { product_id: 858289, card_id: 'EB03-013', product_name: 'Carrot (EB03-013)', clean_name: 'Carrot', expansion_id: 6379, variant_rank: 0, product_date_added: '2025-10-10T00:00:00+02:00' },
   { product_id: 858290, card_id: 'EB03-013', product_name: 'Carrot (EB03-013)', clean_name: 'Carrot', expansion_id: 6379, variant_rank: 1, product_date_added: '2025-10-10T00:01:00+02:00' },
   { product_id: 871978, card_id: 'EB03-013', product_name: 'Carrot (EB03-013)', clean_name: 'Carrot', expansion_id: 6449, variant_rank: 1, product_date_added: '2026-01-01T00:00:00+01:00' },
+  { product_id: 700493, card_id: 'OP02-013', product_name: 'Portgas.D.Ace (OP02-013)', clean_name: 'Portgas.D.Ace', expansion_id: 5263, variant_rank: 1, product_date_added: '2023-03-02T10:45:33+00:00' },
+  { product_id: 700821, card_id: 'OP02-013', product_name: 'Portgas.D.Ace (OP02-013)', clean_name: 'Portgas.D.Ace', expansion_id: 5263, variant_rank: 0, product_date_added: '2023-03-03T10:19:21+00:00' },
+  { product_id: 700823, card_id: 'OP02-013', product_name: 'Portgas.D.Ace (OP02-013)', clean_name: 'Portgas.D.Ace', expansion_id: 5263, variant_rank: 2, product_date_added: '2023-03-03T10:19:46+00:00' },
+  { product_id: 759892, card_id: 'OP07-113', product_name: 'Roronoa Zoro (OP07-113)', clean_name: 'Roronoa Zoro', expansion_id: 5587, variant_rank: 0, product_date_added: '2024-03-01T04:20:31+00:00' },
+  { product_id: 775628, card_id: 'OP07-113', product_name: 'Roronoa Zoro (OP07-113)', clean_name: 'Roronoa Zoro', expansion_id: 5586, variant_rank: 2, product_date_added: '2024-06-21T11:53:59+00:00' },
+  { product_id: 817805, card_id: 'OP07-113', product_name: 'Roronoa Zoro (OP07-113)', clean_name: 'Roronoa Zoro', expansion_id: 5303, variant_rank: 8, product_date_added: '2025-03-18T10:51:49+00:00' },
 ]
 
 const sevenDayPrice = new Map<number, number>([
@@ -22,6 +28,12 @@ const sevenDayPrice = new Map<number, number>([
   [858289, 0.13],
   [858290, 5.96],
   [871978, 5.99],
+  [700493, 46.73],
+  [700821, 3.62],
+  [700823, 1617.88],
+  [759892, 0.08],
+  [775628, 0.06],
+  [817805, 563.79],
 ])
 
 for (const regression of OPV_CARDMARKET_REGRESSION_CASES) {

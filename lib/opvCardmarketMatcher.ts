@@ -28,6 +28,17 @@ export type OpvExpansionLesson = {
 // by expansion. These verified lessons identify the English expansion before
 // choosing V.1/V.2 inside it. Add lessons by set, never one-off price hacks.
 export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson> = {
+  OP01: { expansionId: 5229, language: 'en', evidence: 'ROMANCE DAWN (English)' },
+  OP02: { expansionId: 5263, language: 'en', evidence: 'PARAMOUNT WAR (English)' },
+  OP03: { expansionId: 5364, language: 'en', evidence: 'PILLARS OF STRENGTH (English)' },
+  OP05: { expansionId: 5426, language: 'en', evidence: 'AWAKENING OF THE NEW ERA (English)' },
+  OP06: { expansionId: 5524, language: 'en', evidence: 'WINGS OF THE CAPTAIN (English)' },
+  OP07: { expansionId: 5586, language: 'en', evidence: '500 YEARS IN THE FUTURE (English)' },
+  OP08: { expansionId: 5610, language: 'en', evidence: 'TWO LEGENDS (English)' },
+  OP09: { expansionId: 5755, language: 'en', evidence: 'EMPERORS IN THE NEW WORLD (English)' },
+  OP10: { expansionId: 5974, language: 'en', evidence: 'ROYAL BLOOD (English)' },
+  OP11: { expansionId: 6033, language: 'en', evidence: 'A FIST OF DIVINE SPEED (English)' },
+  EB02: { expansionId: 6028, language: 'en', evidence: 'ANIME 25TH COLLECTION (English)' },
   ST10: {
     expansionId: 5380,
     language: 'en',
@@ -72,6 +83,24 @@ export const OPV_CARDMARKET_REGRESSION_CASES = [
       evidence: 'archivio immagini Cardmarket EB03',
     },
     lesson: 'Keep the English alternate mapped to Cardmarket V.2.',
+  },
+  {
+    id: 'op02-013-alt-added-before-base',
+    cardId: 'OP02-013_p1',
+    name: 'Portgas.D.Ace',
+    setName: '-PARAMOUNT WAR- [OP02]',
+    referencePrice: 46.73,
+    expectedProductId: 700493,
+    lesson: 'Use the verified variant rank when Cardmarket added V.2 before V.1.',
+  },
+  {
+    id: 'op07-113-english-base',
+    cardId: 'OP07-113',
+    name: 'Roronoa Zoro',
+    setName: '-500 YEARS IN THE FUTURE- [OP-07]',
+    referencePrice: 0.06,
+    expectedProductId: 775628,
+    lesson: 'Choose the verified English expansion even when the Japanese product was added first.',
   },
 ] as const
 
@@ -240,6 +269,15 @@ const expansionVersions = (
       && expansionId !== trustedCompleteExpansionId
     ) {
       versionByProduct.set(expansionRows[0].product_id, expansionRows[0].variant_rank + 1)
+      continue
+    }
+
+    // Cardmarket can add an alternate before the base product, so date order
+    // is not a reliable V.1/V.2 signal. OPV's synchronized variant rank is
+    // reconstructed from the source-card references and remains stable.
+    const ranks = expansionRows.map(row => row.variant_rank)
+    if (expansionRows.length > 1 && new Set(ranks).size === expansionRows.length) {
+      for (const row of expansionRows) versionByProduct.set(row.product_id, row.variant_rank + 1)
       continue
     }
 
