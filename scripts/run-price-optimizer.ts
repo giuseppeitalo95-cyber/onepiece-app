@@ -130,6 +130,12 @@ const foldersFor = (cardId: string, setName?: string | null) => {
     const number = (premiumBooster[1] || '1').padStart(2, '0')
     namedFolders.push(`PRB${number}`, `PRB-${number}`)
   }
+  const learnTogether = rawSetName.match(/learn together deck set(?:\s*(\d+))?/i)
+  if (learnTogether) {
+    // Cardmarket stores these reprints under LD01/LD02 rather than STxx.
+    const number = (learnTogether[1] || '1').padStart(2, '0')
+    namedFolders.push(`LD${number}`)
+  }
   const specialFirst = /promo|winner|judge|regional|anniversary|tournament|premium|one piece day/.test(text)
   const folders = specialFirst
     ? [...namedFolders, ...SPECIAL_FOLDERS, standard, code]
