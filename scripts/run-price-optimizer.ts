@@ -8,6 +8,7 @@ import {
   selectOpvCardmarketCandidate,
   type OpvCardmarketCandidate,
 } from '../lib/opvCardmarketMatcher'
+import { OPV_CARDMARKET_OPTIMIZER_LESSONS } from '../lib/opvCardmarketOptimizerLessons'
 import { rowMarketPrice } from '../lib/cardmarketPrices'
 
 type CatalogRow = {
@@ -61,6 +62,7 @@ const groupLimit = Math.max(1, Math.min(5000, Number(argumentValue('groups') || 
 const groupOffset = Math.max(0, Number(argumentValue('offset') || 0))
 const concurrency = Math.max(1, Math.min(8, Number(argumentValue('concurrency') || 4)))
 const outputPath = resolve(argumentValue('output') || '.optimizer/cardmarket-price-audit.json')
+const skipReviewed = process.argv.includes('--skip-reviewed')
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -99,6 +101,13 @@ const mapLimit = async <T, R>(items: T[], limit: number, task: (item: T, index: 
 const priceOf = (row: PriceRow) => rowMarketPrice(row) ?? row.price_low ?? null
 
 const baseCode = (value: string) => value.replace(/_p\d+$/i, '').toUpperCase()
+
+// Risk order changes whenever Cardmarket refreshes a price. Offset-only runs can
+// therefore revisit an old group and skip a new one. This ledger derives the
+// already audited base codes from durable Optimizer lessons before slicing.
+const reviewedBaseCodes = new Set(Object.keys(OPV_CARDMARKET_OPTIMIZER_LESSONS)
+  .map(variantId => variantId.match(/((?:OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/gi)?.at(-1)?.toUpperCase())
+  .filter((value): value is string => Boolean(value)))
 
 const foldersFor = (cardId: string, setName?: string | null) => {
   const code = cardId.split('-')[0].toUpperCase()
@@ -255,7 +264,13 @@ const main = async () => {
   ])
 
   const catalogByBase = new Map<string, CatalogRow[]>()
+  const seenCatalogVariants = new Set<string>()
   for (const card of catalog) {
+    // Supabase string keys are case-sensitive, so legacy imports may contain
+    // OPxx-xxx_p1 and OPxx-xxx_P1 as duplicate rows. Audit the printing once.
+    const normalizedVariantId = card.variant_id.toUpperCase()
+    if (seenCatalogVariants.has(normalizedVariantId)) continue
+    seenCatalogVariants.add(normalizedVariantId)
     const code = baseCode(card.base_card_id || card.variant_id)
     catalogByBase.set(code, [...(catalogByBase.get(code) || []), card])
   }
@@ -277,6 +292,7 @@ const main = async () => {
       return { code, cards, candidates, spread, risk }
     })
     .filter(group => group.cards.length > 1 && group.candidates.length > 1)
+    .filter(group => !skipReviewed || !reviewedBaseCodes.has(group.code))
     .sort((left, right) => right.risk - left.risk)
     .slice(groupOffset, groupOffset + groupLimit)
 
@@ -420,9 +436,13 @@ const main = async () => {
       catalogRows: catalog.length,
       cardmarketRows: priceRows.length,
       eligibleRiskGroups: [...catalogByBase.entries()].filter(([code, cards]) => cards.length > 1 && (pricesByBase.get(code)?.length || 0) > 1).length,
+      excludedReviewedGroups: skipReviewed ? reviewedBaseCodes.size : 0,
       groupOffset,
       auditedGroups: riskyGroups.length,
       auditedVariants: orderedAudits.length,
+      // Preserve the pre-sort audit order so one bulk run can be split into
+      // reproducible review batches without recalculating images or prices.
+      auditedBaseCodes: riskyGroups.map(group => group.code),
     },
     summary,
     audits: orderedAudits,

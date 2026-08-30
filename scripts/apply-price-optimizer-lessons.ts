@@ -22,13 +22,12 @@ const main = async () => {
 
   const validated: Array<{ variantId: string; catalogVariantId: string; productId: number }> = []
   for (const [variantId, lesson] of lessons) {
-    const { data: card, error: cardError } = await supabase
+    const { data: cards, error: cardError } = await supabase
       .from('card_catalog')
       .select('variant_id,base_card_id,cardmarket_product_id')
       .ilike('variant_id', variantId)
-      .maybeSingle()
     if (cardError) throw cardError
-    if (!card) throw new Error(`${variantId}: carta non trovata.`)
+    if (!cards?.length) throw new Error(`${variantId}: carta non trovata.`)
 
     const { data: price, error: priceError } = await supabase
       .from('cardmarket_prices')
@@ -37,14 +36,17 @@ const main = async () => {
       .maybeSingle()
     if (priceError) throw priceError
     if (!price) throw new Error(`${variantId}: prodotto ${lesson.productId} non trovato.`)
-    if (String(price.card_id).toUpperCase() !== String(card.base_card_id).toUpperCase()) {
-      throw new Error(`${variantId}: il prodotto ${lesson.productId} appartiene a ${price.card_id}.`)
-    }
-    if (card.cardmarket_product_id && Number(card.cardmarket_product_id) !== lesson.productId) {
-      throw new Error(`${variantId}: collegamento Admin esistente ${card.cardmarket_product_id}; applicazione interrotta.`)
-    }
+    for (const card of cards) {
+      if (String(price.card_id).toUpperCase() !== String(card.base_card_id).toUpperCase()) {
+        throw new Error(`${variantId}: il prodotto ${lesson.productId} appartiene a ${price.card_id}.`)
+      }
+      if (card.cardmarket_product_id && Number(card.cardmarket_product_id) !== lesson.productId) {
+        throw new Error(`${variantId}: collegamento Admin esistente ${card.cardmarket_product_id}; applicazione interrotta.`)
+      }
 
-    validated.push({ variantId, catalogVariantId: card.variant_id, productId: lesson.productId })
+      // Update every case-only legacy duplicate with the same reviewed product.
+      validated.push({ variantId, catalogVariantId: card.variant_id, productId: lesson.productId })
+    }
   }
 
   let applied = 0
@@ -61,7 +63,7 @@ const main = async () => {
     applied += 1
   }
 
-  console.log(JSON.stringify({ group: requestedGroup, lessons: lessons.length, applied }, null, 2))
+  console.log(JSON.stringify({ group: requestedGroup, lessons: lessons.length, appliedRows: applied }, null, 2))
 }
 
 main().catch(error => {

@@ -1,4 +1,4 @@
-export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.2.2'
+export const OPV_CARDMARKET_MATCHER_VERSION = 'opv-cardmarket-matcher/1.3.0'
 
 export type OpvCardmarketCandidate = {
   product_id: number
@@ -49,6 +49,12 @@ export const OPV_CARDMARKET_EXPANSION_LESSONS: Record<string, OpvExpansionLesson
   OP17: { expansionId: 6492, language: 'en', evidence: "THE WORLD'S STRONGEST WARRIORS (English)" },
   EB01: { expansionId: 5585, language: 'en', evidence: 'MEMORIAL COLLECTION (English)' },
   EB02: { expansionId: 6028, language: 'en', evidence: 'ANIME 25TH COLLECTION (English)' },
+  // EB03 is intentionally not global: Cardmarket stores some English base and
+  // alternate products in different expansions (covered by variant lessons).
+  // Cardmarket files the English EB04 cards inside the combined OP15/EB04 expansion.
+  EB04: { expansionId: 6456, language: 'en', evidence: "ADVENTURE ON KAMI'S ISLAND / EB04 (English)" },
+  PRB01: { expansionId: 5805, language: 'en', evidence: 'ONE PIECE CARD THE BEST (English)' },
+  PRB02: { expansionId: 6242, language: 'en', evidence: 'ONE PIECE CARD THE BEST vol. 2 (English)' },
   ST10: {
     expansionId: 5380,
     language: 'en',
@@ -145,7 +151,13 @@ const isStandardSetPrinting = (input: OpvCardmarketMatchInput, code: string) => 
   if (!text) return false
   if (/\b(promo|regional|winner|judge|anniversary|tournament|premium bandai|one piece day)\b/.test(text)) return false
   const spacedCode = code.replace(/([a-z]+)(\d+)/i, '$1 $2').toLowerCase()
-  return text.includes(code.toLowerCase()) || text.includes(spacedCode)
+  // API set labels alternate between OP07, OP 07 and OP-07 (likewise PRB/EB).
+  // Comparing their alphanumeric form prevents a standard English set from
+  // falling through to a visually similar Japanese expansion.
+  const compactText = text.replace(/[^a-z0-9]/g, '')
+  return text.includes(code.toLowerCase())
+    || text.includes(spacedCode)
+    || compactText.includes(code.toLowerCase())
 }
 
 const EXPANSION_DISCOVERY_CACHE_MS = 6 * 60 * 60 * 1000
