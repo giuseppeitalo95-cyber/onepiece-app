@@ -75,6 +75,8 @@ type MultiRecognitionItem = {
   card: ScannedCard
   text: string
   crop: HTMLCanvasElement
+  alternatives?: ScannedCard[]
+  requiresChoice?: boolean
 }
 
 export default function ScanPage() {
@@ -137,6 +139,7 @@ export default function ScanPage() {
   const multiQueueRef = useRef<MultiRecognitionItem[]>([])
   const currentMultiItemRef = useRef<MultiRecognitionItem | null>(null)
   const multiUsageConfirmedRef = useRef(false)
+  const donRecognitionChoicesRef = useRef<ScannedCard[]>([])
 
   const scanCanvasSize = { width: 1080, height: 1440 }
 
@@ -611,7 +614,26 @@ export default function ScanPage() {
       .replace(/_[pr]\d+$/i, '')
       .replace(/^((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|DON-\d{3})p\d+$/i, '$1')
 
+  const isDonCard = (card?: Pick<ScannedCard, 'card_id' | 'card_type' | 'rarity'> | null) => {
+    const id = String(card?.card_id || '').toUpperCase()
+    const type = String(card?.card_type || card?.rarity || '').toUpperCase()
+    return id.startsWith('DON_') || id.startsWith('DON-') || type.includes('DON!!')
+  }
+
+  const looksLikeDonOcrText = (value: string) => {
+    const normalized = normalizeText(value)
+    const hasPrintedDon = /DON\s*!{1,2}/i.test(value)
+    const hasDonBoost = /\bYOUR\s+TURN\b/i.test(value) && /\+?\s*1000\b/.test(value)
+    const normalCardAnchors = normalized.match(/\b(character|leader|event|stage|counter|trigger|cost|power|activate|on play)\b/g)?.length || 0
+    return hasPrintedDon || (hasDonBoost && normalCardAnchors === 0)
+  }
+
   const variantLabel = (card: ScannedCard) => {
+    if (isDonCard(card)) {
+      return String(card.name || 'DON!!')
+        .replace(/^DON!!\s*Card\s*/i, '')
+        .replace(/^\((.*)\)$/, '$1') || 'DON!!'
+    }
     const variant = card.card_id.match(/_p(\d+)$/i)?.[1] || card.card_id.match(/(?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}p(\d+)$/i)?.[1]
     const rarity = getRarityLabel(card)
     if (rarity && rarity !== 'Common' && rarity !== 'Uncommon' && rarity !== 'Rare') return rarity
@@ -736,6 +758,13 @@ export default function ScanPage() {
   useEffect(() => {
     if (!pendingRecognition?.card_id) {
       setRecognitionVariants([])
+      setRecognitionVariantsLoading(false)
+      donRecognitionChoicesRef.current = []
+      return
+    }
+
+    if (isDonCard(pendingRecognition) && donRecognitionChoicesRef.current.length > 0) {
+      setRecognitionVariants(donRecognitionChoicesRef.current)
       setRecognitionVariantsLoading(false)
       return
     }
@@ -1251,6 +1280,79 @@ export default function ScanPage() {
     }
   }
 
+  const recognizeDonFromPhoto = async (
+    sourceCanvas: HTMLCanvasElement,
+    contourDetected: boolean
+  ): Promise<{ card: ScannedCard; alternatives: ScannedCard[]; requiresChoice: boolean } | null> => {
+    try {
+      const response = await fetch('/api/cards/recognize-don', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: canvasToImage(sourceCanvas) }),
+      })
+      const data = await response.json()
+      if (!response.ok || !Array.isArray(data?.candidates)) return null
+
+      const candidates = uniqueCards(data.candidates as ReferenceCard[])
+        .filter(card => isDonCard(card) && (card.image_url || card.card_image))
+        .slice(0, 18)
+      if (candidates.length === 0) return null
+
+      // The compact server fingerprint searches the complete DON catalog.
+      // Only its shortlist reaches the existing high-resolution verifier.
+      const ranked = (await Promise.all(candidates.map(async card => ({
+        card,
+        distance: await compareImageToCandidate(
+          sourceCanvas,
+          card.image_url || card.card_image || '',
+          contourDetected
+        ),
+      }))))
+        .filter(item => Number.isFinite(item.distance))
+        .sort((left, right) => left.distance - right.distance)
+
+      const best = ranked[0]
+      const second = ranked[1]
+      if (!best || best.distance > (contourDetected ? 69 : 65)) return null
+
+      const distanceGap = second ? second.distance - best.distance : 100
+      const alternatives = ranked
+        .filter((item, index) => index < 4 && item.distance <= best.distance + 13)
+        .map(item => toScannedCard(item.card))
+      const bestCard = alternatives.find(card => card.card_id === String(best.card.card_id || best.card.id || ''))
+        || toScannedCard(best.card)
+      const requiresChoice = data?.confidence !== 'high'
+        || best.distance > (contourDetected ? 57 : 54)
+        || distanceGap < 2.2
+
+      return {
+        card: bestCard,
+        alternatives: alternatives.length > 1 ? alternatives : [bestCard],
+        requiresChoice: requiresChoice && alternatives.length > 1,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  const presentDonRecognition = (
+    result: { card: ScannedCard; alternatives: ScannedCard[]; requiresChoice: boolean },
+    generation: number,
+    prefix = 'DON trovato'
+  ) => {
+    donRecognitionChoicesRef.current = result.alternatives
+    setRecognitionVariants(result.alternatives)
+    setRecognitionVariantsLoading(false)
+    setPendingRecognition(result.card)
+    setVariantChoiceRequired(result.requiresChoice)
+    setRecognitionMessage(
+      result.requiresChoice
+        ? `${prefix}: seleziona l’immagine corretta tra i risultati più simili.`
+        : `${prefix}: ${result.card.name}. Conferma o scegli un altro risultato.`
+    )
+    enrichPendingPriceInBackground(result.card, generation)
+  }
+
   const searchCardByText = async (query: string, cropCanvas: HTMLCanvasElement) => {
     try {
       if (!query) return null
@@ -1757,6 +1859,7 @@ export default function ScanPage() {
   }
 
   const multiTextQuality = (value: string) => {
+    if (looksLikeDonOcrText(value)) return 40
     const normalized = value.replace(/\s+/g, ' ').trim()
     const tokens = normalized.split(' ').filter(token => token.length >= 2)
     const anchors = normalized.match(/\b(counter|trigger|character|leader|event|stage|power|cost|activate|main|on play)\b/gi)?.length || 0
@@ -1789,6 +1892,20 @@ export default function ScanPage() {
 
     for (const orientation of orientations) {
       if (!orientation.text.trim()) continue
+
+      if (looksLikeDonOcrText(orientation.text)) {
+        const donResult = await recognizeDonFromPhoto(orientation.crop, true)
+        if (donResult) {
+          return {
+            card: donResult.card,
+            alternatives: donResult.alternatives,
+            requiresChoice: donResult.requiresChoice,
+            text: orientation.text,
+            crop: orientation.crop,
+          }
+        }
+      }
+
       const { candidates, textMatch } = await findVisibleTextCandidates(orientation.text)
       if (candidates.length === 0) continue
 
@@ -1859,12 +1976,18 @@ export default function ScanPage() {
     const total = multiConfirmationProgress.total || multiQueueRef.current.length + 1
     const current = total - multiQueueRef.current.length
     setMultiConfirmationProgress({ current, total })
+    donRecognitionChoicesRef.current = item.alternatives || []
+    if (item.alternatives?.length) setRecognitionVariants(item.alternatives)
     setPendingRecognition(item.card)
     setRecognitionQuantity(1)
-    setVariantChoiceRequired(true)
-    setRecognitionMessage(`Carta ${current} di ${total}: controlla la variante e conferma.`)
+    setVariantChoiceRequired(item.requiresChoice ?? true)
+    setRecognitionMessage(
+      isDonCard(item.card)
+        ? `Carta ${current} di ${total}: DON riconosciuto, controlla l’immagine.`
+        : `Carta ${current} di ${total}: controlla la variante e conferma.`
+    )
     enrichPendingPriceInBackground(item.card, generation)
-    refineRecognitionVariant(item.text, item.crop, generation, item.card)
+    if (!isDonCard(item.card)) refineRecognitionVariant(item.text, item.crop, generation, item.card)
   }
 
   const advanceMultiRecognition = () => {
@@ -1895,6 +2018,7 @@ export default function ScanPage() {
     multiUsageConfirmedRef.current = false
     multiQueueRef.current = []
     currentMultiItemRef.current = null
+    donRecognitionChoicesRef.current = []
     setScanSessionActive(true)
     setShowSummary(false)
     setPendingRecognition(null)
@@ -2003,6 +2127,7 @@ export default function ScanPage() {
     showSummaryRef.current = false
     setScanSessionActive(true)
     setShowSummary(false)
+    donRecognitionChoicesRef.current = []
     setPendingRecognition(null)
     setVariantChoiceRequired(false)
     setCameraError(null)
@@ -2021,6 +2146,18 @@ export default function ScanPage() {
 
       if (!ocrText.trim()) {
         setRecognitionMessage('Non riesco ancora a leggere abbastanza testo. Prova una foto più dritta, nitida e senza riflessi.')
+        return
+      }
+
+      if (looksLikeDonOcrText(ocrText)) {
+        setRecognitionMessage('DON rilevato. Confronto l’illustrazione con il catalogo DON...')
+        const donResult = await recognizeDonFromPhoto(comparisonCanvas, Boolean(detectedRect))
+        if (!isScanStillActive(generation)) return
+        if (!donResult) {
+          setRecognitionMessage('Ho riconosciuto un DON, ma non riesco a distinguere l’illustrazione. Prova una foto più dritta e senza riflessi.')
+          return
+        }
+        presentDonRecognition(donResult, generation)
         return
       }
 

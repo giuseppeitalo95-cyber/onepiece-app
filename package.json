@@ -11,6 +11,7 @@
     "optimizer:prices": "tsx scripts/run-price-optimizer.ts",
     "optimizer:render": "tsx scripts/render-price-optimizer.ts",
     "sync:catalog": "tsx scripts/sync-card-catalog.ts",
+    "test:don-recognition": "tsx scripts/test-don-recognition.ts",
     "test:price-matcher": "tsx scripts/test-price-matcher.ts"
   },
   "dependencies": {
