@@ -106,7 +106,7 @@ const baseCode = (value: string) => value.replace(/_p\d+$/i, '').toUpperCase()
 // therefore revisit an old group and skip a new one. This ledger derives the
 // already audited base codes from durable Optimizer lessons before slicing.
 const reviewedBaseCodes = new Set(Object.keys(OPV_CARDMARKET_OPTIMIZER_LESSONS)
-  .map(variantId => variantId.match(/((?:OP|ST|EB|PRB)\d{2}-\d{3}|P-\d{3})/gi)?.at(-1)?.toUpperCase())
+  .map(variantId => variantId.match(/((?:OP|ST|EB|PRB|SP|EX|CP)\d{2}-\d{3}|P-\d{3}|CM-\d+)/gi)?.at(-1)?.toUpperCase())
   .filter((value): value is string => Boolean(value)))
 
 const foldersFor = (cardId: string, setName?: string | null) => {
