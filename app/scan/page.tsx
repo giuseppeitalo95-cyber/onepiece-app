@@ -10,6 +10,7 @@ import { Camera, ChevronLeft, ChevronRight, Images, Info, LoaderCircle, Minus, P
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { parseCardCodeFromText } from '@/lib/cardRecognition'
+import { looksLikeDonOcrText } from '@/lib/donOcrRouting'
 import {
   buildMultiCardOcrSheet,
   detectCardsInPhoto,
@@ -618,14 +619,6 @@ export default function ScanPage() {
     const id = String(card?.card_id || '').toUpperCase()
     const type = String(card?.card_type || card?.rarity || '').toUpperCase()
     return id.startsWith('DON_') || id.startsWith('DON-') || type.includes('DON!!')
-  }
-
-  const looksLikeDonOcrText = (value: string) => {
-    const normalized = normalizeText(value)
-    const hasPrintedDon = /DON\s*!{1,2}/i.test(value)
-    const hasDonBoost = /\bYOUR\s+TURN\b/i.test(value) && /\+?\s*1000\b/.test(value)
-    const normalCardAnchors = normalized.match(/\b(character|leader|event|stage|counter|trigger|cost|power|activate|on play)\b/g)?.length || 0
-    return hasPrintedDon || (hasDonBoost && normalCardAnchors === 0)
   }
 
   const variantLabel = (card: ScannedCard) => {
