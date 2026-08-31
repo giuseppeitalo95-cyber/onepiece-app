@@ -383,6 +383,11 @@ export const getCardmarketExportPrice = async (input: LookupInput) => {
     }
   }
 
+  // DON IDs are internal artwork identifiers, not printed card codes. Shared
+  // names/rules text cannot distinguish gold, silver or promotional versions.
+  // Only a verified product mapping may supply their price; never guess by name.
+  if (rows.length === 0 && (/^don(?:[_-]|$)/i.test(exactVariantId) || /^don!!/i.test(input.name || ''))) return null
+
   if (rows.length === 0 && wantedCardId) {
     const priceIndex = await loadPriceRows()
     rows = [...(priceIndex.byCardId.get(wantedCardId) || [])]

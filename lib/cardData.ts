@@ -1,4 +1,5 @@
 import { requireServiceClient } from '@/lib/serverSupabase'
+import { catalogVariantIdAliases } from './catalogVariantIds'
 
 // The upstream APIs expose extra fields over time; raw_data preserves them verbatim.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -287,12 +288,7 @@ export const getCatalogCardsByBaseIds = async (values: string[]) => {
 
 export const getCatalogCardsByVariantIds = async (values: string[]) => {
   const client = requireServiceClient()
-  const variantIds = [...new Set(values
-    .map(value => String(value || '')
-      .trim()
-      .toUpperCase()
-      .replace(/_P(\d+)$/i, '_p$1'))
-    .filter(Boolean))]
+  const variantIds = catalogVariantIdAliases(values)
   const rows: RawCard[] = []
 
   for (let index = 0; index < variantIds.length; index += 80) {
