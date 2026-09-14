@@ -14,6 +14,7 @@
     "test:don-recognition": "tsx scripts/test-don-recognition.ts",
     "test:don-ocr-routing": "tsx scripts/test-don-ocr-routing.ts",
     "test:don-prices": "tsx scripts/test-don-prices.ts",
+    "test:open-access": "tsx scripts/test-open-access.ts",
     "test:price-matcher": "tsx scripts/test-price-matcher.ts"
   },
   "dependencies": {

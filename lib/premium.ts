@@ -25,6 +25,14 @@ export const PREMIUM_BOARD_POST_DAYS = 21
 export const FREE_BOARD_DAILY_POST_LIMIT = 1
 export const FREE_BOARD_WEEKLY_POST_LIMIT = 3
 
+/**
+ * Premium is intentionally dormant while OPV grows its first user base.
+ * Keep the Stripe/profile fields and the limits below intact: changing this
+ * flag back to true restores the existing paid-access rules in the callers.
+ * Daily Reward VIP remains a visible profile title, but grants no extra access.
+ */
+export const PREMIUM_FEATURES_ENABLED = false
+
 const nowMs = () => Date.now()
 
 export const hasActivePremiumDate = (premiumUntil?: string | null) => {
@@ -46,7 +54,9 @@ export const getPremiumTier = (
   user?: { id?: string | null; email?: string | null } | null
 ): PremiumTier => {
   if (isAdminAccount(user, profile)) return 'admin'
-  if (profile?.is_vip || getDailyRewardVipUntil(profile?.vip_note)) return 'vip'
+  if (getDailyRewardVipUntil(profile?.vip_note)) return 'vip'
+  if (!PREMIUM_FEATURES_ENABLED) return 'free'
+  if (profile?.is_vip) return 'vip'
   if (profile?.is_premium || hasActivePremiumDate(profile?.premium_until)) return 'premium'
   return 'free'
 }
@@ -54,7 +64,7 @@ export const getPremiumTier = (
 export const hasPremiumAccess = (
   profile?: PremiumProfile | null,
   user?: { id?: string | null; email?: string | null } | null
-) => getPremiumTier(profile, user) !== 'free'
+) => !PREMIUM_FEATURES_ENABLED || getPremiumTier(profile, user) !== 'free'
 
 export const premiumLabel = (tier: PremiumTier) => {
   if (tier === 'admin') return 'Admin'

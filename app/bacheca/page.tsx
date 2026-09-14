@@ -17,6 +17,7 @@ import {
   FREE_BOARD_DAILY_POST_LIMIT,
   FREE_BOARD_POST_DAYS,
   FREE_BOARD_WEEKLY_POST_LIMIT,
+  PREMIUM_FEATURES_ENABLED,
   PREMIUM_BOARD_POST_DAYS,
   getPremiumTier,
   premiumClassName,
@@ -324,13 +325,13 @@ export default function BachecaPage() {
     const visiblePosts = loadedPosts.filter(post => {
       const profile = fullProfileMap[post.user_id]
       const tier = getPremiumTier(profile, { id: post.user_id })
-      const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
+      const days = !PREMIUM_FEATURES_ENABLED || tier !== 'free' ? PREMIUM_BOARD_POST_DAYS : FREE_BOARD_POST_DAYS
       const cutoffForPost = new Date()
       cutoffForPost.setDate(cutoffForPost.getDate() - days)
       const stillVisible = new Date(post.created_at).getTime() >= cutoffForPost.getTime()
       const isVisibleToViewer = post.type === 'binder'
         ? visibleSet.has(post.user_id)
-        : visibleSet.has(post.user_id) || tier !== 'free'
+        : !PREMIUM_FEATURES_ENABLED || visibleSet.has(post.user_id) || tier !== 'free'
       return stillVisible && isVisibleToViewer
     })
     const binderIds = Array.from(new Set(visiblePosts
@@ -359,7 +360,7 @@ export default function BachecaPage() {
 
   const cleanupOwnPosts = async (uid: string) => {
     const tier = getPremiumTier(profiles[uid], { id: uid })
-    const days = tier === 'free' ? FREE_BOARD_POST_DAYS : PREMIUM_BOARD_POST_DAYS
+    const days = !PREMIUM_FEATURES_ENABLED || tier !== 'free' ? PREMIUM_BOARD_POST_DAYS : FREE_BOARD_POST_DAYS
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - days)
 
@@ -413,7 +414,9 @@ export default function BachecaPage() {
     const fallbackTitle = `${postType === 'trade' ? 'Vendo' : 'Cerco'} ${selectedPostCard.name}`
     const ownTier = getPremiumTier(profiles[userId], { id: userId })
 
-    if (ownTier === 'free') {
+    // Re-enable this branch together with PREMIUM_FEATURES_ENABLED if paid
+    // plans return; while dormant, all users publish with full access.
+    if (PREMIUM_FEATURES_ENABLED && ownTier === 'free') {
       const dayCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const weekCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 

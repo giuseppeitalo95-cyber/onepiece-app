@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Check, Crown, HelpCircle, MessageCircle, ShieldCheck, Sparkle, X } from 'lucide-react'
+import { Check, HelpCircle, MessageCircle, ShieldCheck, X } from 'lucide-react'
 import AppLogo from './AppLogo'
 import PushNotificationPrompt from './PushNotificationPrompt'
 import { getPremiumTier, premiumClassName, premiumLabel, type PremiumProfile, type PremiumTier } from '@/lib/premium'
@@ -73,15 +73,6 @@ export default function Topbar() {
   const [loading, setLoading] = useState(true)
   const bugUnreadRef = useRef<number | null>(null)
   const isAdminRef = useRef(false)
-  const tierLabel =
-    premiumTier === 'admin'
-      ? 'Admin'
-      : premiumTier === 'vip'
-      ? 'VIP'
-      : premiumTier === 'premium'
-      ? 'Premium'
-      : 'Free'
-  const TierIcon = premiumTier === 'admin' ? ShieldCheck : premiumTier === 'free' ? Sparkle : Crown
 
   useEffect(() => {
     if (!pathname || pathname === '/') return
@@ -386,28 +377,22 @@ export default function Topbar() {
       <PushNotificationPrompt silent />
       <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/12 bg-[#173842]/88 px-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] backdrop-blur-2xl sm:px-5">
         <div className="relative z-10 flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => router.push(premiumTier === 'admin' ? '/admin' : '/premium')}
-            className={`op-premium-topbar relative flex h-10 items-center gap-1 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.12em] transition active:scale-95 sm:px-3 ${
-              premiumTier === 'admin'
-                ? 'border-amber-200/35 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] hover:border-amber-100/60 hover:bg-amber-300/22'
-                : premiumTier === 'vip'
-                ? 'border-amber-200/40 bg-amber-300/12 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.18)]'
-                : premiumTier === 'premium'
-                ? 'border-cyan-200/45 bg-cyan-300/18 text-cyan-50 shadow-[0_0_22px_rgba(103,232,249,0.32)]'
-                : 'border-white/10 bg-white/[0.035] text-slate-500 hover:border-cyan-300/25 hover:text-slate-300'
-            }`}
-            aria-label={tierLabel}
-          >
-            <TierIcon size={15} />
-            <span className="hidden min-[380px]:inline">{tierLabel}</span>
-            {premiumTier === 'admin' && bugUnread > 0 ? (
-              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_16px_rgba(251,113,133,0.65)] ring-2 ring-[#173842]">
-                {bugUnread > 9 ? '9+' : bugUnread}
-              </span>
-            ) : null}
-          </button>
+          {premiumTier === 'admin' ? (
+            <button
+              type="button"
+              onClick={() => router.push('/admin')}
+              className="op-premium-topbar relative flex h-10 items-center gap-1 rounded-full border border-amber-200/35 bg-amber-300/15 px-2 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.22)] transition hover:border-amber-100/60 hover:bg-amber-300/22 active:scale-95 sm:px-3"
+              aria-label="Admin"
+            >
+              <ShieldCheck size={15} />
+              <span className="hidden min-[380px]:inline">Admin</span>
+              {bugUnread > 0 ? (
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-400 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_16px_rgba(251,113,133,0.65)] ring-2 ring-[#173842]">
+                  {bugUnread > 9 ? '9+' : bugUnread}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => router.push('/chat')}

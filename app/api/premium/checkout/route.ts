@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { PREMIUM_FEATURES_ENABLED } from '@/lib/premium'
 
 const DEFAULT_SUPABASE_URL = 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
@@ -10,6 +11,12 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 const stripePriceId = process.env.STRIPE_PREMIUM_PRICE_ID
 
 export async function POST(req: NextRequest) {
+  // Keep Stripe integration available for a future relaunch, but never create
+  // a paid Checkout session while OPV Premium is intentionally dormant.
+  if (!PREMIUM_FEATURES_ENABLED) {
+    return Response.json({ error: 'Gli abbonamenti non sono disponibili.' }, { status: 410 })
+  }
+
   if (!stripeSecretKey || !stripePriceId) {
     return Response.json({
       error: 'Pagamento non ancora configurato: aggiungi STRIPE_SECRET_KEY e STRIPE_PREMIUM_PRICE_ID su Vercel.'

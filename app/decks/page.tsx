@@ -1,16 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Crown, Eye, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
 import { supabase } from '@/lib/supabase'
-import { FREE_DECK_LIMIT, getPremiumTier, type PremiumProfile } from '@/lib/premium'
+import { FREE_DECK_LIMIT, hasPremiumAccess, type PremiumProfile } from '@/lib/premium'
 import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { validateUserText } from '@/lib/textModeration'
+import { baseDeckCardId, buildOwnedQuantityByBase, summarizeDeckAvailability } from '@/lib/deckAvailability'
 
 type DeckCard = {
   card_id: string
@@ -83,13 +84,7 @@ type Mode = 'saved' | 'create' | 'meta'
 type DeckSearchSource = 'global' | 'collection'
 
 const compact = (value?: string | null) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-const baseCardId = (value?: string | null) => {
-  const raw = (value || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
-  const withoutUnderscoreVariant = raw.replace(/_p\d+$/i, '')
-  return withoutUnderscoreVariant
-    .replace(/[^a-z0-9]/g, '')
-    .replace(/^((?:op|st|eb|prb|sp|ex|cp)\d{5,6}|p\d{3}|don\d{3})p\d+$/i, '$1')
-}
+const baseCardId = baseDeckCardId
 const displayCardId = (value?: string | null) =>
   (value || '')
     .replace(/_p\d+$/i, '')
@@ -630,7 +625,7 @@ export default function DeckBuilderPage() {
       alert(moderation.message)
       return
     }
-    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
+    const deckPremiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
     const isNewDeck = !editingDeckId && !savedDecks.some(deck => deck.name === cleanDeckName)
     if (!deckPremiumAccess && isNewDeck && savedDecks.length >= FREE_DECK_LIMIT) {
       alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
@@ -653,7 +648,7 @@ export default function DeckBuilderPage() {
 
   const loadDeck = (deck: SavedDeck) => {
     const deckIndex = savedDecks.findIndex(item => item.id === deck.id)
-    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
+    const deckPremiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
     if (deckIndex >= FREE_DECK_LIMIT && !deckPremiumAccess) {
       router.push('/premium')
       return
@@ -678,7 +673,7 @@ export default function DeckBuilderPage() {
 
   const saveMetaDeckToMine = async (deck: SavedDeck) => {
     if (!userId) return
-    const deckPremiumAccess = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email }) !== 'free'
+    const deckPremiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
     if (!deckPremiumAccess && savedDecks.length >= FREE_DECK_LIMIT) {
       alert(`Con il profilo free puoi salvare massimo ${FREE_DECK_LIMIT} deck. Premium sblocca deck illimitati.`)
       router.push('/premium')
@@ -854,11 +849,28 @@ export default function DeckBuilderPage() {
     ].filter(Boolean).join(' ').toLowerCase().includes(query)
   })
 
-  const premiumTier = getPremiumTier(premiumProfile, { id: userId, email: premiumProfile?.email })
-  const premiumAccess = premiumTier !== 'free'
+  const ownedQuantityByBase = useMemo(
+    () => buildOwnedQuantityByBase(collectionCards),
+    [collectionCards]
+  )
+
+  const ownedQuantity = (card?: DeckCard | null) =>
+    card ? ownedQuantityByBase[baseCardId(card.card_id)] || 0 : 0
+
+  const getDeckAvailability = (deck: SavedDeck) => summarizeDeckAvailability(
+    deck.leader,
+    deck.cards.filter(card => !isDonCard(card)),
+    ownedQuantityByBase,
+  )
+
+  const premiumAccess = hasPremiumAccess(premiumProfile, { id: userId, email: premiumProfile?.email })
   const isDeckUnlocked = (_deck: SavedDeck, index: number) => premiumAccess || index < FREE_DECK_LIMIT
   const lockedDeckCount = premiumAccess ? 0 : Math.max(0, savedDecks.length - FREE_DECK_LIMIT)
-  const renderDeckModal = (deck: SavedDeck) => (
+  const renderDeckModal = (deck: SavedDeck) => {
+    const isMetaDeck = deck.id.startsWith('meta-')
+    const availability = getDeckAvailability(deck)
+
+    return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4" onClick={() => setOpenDeck(null)}>
       <div className="max-h-[90dvh] w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-slate-700 bg-slate-950/96 shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-slate-800 p-3">
@@ -876,8 +888,15 @@ export default function DeckBuilderPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Leader</p>
             {deck.leader ? (
               <>
-                <button onClick={() => openCardDetail(deck.leader)} className="mt-3 block w-full text-left">
-                  <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
+                 <button onClick={() => openCardDetail(deck.leader)} className="mt-3 block w-full text-left">
+                  <div className="relative">
+                    <CardImage src={deck.leader.image_url} cardId={deck.leader.card_id} alt={deck.leader.name || 'Leader'} className="aspect-[3/4] overflow-hidden rounded-2xl bg-slate-950" />
+                    {isMetaDeck ? (
+                      <span className={`absolute bottom-2 left-2 rounded-full border px-2 py-1 text-[10px] font-black shadow-lg ${ownedQuantity(deck.leader) > 0 ? 'border-emerald-100/40 bg-emerald-300 text-slate-950' : 'border-rose-200/30 bg-rose-400 text-white'}`}>
+                        {ownedQuantity(deck.leader) > 0 ? 'Posseduta x1' : 'Leader mancante'}
+                      </span>
+                    ) : null}
+                  </div>
                 </button>
                 <p className="mt-2 text-sm font-black text-white">{deck.leader.name}</p>
                 <p className="text-[10px] text-slate-400">{displayCardId(deck.leader.card_id)}</p>
@@ -887,8 +906,25 @@ export default function DeckBuilderPage() {
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100/70">Valore stimato</p>
               <p className="mt-1 text-lg font-black text-emerald-100">{formatPrice(getDeckValue(deck))}</p>
             </div>
+            {isMetaDeck ? (
+              <div className={`mt-2 rounded-2xl border p-3 ${availability.complete ? 'border-emerald-300/30 bg-emerald-300/12' : 'border-rose-300/25 bg-rose-300/10'}`}>
+                <p className={`text-sm font-black ${availability.complete ? 'text-emerald-100' : 'text-rose-100'}`}>
+                  {availability.complete ? 'Puoi costruire questo deck' : `Ti mancano ${availability.missing} carte`}
+                </p>
+                <p className="mt-1 text-xs font-bold text-slate-300">
+                  Possedute {availability.covered}/{availability.required}
+                  {availability.missingTypes > 0 ? ` · ${availability.missingTypes} tipi mancanti` : ''}
+                </p>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-950/70">
+                  <div
+                    className={`h-full rounded-full ${availability.complete ? 'bg-emerald-300' : 'bg-gradient-to-r from-cyan-300 to-rose-300'}`}
+                    style={{ width: `${availability.required > 0 ? Math.round((availability.covered / availability.required) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
             {deck.sourceUrl && <a href={deck.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 block rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-center text-xs font-black text-cyan-100">Fonte</a>}
-            {deck.id.startsWith('meta-') ? (
+            {isMetaDeck ? (
               <button onClick={() => saveMetaDeckToMine(deck)} className="mt-3 w-full rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Salva nei miei deck</button>
             ) : (
               <>
@@ -908,27 +944,42 @@ export default function DeckBuilderPage() {
               <p className="text-xs text-slate-400">{new Date(deck.updatedAt).toLocaleDateString('it-IT')}</p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-              {deck.cards.filter(card => !isDonCard(card)).map(card => (
-                <div key={card.card_id} className="rounded-2xl border border-slate-700 bg-slate-900/80 p-1.5">
+              {deck.cards.filter(card => !isDonCard(card)).map(card => {
+                const owned = ownedQuantity(card)
+                const missing = Math.max(0, Number(card.quantity || 0) - owned)
+                return (
+                <div key={card.card_id} className={`rounded-2xl border bg-slate-900/80 p-1.5 ${isMetaDeck && missing > 0 ? 'border-rose-300/35' : isMetaDeck ? 'border-emerald-300/30' : 'border-slate-700'}`}>
                   <div className="relative">
                     <button onClick={() => openCardDetail(card)} className="block w-full text-left">
                       <CardImage src={card.image_url} cardId={card.card_id} alt={card.name || card.card_id} className="aspect-[3/4] overflow-hidden rounded-xl bg-slate-950" />
                     </button>
                     <span className="absolute right-1 top-1 rounded-full bg-cyan-300 px-2 py-1 text-[10px] font-black text-slate-950">x{card.quantity}</span>
+                    {isMetaDeck ? (
+                      <span className={`absolute bottom-1 left-1 rounded-full border px-1.5 py-1 text-[9px] font-black shadow-lg ${owned > 0 ? 'border-emerald-100/40 bg-emerald-300 text-slate-950' : 'border-rose-100/35 bg-rose-400 text-white'}`}>
+                        Possedute x{owned}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-1 truncate text-xs font-black text-white">{card.name}</p>
                   <div className="mt-0.5 flex items-center justify-between gap-1">
                     <p className="truncate text-[10px] text-slate-500">{displayCardId(card.card_id)}</p>
                     <p className="shrink-0 text-[10px] font-black text-emerald-100">{formatPrice(getDeckCardDisplayPrice(card))}</p>
                   </div>
+                  {isMetaDeck ? (
+                    <p className={`mt-1 truncate text-[10px] font-black ${missing > 0 ? 'text-rose-200' : 'text-emerald-200'}`}>
+                      {missing > 0 ? `Mancano x${missing}` : 'Copie complete'}
+                    </p>
+                  ) : null}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   return (
     <div className={`min-h-screen overflow-x-hidden pt-14 text-white onepiece-wave-bg onepiece-clouds ${mode === 'create' ? 'pb-72 sm:pb-76' : 'pb-32 sm:pb-36'}`}>

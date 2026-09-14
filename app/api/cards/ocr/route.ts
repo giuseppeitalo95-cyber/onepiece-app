@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { FREE_DAILY_SCAN_LIMIT, getPremiumTier } from '@/lib/premium'
+import { FREE_DAILY_SCAN_LIMIT, PREMIUM_FEATURES_ENABLED, getPremiumTier } from '@/lib/premium'
 import { DEFAULT_MONTHLY_SCAN_LIMIT, readMonthlyScanLimit } from '@/lib/scanLimit'
 import { checkRateLimit, rateLimitResponse } from '@/lib/serverRateLimit'
 
@@ -419,7 +419,9 @@ async function reserveDailyUserScan(req: NextRequest) {
     }
   }
 
-  if (access.tier !== 'free') {
+  // The per-user quota belongs to the dormant Premium model. The separate
+  // global monthly Vision ceiling remains active as a cost safety limit.
+  if (!PREMIUM_FEATURES_ENABLED || access.tier !== 'free') {
     return {
       allowed: true,
       used: 0,
@@ -474,7 +476,7 @@ async function checkDailyUserScan(req: NextRequest) {
     }
   }
 
-  if (access.tier !== 'free') {
+  if (!PREMIUM_FEATURES_ENABLED || access.tier !== 'free') {
     return {
       allowed: true,
       used: 0,

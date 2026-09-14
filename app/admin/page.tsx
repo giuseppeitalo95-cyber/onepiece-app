@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ShieldCheck, ArrowLeft, Bug, Trash2, RotateCcw, BarChart3, Activity, BookOpen, Database, ChevronRight, Eraser, Info, Megaphone, MessageCircle, Save, Search, Send, Users, Wrench, ScanLine, Tags } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ADMIN_ACCOUNT, isAdminAccount } from '@/lib/admin'
-import { getDailyRewardVipUntil } from '@/lib/premium'
+import { getDailyRewardVipUntil, PREMIUM_FEATURES_ENABLED } from '@/lib/premium'
 import CatalogCardManager from './CatalogCardManager'
 import BinderKitManager from './BinderKitManager'
 import AdminDatabaseManager from './AdminDatabaseManager'
@@ -1474,9 +1474,11 @@ export default function AdminPage() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   ['Utenti', analytics?.totals?.users ?? profiles.length],
-                  ['Premium', analytics?.totals?.premium ?? profiles.filter(profile => profile.is_premium).length],
-                  ['VIP', analytics?.totals?.vip ?? profiles.filter(profile => profile.is_vip).length],
-                  ['Free', analytics?.totals?.free ?? profiles.filter(profile => !profile.is_premium && !profile.is_vip).length],
+                  ...(PREMIUM_FEATURES_ENABLED ? [
+                    ['Premium', analytics?.totals?.premium ?? profiles.filter(profile => profile.is_premium).length],
+                    ['VIP', analytics?.totals?.vip ?? profiles.filter(profile => profile.is_vip).length],
+                    ['Free', analytics?.totals?.free ?? profiles.filter(profile => !profile.is_premium && !profile.is_vip).length],
+                  ] : []),
                   ['Attivi oggi', analytics?.totals?.activeToday ?? 0],
                   ['Scan', analytics?.totals?.scans ?? 0],
                   ['Ricerche manuali', analytics?.totals?.manualSearches ?? 0],
@@ -2029,9 +2031,9 @@ export default function AdminPage() {
                       </span>
                       {profile.id === ADMIN_ACCOUNT.id ? (
                         <span className="rounded-full bg-rose-300/15 px-2 py-0.5 font-black text-rose-100">Admin</span>
-                      ) : profile.is_vip || getDailyRewardVipUntil(profile.vip_note) ? (
+                      ) : getDailyRewardVipUntil(profile.vip_note) ? (
                         <span className="rounded-full bg-amber-300/15 px-2 py-0.5 font-black text-amber-100">VIP</span>
-                      ) : profile.is_premium ? (
+                      ) : PREMIUM_FEATURES_ENABLED && profile.is_premium ? (
                         <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 font-black text-cyan-100">Premium</span>
                       ) : null}
                     </div>
@@ -2052,13 +2054,15 @@ export default function AdminPage() {
                     >
                       +1 modifica
                     </button>
-                    <button
-                      onClick={() => toggleVipUser(profile)}
-                      disabled={busy || profile.id === ADMIN_ACCOUNT.id}
-                      className={`rounded-2xl px-3 py-2 text-xs font-semibold transition ${profile.is_vip ? 'bg-slate-700 text-slate-200 border border-slate-600 hover:bg-slate-600' : 'bg-amber-300/15 text-amber-100 border border-amber-200/25 hover:bg-amber-300/25'} disabled:opacity-50`}
-                    >
-                      {profile.is_vip ? 'Togli VIP' : 'Dai VIP'}
-                    </button>
+                    {PREMIUM_FEATURES_ENABLED ? (
+                      <button
+                        onClick={() => toggleVipUser(profile)}
+                        disabled={busy || profile.id === ADMIN_ACCOUNT.id}
+                        className={`rounded-2xl px-3 py-2 text-xs font-semibold transition ${profile.is_vip ? 'bg-slate-700 text-slate-200 border border-slate-600 hover:bg-slate-600' : 'bg-amber-300/15 text-amber-100 border border-amber-200/25 hover:bg-amber-300/25'} disabled:opacity-50`}
+                      >
+                        {profile.is_vip ? 'Togli VIP' : 'Dai VIP'}
+                      </button>
+                    ) : null}
                     <button
                       onClick={() => toggleBlockUser(profile)}
                       disabled={busy}
