@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Crown, Eye, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
+import { Beaker, Crown, Eye, Minus, Pencil, Plus, Save, Search, Trash2, Trophy, X } from 'lucide-react'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import CardImage from '@/app/components/CardImage'
@@ -237,7 +237,7 @@ export default function DeckBuilderPage() {
   }
 
   const loadSavedDecks = async (uid: string) => {
-    const localDecks = loadLocalDecks(uid)
+    const localDecks = loadLocalDecks(uid).filter(deck => deck.source !== 'experimental')
 
     try {
       const { data, error } = await supabase
@@ -249,7 +249,9 @@ export default function DeckBuilderPage() {
       if (error) throw error
 
       setDeckStoreReady(true)
-      const dbDecks = (data || []).map(row => rowToDeck(row as DbDeckRow))
+      const dbDecks = (data || [])
+        .map(row => rowToDeck(row as DbDeckRow))
+        .filter(deck => deck.source !== 'experimental')
       const dbIds = new Set(dbDecks.map(deck => deck.id))
       const decksToMigrate = localDecks.filter(deck => !dbIds.has(deck.id))
 
@@ -988,10 +990,11 @@ export default function DeckBuilderPage() {
 
       <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">
         <section className="rounded-[1.6rem] border border-white/10 bg-slate-900/72 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
-          <div className="grid grid-cols-3 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-xs font-black sm:text-sm">
+          <div className="grid grid-cols-4 rounded-2xl border border-slate-700 bg-slate-950/60 p-1 text-[10px] font-black sm:text-sm">
               <button onClick={() => setMode('saved')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'saved' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>I miei deck</button>
               <button onClick={startNewDeck} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'create' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Crea deck</button>
               <button onClick={() => setMode('meta')} className={`rounded-xl px-2 py-2 sm:px-4 ${mode === 'meta' ? 'bg-cyan-300 text-slate-950' : 'text-slate-400'}`}>Deck meta</button>
+              <button onClick={() => router.push('/decks/lab')} className="flex items-center justify-center gap-1 rounded-xl px-1 py-2 text-amber-200 sm:px-4"><Beaker size={14} />Lab</button>
           </div>
         </section>
 
