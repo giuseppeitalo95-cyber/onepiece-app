@@ -438,7 +438,9 @@ export default function DeckBuilderPage() {
     acc[key] = (acc[key] || 0) + card.quantity
     return acc
   }, {})
-  const overLimit = deckCards.filter(card => (baseCounts[baseCardId(card.card_id)] || 0) > 4)
+  const overLimit = deckCards.filter(card =>
+    (baseCounts[baseCardId(card.card_id)] || 0) > maxDeckCopies(card.card_id)
+  )
   const offColor = leaderColors.length === 0
     ? []
     : deckCards.filter(card => {
