@@ -12,6 +12,7 @@ import { trackAnalyticsEvent } from '@/lib/analytics'
 import { getRarityLabel } from '@/lib/rarity'
 import { validateUserText } from '@/lib/textModeration'
 import { baseDeckCardId, buildOwnedQuantityByBase, summarizeDeckAvailability } from '@/lib/deckAvailability'
+import { maxDeckCopies } from '@/lib/deckRules'
 
 type DeckCard = {
   card_id: string
@@ -587,8 +588,9 @@ export default function DeckBuilderPage() {
 
     const key = baseCardId(card.card_id)
     const currentCopies = deckCards.reduce((sum, item) => sum + (baseCardId(item.card_id) === key ? item.quantity : 0), 0)
-    const sourceLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : 4
-    if (currentCopies >= Math.min(4, sourceLimit) || mainCount >= 50) return
+    const ruleLimit = maxDeckCopies(card.card_id)
+    const sourceLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : ruleLimit
+    if (currentCopies >= Math.min(ruleLimit, sourceLimit) || mainCount >= 50) return
 
     setDeckCards(prev => {
       const existing = prev.find(item => item.card_id === card.card_id)
@@ -1085,8 +1087,9 @@ export default function DeckBuilderPage() {
                 ) : availableCards.map(card => {
                   const isLeader = (card.card_type || '').toLowerCase().includes('leader')
                   const copies = baseCounts[baseCardId(card.card_id)] || 0
-                  const ownedLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : 4
-                  const canAdd = !isLeader && !isDonCard(card) && copies < Math.min(4, ownedLimit) && mainCount < 50
+                  const ruleLimit = maxDeckCopies(card.card_id)
+                  const ownedLimit = deckSearchSource === 'collection' ? Math.max(1, Number(card.quantity || 1)) : ruleLimit
+                  const canAdd = !isLeader && !isDonCard(card) && copies < Math.min(ruleLimit, ownedLimit) && mainCount < 50
 
                   return (
                     <div key={card.card_id} className="relative rounded-2xl border border-slate-700 bg-slate-950/70 p-2">
