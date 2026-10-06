@@ -6,7 +6,7 @@ import { ArrowLeft, Beaker, ChevronDown, ChevronUp, Filter, Minus, Plus, Refresh
 import CardImage from '@/app/components/CardImage'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
-import { baseDeckCardId, buildOwnedQuantityByBase } from '@/lib/deckAvailability'
+import { baseDeckCardId, buildOwnedQuantityByBase, reconcileDeckOwnedQuantities } from '@/lib/deckAvailability'
 import { DECK_SIZE, hasUnlimitedDeckCopies, maxDeckCopies } from '@/lib/deckRules'
 import { recommendDeckCard, type RecommendationCard, type RecommendationDeck } from '@/lib/deckRecommendation'
 import { supabase } from '@/lib/supabase'
@@ -108,20 +108,21 @@ export default function ExperimentalDecksPage() {
         supabase.from('user_decks').select('id, name, cards, updated_at').eq('user_id', session.user.id).eq('source', 'experimental').order('updated_at', { ascending: false }),
         supabase.from('user_cards').select('card_id, quantity').eq('user_id', session.user.id),
       ])
+      const normalizedCollection = (collectionResponse.data || []).map(card => ({ card_id: String(card.card_id || ''), quantity: Math.max(0, Number(card.quantity || 0)) }))
       setPlans((deckResponse.data || []).map(row => {
         const value = row as DeckRow
         return {
           id: value.id,
           name: value.name || 'Deck sperimentale',
-          cards: Array.isArray(value.cards) ? value.cards.map(card => ({
+          cards: reconcileDeckOwnedQuantities(Array.isArray(value.cards) ? value.cards.map(card => ({
             ...card,
             quantity: Math.max(1, Math.min(maxCopiesForCard(card), Number(card.quantity || 1))),
             owned_quantity: Math.max(0, Number(card.owned_quantity || 0)),
-          })) : [],
+          })) : [], normalizedCollection),
           updatedAt: value.updated_at || new Date().toISOString(),
         }
       }))
-      setCollectionCards((collectionResponse.data || []).map(card => ({ card_id: String(card.card_id || ''), quantity: Math.max(0, Number(card.quantity || 0)) })))
+      setCollectionCards(normalizedCollection)
     }
     void load()
   }, [router])
@@ -198,7 +199,11 @@ export default function ExperimentalDecksPage() {
     setActivePlan({ id: `experimental-${Date.now()}`, name: 'Nuovo deck sperimentale', cards: [], updatedAt: new Date().toISOString() })
     setQuery(''); setResults([]); setMessage(''); setSelectedCardId(null); setSearchExpanded(true)
   }
-  const updateActiveCards = (cards: ExperimentCard[]) => setActivePlan(current => current ? { ...current, cards, updatedAt: new Date().toISOString() } : current)
+  const updateActiveCards = (cards: ExperimentCard[], reconcile = true) => setActivePlan(current => current ? {
+    ...current,
+    cards: reconcile ? reconcileDeckOwnedQuantities(cards, collectionCards) : cards,
+    updatedAt: new Date().toISOString(),
+  } : current)
   const addCard = (card: CatalogCard) => {
     if (!activePlan || totalRequired >= DECK_SIZE) return
     const existing = activePlan.cards.find(item => item.card_id === card.card_id)
@@ -222,11 +227,11 @@ export default function ExperimentalDecksPage() {
   }
   const changeOwned = (cardId: string, delta: number) => {
     if (!activePlan) return
-    updateActiveCards(activePlan.cards.map(card => card.card_id === cardId ? { ...card, owned_quantity: Math.max(0, Math.min(card.quantity, card.owned_quantity + delta)) } : card))
+    updateActiveCards(activePlan.cards.map(card => card.card_id === cardId ? { ...card, owned_quantity: Math.max(0, Math.min(card.quantity, card.owned_quantity + delta)) } : card), false)
   }
   const syncCollection = () => {
     if (!activePlan) return
-    updateActiveCards(activePlan.cards.map(card => ({ ...card, owned_quantity: Math.min(card.quantity, collectionByBase[baseDeckCardId(card.card_id)] || 0) })))
+    updateActiveCards(reconcileDeckOwnedQuantities(activePlan.cards, collectionCards, { preserveManual: false }), false)
     setMessage('Copie aggiornate dalla collezione.')
   }
   const savePlan = async () => {
