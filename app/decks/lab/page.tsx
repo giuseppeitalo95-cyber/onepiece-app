@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Beaker, ChevronDown, ChevronUp, Filter, Minus, Plus, RefreshCw, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Beaker, ChevronDown, ChevronUp, Filter, Minus, Plus, RefreshCw, Save, Search, SlidersHorizontal, Sparkles, Trash2, X } from 'lucide-react'
 import CardImage from '@/app/components/CardImage'
 import Sidebar from '@/app/components/Sidebar'
 import Topbar from '@/app/components/Topbar'
 import { baseDeckCardId, buildOwnedQuantityByBase } from '@/lib/deckAvailability'
 import { DECK_SIZE, hasUnlimitedDeckCopies, maxDeckCopies } from '@/lib/deckRules'
+import { recommendDeckCard, type RecommendationCard, type RecommendationDeck } from '@/lib/deckRecommendation'
 import { supabase } from '@/lib/supabase'
 import { validateUserText } from '@/lib/textModeration'
 
@@ -93,6 +94,9 @@ export default function ExperimentalDecksPage() {
   const [powerFilter, setPowerFilter] = useState('all')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [metaDecks, setMetaDecks] = useState<RecommendationDeck[]>([])
+  const [metaLoading, setMetaLoading] = useState(false)
+  const metaLoaded = useRef(false)
   const searchRun = useRef(0)
 
   useEffect(() => {
@@ -139,6 +143,24 @@ export default function ExperimentalDecksPage() {
     return () => window.clearTimeout(timer)
   }, [query])
 
+  useEffect(() => {
+    if (!activePlan?.cards.length || metaLoaded.current || metaLoading) return
+    metaLoaded.current = true
+    const loadMetaDecks = async () => {
+      setMetaLoading(true)
+      try {
+        const response = await fetch('/api/decks/meta')
+        const data = await response.json()
+        setMetaDecks(Array.isArray(data?.decks) ? data.decks : [])
+      } catch {
+        setMetaDecks([])
+      } finally {
+        setMetaLoading(false)
+      }
+    }
+    void loadMetaDecks()
+  }, [activePlan?.cards.length, metaLoading])
+
   const collectionByBase = useMemo(() => buildOwnedQuantityByBase(collectionCards), [collectionCards])
   const totalRequired = activePlan?.cards.reduce((sum, card) => sum + card.quantity, 0) || 0
   const stats = useMemo(() => {
@@ -157,6 +179,7 @@ export default function ExperimentalDecksPage() {
     })
   }, [activePlan, deckFilter])
   const selectedDeckCard = activePlan?.cards.find(card => card.card_id === selectedCardId) || null
+  const recommendation = useMemo(() => recommendDeckCard(activePlan?.cards || [], metaDecks), [activePlan?.cards, metaDecks])
   const availableRarities = useMemo(() => [...new Set(results.map(card => card.rarity).filter(Boolean) as string[])].sort(), [results])
   const availableTypes = useMemo(() => [...new Set(results.map(card => card.card_type).filter(Boolean) as string[])].sort(), [results])
   const filteredResults = useMemo(() => results.filter(card => {
@@ -234,6 +257,7 @@ export default function ExperimentalDecksPage() {
         <header className="flex items-center gap-3">
           <button onClick={() => router.push('/decks')} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-slate-950/55 text-slate-200 active:scale-95" aria-label="Torna ai deck"><ArrowLeft size={19} /></button>
           <div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-amber-200"><Beaker size={18} /><span className="text-[10px] font-black uppercase tracking-[0.24em]">Deck Lab</span></div><h1 className="truncate text-xl font-black sm:text-3xl">Deck sperimentali</h1></div>
+          {activePlan?.cards.length ? <RecommendationPill recommendation={recommendation} loading={metaLoading} disabled={totalRequired >= DECK_SIZE} onAdd={card => addCard({ card_id: card.card_id, name: card.name || 'Carta', image_url: card.image_url || null, rarity: card.rarity || null, card_color: card.card_color || null, card_type: card.card_type || null, card_cost: card.card_cost ?? null, card_power: card.card_power ?? null })} /> : null}
           <button onClick={createPlan} className="flex items-center gap-2 rounded-2xl bg-cyan-300 px-3 py-2.5 text-xs font-black text-slate-950 shadow-lg active:scale-95 sm:px-4 sm:text-sm"><Plus size={17} />Nuovo</button>
         </header>
 
@@ -270,6 +294,12 @@ export default function ExperimentalDecksPage() {
       {activePlan && selectedDeckCard ? <DeckCardEditor card={selectedDeckCard} totalRequired={totalRequired} onClose={() => setSelectedCardId(null)} onRequiredChange={delta => changeRequired(selectedDeckCard.card_id, delta)} onOwnedChange={delta => changeOwned(selectedDeckCard.card_id, delta)} onRemove={() => { updateActiveCards(activePlan.cards.filter(item => item.card_id !== selectedDeckCard.card_id)); setSelectedCardId(null) }} /> : null}
     </div>
   )
+}
+
+function RecommendationPill({ recommendation, loading, disabled, onAdd }: { recommendation: ReturnType<typeof recommendDeckCard>; loading: boolean; disabled: boolean; onAdd: (card: RecommendationCard) => void }) {
+  if (loading) return <div className="flex h-11 w-[104px] shrink-0 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-200/[0.07] px-2 min-[390px]:w-[145px]"><Sparkles size={14} className="shrink-0 animate-pulse text-amber-200" /><span className="truncate text-[9px] font-black text-amber-100">Calcolo consiglio...</span></div>
+  if (!recommendation) return null
+  return <button onClick={() => onAdd(recommendation.card)} disabled={disabled} className="flex h-11 w-[104px] shrink-0 items-center gap-1.5 overflow-hidden rounded-xl border border-amber-200/30 bg-amber-200/10 p-1 text-left shadow-[0_0_20px_rgba(253,230,138,0.08)] active:scale-[0.97] disabled:opacity-45 min-[390px]:w-[145px]" title={`Presente nel ${recommendation.percentage}% di ${recommendation.matchingDecks} deck simili`}><CardImage src={recommendation.card.image_url || null} cardId={recommendation.card.card_id} alt={recommendation.card.name || 'Carta consigliata'} className="h-9 w-7 shrink-0 overflow-hidden rounded-md bg-slate-900" /><span className="min-w-0 flex-1"><span className="flex items-center gap-1 text-[7px] font-black uppercase text-amber-200"><Sparkles size={8} />Consigliata {recommendation.percentage}%</span><span className="block truncate text-[9px] font-black text-white">{recommendation.card.name || recommendation.card.card_id}</span><span className="block truncate text-[7px] text-slate-400">x{recommendation.recommendedCopies} · {recommendation.matchingDecks} deck</span></span><Plus size={11} className="shrink-0 text-amber-200" /></button>
 }
 
 function DeckCardEditor({ card, totalRequired, onClose, onRequiredChange, onOwnedChange, onRemove }: { card: ExperimentCard; totalRequired: number; onClose: () => void; onRequiredChange: (delta: number) => void; onOwnedChange: (delta: number) => void; onRemove: () => void }) {

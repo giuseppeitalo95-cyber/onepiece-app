@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -197,6 +198,37 @@ export const deleteR2Object = async (key: string) => {
   const { client, config } = getClient()
   await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: cleanKey }))
   usageCache = null
+}
+
+export const readR2Json = async <T>(key: string): Promise<T | null> => {
+  const cleanKey = key.trim()
+  if (!cleanKey.startsWith('data/') || !cleanKey.endsWith('.json')) throw new Error('Chiave dati R2 non valida')
+  const { client, config } = getClient()
+  try {
+    const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: cleanKey }))
+    const content = await result.Body?.transformToString()
+    return content ? JSON.parse(content) as T : null
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+    if (status === 404) return null
+    throw error
+  }
+}
+
+export const writeR2Json = async (key: string, value: unknown) => {
+  const cleanKey = key.trim()
+  if (!cleanKey.startsWith('data/') || !cleanKey.endsWith('.json')) throw new Error('Chiave dati R2 non valida')
+  const { client, config } = getClient()
+  const body = Buffer.from(JSON.stringify(value))
+  await client.send(new PutObjectCommand({
+    Bucket: config.bucket,
+    Key: cleanKey,
+    Body: body,
+    ContentType: 'application/json; charset=utf-8',
+    CacheControl: 'no-cache',
+  }))
+  usageCache = null
+  return { key: cleanKey, bytes: body.length }
 }
 
 const objectExists = async (key: string) => {

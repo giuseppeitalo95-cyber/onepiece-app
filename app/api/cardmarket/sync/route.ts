@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { syncCardmarketExports } from '@/lib/cardmarketPrices'
 import { isAdminAccount } from '@/lib/admin'
+import { refreshMetaDeckSnapshot } from '@/lib/metaDecks'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxwgbzatdueefdiyxlns.supabase.co'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -52,8 +53,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await syncCardmarketExports()
-    return Response.json({ ok: true, ...result })
+    const [prices, metaDecks] = await Promise.allSettled([
+      syncCardmarketExports(),
+      refreshMetaDeckSnapshot(),
+    ])
+    if (prices.status === 'rejected') throw prices.reason
+    return Response.json({
+      ok: true,
+      ...prices.value,
+      metaDecks: metaDecks.status === 'fulfilled'
+        ? { updatedAt: metaDecks.value.updatedAt, count: metaDecks.value.decks.length, error: null }
+        : { updatedAt: null, count: 0, error: metaDecks.reason instanceof Error ? metaDecks.reason.message : 'Aggiornamento deck meta fallito' },
+    })
   } catch (error) {
     console.error('Cardmarket sync error:', error)
     return Response.json({

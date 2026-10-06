@@ -15,6 +15,7 @@
     "test:don-ocr-routing": "tsx scripts/test-don-ocr-routing.ts",
     "test:don-prices": "tsx scripts/test-don-prices.ts",
     "test:deck-rules": "tsx scripts/test-deck-rules.ts",
+    "test:deck-recommendation": "tsx scripts/test-deck-recommendation.ts",
     "test:open-access": "tsx scripts/test-open-access.ts",
     "test:price-matcher": "tsx scripts/test-price-matcher.ts"
   },
